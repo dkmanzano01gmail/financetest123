@@ -28,8 +28,8 @@ const NOW = new Date();
 function TransactionsPage() {
   const { workspace } = useCurrentWorkspace();
   const qc = useQueryClient();
-  const [month, setMonth] = useState<string>(String(NOW.getMonth() + 1));
-  const [year, setYear] = useState<string>(String(NOW.getFullYear()));
+  const [month, setMonth] = useState<string>("all");
+  const [year, setYear] = useState<string>("all");
   const [type, setType] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
