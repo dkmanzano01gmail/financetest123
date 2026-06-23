@@ -18,6 +18,7 @@ import { Route as AuthenticatedReconciliationRouteImport } from './routes/_authe
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedImportRouteImport } from './routes/_authenticated/import'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedCustomizationsRouteImport } from './routes/_authenticated/customizations'
 import { Route as AuthenticatedCategoriesRouteImport } from './routes/_authenticated/categories'
 import { Route as AuthenticatedCardsRouteImport } from './routes/_authenticated/cards'
 import { Route as AuthenticatedBudgetAnalysisRouteImport } from './routes/_authenticated/budget-analysis'
@@ -69,6 +70,12 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCustomizationsRoute =
+  AuthenticatedCustomizationsRouteImport.update({
+    id: '/customizations',
+    path: '/customizations',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedCategoriesRoute = AuthenticatedCategoriesRouteImport.update({
   id: '/categories',
   path: '/categories',
@@ -98,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/budget-analysis': typeof AuthenticatedBudgetAnalysisRoute
   '/cards': typeof AuthenticatedCardsRoute
   '/categories': typeof AuthenticatedCategoriesRoute
+  '/customizations': typeof AuthenticatedCustomizationsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/import': typeof AuthenticatedImportRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
@@ -112,6 +120,7 @@ export interface FileRoutesByTo {
   '/budget-analysis': typeof AuthenticatedBudgetAnalysisRoute
   '/cards': typeof AuthenticatedCardsRoute
   '/categories': typeof AuthenticatedCategoriesRoute
+  '/customizations': typeof AuthenticatedCustomizationsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/import': typeof AuthenticatedImportRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
@@ -128,6 +137,7 @@ export interface FileRoutesById {
   '/_authenticated/budget-analysis': typeof AuthenticatedBudgetAnalysisRoute
   '/_authenticated/cards': typeof AuthenticatedCardsRoute
   '/_authenticated/categories': typeof AuthenticatedCategoriesRoute
+  '/_authenticated/customizations': typeof AuthenticatedCustomizationsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/import': typeof AuthenticatedImportRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
     | '/budget-analysis'
     | '/cards'
     | '/categories'
+    | '/customizations'
     | '/dashboard'
     | '/import'
     | '/onboarding'
@@ -158,6 +169,7 @@ export interface FileRouteTypes {
     | '/budget-analysis'
     | '/cards'
     | '/categories'
+    | '/customizations'
     | '/dashboard'
     | '/import'
     | '/onboarding'
@@ -173,6 +185,7 @@ export interface FileRouteTypes {
     | '/_authenticated/budget-analysis'
     | '/_authenticated/cards'
     | '/_authenticated/categories'
+    | '/_authenticated/customizations'
     | '/_authenticated/dashboard'
     | '/_authenticated/import'
     | '/_authenticated/onboarding'
@@ -252,6 +265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/customizations': {
+      id: '/_authenticated/customizations'
+      path: '/customizations'
+      fullPath: '/customizations'
+      preLoaderRoute: typeof AuthenticatedCustomizationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/categories': {
       id: '/_authenticated/categories'
       path: '/categories'
@@ -288,6 +308,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBudgetAnalysisRoute: typeof AuthenticatedBudgetAnalysisRoute
   AuthenticatedCardsRoute: typeof AuthenticatedCardsRoute
   AuthenticatedCategoriesRoute: typeof AuthenticatedCategoriesRoute
+  AuthenticatedCustomizationsRoute: typeof AuthenticatedCustomizationsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedImportRoute: typeof AuthenticatedImportRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
@@ -301,6 +322,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBudgetAnalysisRoute: AuthenticatedBudgetAnalysisRoute,
   AuthenticatedCardsRoute: AuthenticatedCardsRoute,
   AuthenticatedCategoriesRoute: AuthenticatedCategoriesRoute,
+  AuthenticatedCustomizationsRoute: AuthenticatedCustomizationsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedImportRoute: AuthenticatedImportRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,

@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, ArrowLeftRight, Wallet, CreditCard, Tags, Settings, Eye, EyeOff, LogOut, ChevronDown, Plus, Sparkles, Upload, PieChart, Scale } from "lucide-react";
+import { LayoutDashboard, ArrowLeftRight, Wallet, CreditCard, Tags, Settings, Eye, EyeOff, LogOut, ChevronDown, Plus, Sparkles, Upload, PieChart, Scale, Wand2 } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ const nav = [
   { to: "/reconciliation", icon: Scale, label: "Conciliação" },
   { to: "/categories", icon: Tags, label: "Categorias" },
   { to: "/import", icon: Upload, label: "Importar" },
+  { to: "/customizations", icon: Wand2, label: "Personalizações" },
   { to: "/settings", icon: Settings, label: "Configurações" },
 ];
 
