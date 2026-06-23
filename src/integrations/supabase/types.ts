@@ -14,9 +14,131 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_balance_snapshots: {
+        Row: {
+          account_id: string
+          balance_amount: number
+          balance_date: string
+          balance_type: Database["public"]["Enums"]["balance_snapshot_type"]
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          source: string | null
+          workspace_id: string
+        }
+        Insert: {
+          account_id: string
+          balance_amount: number
+          balance_date: string
+          balance_type: Database["public"]["Enums"]["balance_snapshot_type"]
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          source?: string | null
+          workspace_id: string
+        }
+        Update: {
+          account_id?: string
+          balance_amount?: number
+          balance_date?: string
+          balance_type?: Database["public"]["Enums"]["balance_snapshot_type"]
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          source?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_balance_snapshots_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_balance_snapshots_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      account_reconciliations: {
+        Row: {
+          account_id: string
+          calculated_balance: number
+          created_at: string
+          created_by: string | null
+          difference_amount: number
+          id: string
+          notes: string | null
+          period_end: string
+          period_start: string
+          reported_balance: number
+          status: Database["public"]["Enums"]["reconciliation_status"]
+          tolerance_amount: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          account_id: string
+          calculated_balance: number
+          created_at?: string
+          created_by?: string | null
+          difference_amount: number
+          id?: string
+          notes?: string | null
+          period_end: string
+          period_start: string
+          reported_balance: number
+          status: Database["public"]["Enums"]["reconciliation_status"]
+          tolerance_amount?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          account_id?: string
+          calculated_balance?: number
+          created_at?: string
+          created_by?: string | null
+          difference_amount?: number
+          id?: string
+          notes?: string | null
+          period_end?: string
+          period_start?: string
+          reported_balance?: number
+          status?: Database["public"]["Enums"]["reconciliation_status"]
+          tolerance_amount?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_reconciliations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_reconciliations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accounts: {
         Row: {
           created_at: string
+          current_manual_balance: number | null
+          current_manual_balance_date: string | null
           id: string
           initial_balance: number
           initial_balance_date: string
@@ -28,6 +150,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          current_manual_balance?: number | null
+          current_manual_balance_date?: string | null
           id?: string
           initial_balance?: number
           initial_balance_date?: string
@@ -39,6 +163,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          current_manual_balance?: number | null
+          current_manual_balance_date?: string | null
           id?: string
           initial_balance?: number
           initial_balance_date?: string
@@ -58,12 +184,64 @@ export type Database = {
           },
         ]
       }
+      budgets: {
+        Row: {
+          category_id: string
+          created_at: string
+          id: string
+          month: number
+          notes: string | null
+          planned_amount: number
+          updated_at: string
+          workspace_id: string
+          year: number
+        }
+        Insert: {
+          category_id: string
+          created_at?: string
+          id?: string
+          month: number
+          notes?: string | null
+          planned_amount?: number
+          updated_at?: string
+          workspace_id: string
+          year: number
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          id?: string
+          month?: number
+          notes?: string | null
+          planned_amount?: number
+          updated_at?: string
+          workspace_id?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budgets_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budgets_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           color: string
           created_at: string
           icon: string | null
           id: string
+          importance_level: Database["public"]["Enums"]["importance_level"]
           is_active: boolean
           name: string
           type: Database["public"]["Enums"]["transaction_type"]
@@ -74,6 +252,7 @@ export type Database = {
           created_at?: string
           icon?: string | null
           id?: string
+          importance_level?: Database["public"]["Enums"]["importance_level"]
           is_active?: boolean
           name: string
           type: Database["public"]["Enums"]["transaction_type"]
@@ -84,6 +263,7 @@ export type Database = {
           created_at?: string
           icon?: string | null
           id?: string
+          importance_level?: Database["public"]["Enums"]["importance_level"]
           is_active?: boolean
           name?: string
           type?: Database["public"]["Enums"]["transaction_type"]
@@ -349,6 +529,18 @@ export type Database = {
     }
     Enums: {
       account_type: "checking" | "savings" | "cash" | "investment" | "other"
+      balance_snapshot_type:
+        | "initial"
+        | "manual_current"
+        | "reconciliation_check"
+        | "adjustment"
+      importance_level: "essential" | "important" | "flexible" | "superfluous"
+      reconciliation_status:
+        | "reconciled"
+        | "small_diff"
+        | "relevant_diff"
+        | "no_balance"
+        | "needs_review"
       transaction_status: "confirmed" | "pending" | "ignored"
       transaction_type: "income" | "expense"
       workspace_role: "owner" | "member" | "viewer"
@@ -481,6 +673,20 @@ export const Constants = {
   public: {
     Enums: {
       account_type: ["checking", "savings", "cash", "investment", "other"],
+      balance_snapshot_type: [
+        "initial",
+        "manual_current",
+        "reconciliation_check",
+        "adjustment",
+      ],
+      importance_level: ["essential", "important", "flexible", "superfluous"],
+      reconciliation_status: [
+        "reconciled",
+        "small_diff",
+        "relevant_diff",
+        "no_balance",
+        "needs_review",
+      ],
       transaction_status: ["confirmed", "pending", "ignored"],
       transaction_type: ["income", "expense"],
       workspace_role: ["owner", "member", "viewer"],
