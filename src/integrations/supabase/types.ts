@@ -245,10 +245,13 @@ export type Database = {
         Row: {
           color: string
           created_at: string
+          cut_priority: number
           icon: string | null
           id: string
+          importance_comment: string | null
           importance_level: Database["public"]["Enums"]["importance_level"]
           is_active: boolean
+          is_cuttable: boolean
           name: string
           type: Database["public"]["Enums"]["transaction_type"]
           workspace_id: string
@@ -256,10 +259,13 @@ export type Database = {
         Insert: {
           color?: string
           created_at?: string
+          cut_priority?: number
           icon?: string | null
           id?: string
+          importance_comment?: string | null
           importance_level?: Database["public"]["Enums"]["importance_level"]
           is_active?: boolean
+          is_cuttable?: boolean
           name: string
           type: Database["public"]["Enums"]["transaction_type"]
           workspace_id: string
@@ -267,10 +273,13 @@ export type Database = {
         Update: {
           color?: string
           created_at?: string
+          cut_priority?: number
           icon?: string | null
           id?: string
+          importance_comment?: string | null
           importance_level?: Database["public"]["Enums"]["importance_level"]
           is_active?: boolean
+          is_cuttable?: boolean
           name?: string
           type?: Database["public"]["Enums"]["transaction_type"]
           workspace_id?: string
@@ -555,6 +564,78 @@ export type Database = {
           },
         ]
       }
+      importance_rules: {
+        Row: {
+          category_hint: string | null
+          category_id: string | null
+          confidence: number
+          created_at: string
+          id: string
+          importance_level: Database["public"]["Enums"]["importance_level"]
+          is_active: boolean
+          match_mode: string
+          match_text: string
+          source_type: string
+          transaction_type:
+            | Database["public"]["Enums"]["transaction_type"]
+            | null
+          updated_at: string
+          workspace_id: string | null
+          workspace_type: string | null
+        }
+        Insert: {
+          category_hint?: string | null
+          category_id?: string | null
+          confidence?: number
+          created_at?: string
+          id?: string
+          importance_level: Database["public"]["Enums"]["importance_level"]
+          is_active?: boolean
+          match_mode?: string
+          match_text: string
+          source_type?: string
+          transaction_type?:
+            | Database["public"]["Enums"]["transaction_type"]
+            | null
+          updated_at?: string
+          workspace_id?: string | null
+          workspace_type?: string | null
+        }
+        Update: {
+          category_hint?: string | null
+          category_id?: string | null
+          confidence?: number
+          created_at?: string
+          id?: string
+          importance_level?: Database["public"]["Enums"]["importance_level"]
+          is_active?: boolean
+          match_mode?: string
+          match_text?: string
+          source_type?: string
+          transaction_type?:
+            | Database["public"]["Enums"]["transaction_type"]
+            | null
+          updated_at?: string
+          workspace_id?: string | null
+          workspace_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "importance_rules_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "importance_rules_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -607,11 +688,25 @@ export type Database = {
           description: string
           id: string
           import_hash: string | null
+          importance_confidence: number | null
+          importance_confirmed_at: string | null
+          importance_confirmed_by_user: boolean
+          importance_level:
+            | Database["public"]["Enums"]["importance_level"]
+            | null
+          importance_status:
+            | Database["public"]["Enums"]["importance_status"]
+            | null
+          importance_suggestion_reason: string | null
           method: string | null
           month: number
           notes: string | null
           source: string
           status: Database["public"]["Enums"]["transaction_status"]
+          suggested_category_id: string | null
+          suggested_importance_level:
+            | Database["public"]["Enums"]["importance_level"]
+            | null
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at: string
           workspace_id: string
@@ -629,11 +724,25 @@ export type Database = {
           description: string
           id?: string
           import_hash?: string | null
+          importance_confidence?: number | null
+          importance_confirmed_at?: string | null
+          importance_confirmed_by_user?: boolean
+          importance_level?:
+            | Database["public"]["Enums"]["importance_level"]
+            | null
+          importance_status?:
+            | Database["public"]["Enums"]["importance_status"]
+            | null
+          importance_suggestion_reason?: string | null
           method?: string | null
           month: number
           notes?: string | null
           source?: string
           status?: Database["public"]["Enums"]["transaction_status"]
+          suggested_category_id?: string | null
+          suggested_importance_level?:
+            | Database["public"]["Enums"]["importance_level"]
+            | null
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           workspace_id: string
@@ -651,11 +760,25 @@ export type Database = {
           description?: string
           id?: string
           import_hash?: string | null
+          importance_confidence?: number | null
+          importance_confirmed_at?: string | null
+          importance_confirmed_by_user?: boolean
+          importance_level?:
+            | Database["public"]["Enums"]["importance_level"]
+            | null
+          importance_status?:
+            | Database["public"]["Enums"]["importance_status"]
+            | null
+          importance_suggestion_reason?: string | null
           method?: string | null
           month?: number
           notes?: string | null
           source?: string
           status?: Database["public"]["Enums"]["transaction_status"]
+          suggested_category_id?: string | null
+          suggested_importance_level?:
+            | Database["public"]["Enums"]["importance_level"]
+            | null
           type?: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           workspace_id?: string
@@ -681,6 +804,13 @@ export type Database = {
             columns: ["credit_card_id"]
             isOneToOne: false
             referencedRelation: "credit_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_suggested_category_id_fkey"
+            columns: ["suggested_category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
             referencedColumns: ["id"]
           },
           {
@@ -940,6 +1070,11 @@ export type Database = {
         | "reconciliation_check"
         | "adjustment"
       importance_level: "essential" | "important" | "flexible" | "superfluous"
+      importance_status:
+        | "suggested"
+        | "confirmed"
+        | "manually_changed"
+        | "needs_review"
       reconciliation_status:
         | "reconciled"
         | "small_diff"
@@ -1085,6 +1220,12 @@ export const Constants = {
         "adjustment",
       ],
       importance_level: ["essential", "important", "flexible", "superfluous"],
+      importance_status: [
+        "suggested",
+        "confirmed",
+        "manually_changed",
+        "needs_review",
+      ],
       reconciliation_status: [
         "reconciled",
         "small_diff",
