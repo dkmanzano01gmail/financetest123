@@ -137,10 +137,10 @@ function Dashboard() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <StatCard label={`${t.income} do mês`} value={formatCurrency(totals.income, currency, privacy)} icon={ArrowUpRight} tone="income" />
-        <StatCard label={`${t.expense} do mês`} value={formatCurrency(totals.expense, currency, privacy)} icon={ArrowDownRight} tone="expense" />
-        <StatCard label={t.balance} value={formatCurrency(totals.net, currency, privacy)} icon={TrendingUp} tone={totals.net >= 0 ? "income" : "expense"} />
-        <StatCard label="Saldo em contas" value={formatCurrency(accountsBalance, currency, privacy)} icon={Wallet} />
+        {!hiddenCards.has("income") && <StatCard label={`${t.income} do mês`} value={formatCurrency(totals.income, currency, privacy)} icon={ArrowUpRight} tone="income" />}
+        {!hiddenCards.has("expense") && <StatCard label={`${t.expense} do mês`} value={formatCurrency(totals.expense, currency, privacy)} icon={ArrowDownRight} tone="expense" />}
+        {!hiddenCards.has("balance") && <StatCard label={t.balance} value={formatCurrency(totals.net, currency, privacy)} icon={TrendingUp} tone={totals.net >= 0 ? "income" : "expense"} />}
+        {!hiddenCards.has("accounts_balance") && <StatCard label="Saldo em contas" value={formatCurrency(accountsBalance, currency, privacy)} icon={Wallet} />}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
