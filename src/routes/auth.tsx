@@ -74,7 +74,7 @@ function AuthPage() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-primary text-primary-foreground font-display text-xl font-bold mb-3">
             O
           </div>
-          <h1 className="text-3xl font-display font-semibold">Financeiro Orna</h1>
+          <h1 className="text-3xl font-display font-semibold">Planejador Financeiro</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             Seu dashboard financeiro pessoal e de negócios.
           </p>
