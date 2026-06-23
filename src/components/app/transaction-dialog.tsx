@@ -8,9 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { L } from "@/lib/labels";
+import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
 
 export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { workspace } = useCurrentWorkspace();
@@ -32,7 +34,7 @@ export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpe
     queryKey: ["categories", wsId],
     enabled: !!wsId,
     queryFn: async () => {
-      const { data } = await supabase.from("categories").select("*").eq("workspace_id", wsId!).eq("is_active", true).order("name");
+      const { data } = await supabase.from("categories").select("id,name,type,color,importance_level" as any).eq("workspace_id", wsId!).eq("is_active", true).order("name");
       return data ?? [];
     },
   });
@@ -55,6 +57,9 @@ export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpe
 
   useEffect(() => { if (open) setCategoryId(""); }, [open, type]);
 
+  const selectedCategory = (categories ?? []).find((c: any) => c.id === categoryId) as any | undefined;
+  const inheritedImportance: Importance = (selectedCategory?.importance_level ?? "flexible") as Importance;
+
   const mutation = useMutation({
     mutationFn: async () => {
       if (!wsId) throw new Error("Workspace ausente");
@@ -75,6 +80,11 @@ export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpe
         status: "confirmed",
         month: Number(date.slice(5,7)),
         year: Number(date.slice(0,4)),
+        importance_level: selectedCategory ? inheritedImportance : null,
+        suggested_importance_level: selectedCategory ? inheritedImportance : null,
+        importance_status: selectedCategory ? "suggested" : null,
+        importance_confidence: selectedCategory ? 0.5 : null,
+        importance_suggestion_reason: selectedCategory ? "Importância padrão da categoria" : null,
       });
       if (error) throw error;
     },
@@ -112,6 +122,11 @@ export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpe
               <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
               <SelectContent>{filteredCats.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
             </Select>
+            {selectedCategory && (
+              <div className="text-xs text-muted-foreground flex items-center gap-2">
+                Importância sugerida: <Badge variant="secondary" className={importanceBadgeClass(inheritedImportance)}>{labelImp(inheritedImportance)}</Badge>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
