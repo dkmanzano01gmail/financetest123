@@ -144,32 +144,67 @@ export function AppShell() {
 
       {/* Mobile top bar */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="md:hidden flex items-center justify-between px-4 py-3 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center font-display font-bold text-sm">O</div>
-            <span className="font-display font-semibold">{workspace?.name ?? "Orna"}</span>
-          </div>
-          <Button variant="ghost" size="icon" onClick={togglePrivacy} className="text-sidebar-foreground">
-            {workspace?.privacy_mode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </Button>
-        </header>
+        <div className="md:hidden sticky top-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
+          <header className="flex items-center justify-between px-4 py-3">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center font-display font-bold text-sm shrink-0">O</div>
+                  <span className="font-display font-semibold truncate">{workspace?.name ?? "Orna"}</span>
+                  <ChevronDown className="w-4 h-4 opacity-60 shrink-0" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-60">
+                <DropdownMenuLabel>Seus workspaces</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {workspaces.map((w) => (
+                  <DropdownMenuItem key={w.id} onClick={() => switchTo(w.id)}>
+                    <span className="flex-1 truncate">{w.name}</span>
+                    <span className="text-xs text-muted-foreground ml-2">{w.type === "personal" ? "Pessoal" : "Negócio"}</span>
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate({ to: "/onboarding" })}>
+                  <Plus className="w-4 h-4 mr-2" />Novo workspace
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={signOut}>
+                  <LogOut className="w-4 h-4 mr-2" /> Sair
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="ghost" size="icon" onClick={togglePrivacy} className="text-sidebar-foreground shrink-0">
+              {workspace?.privacy_mode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </Button>
+          </header>
+          <nav
+            className="flex gap-1 overflow-x-auto px-2 pb-2 scrollbar-none"
+            style={{ scrollbarWidth: "none" }}
+          >
+            {nav.map((item) => {
+              const active = pathname === item.to || pathname.startsWith(item.to + "/");
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition shrink-0 ${
+                    active
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                      : "bg-sidebar-accent/40 text-sidebar-foreground/80 hover:bg-sidebar-accent"
+                  }`}
+                >
+                  <item.icon className="w-3.5 h-3.5" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
 
         <main className="flex-1 min-w-0 overflow-auto">
           <TestingBanner />
           <Outlet />
         </main>
-
-        {/* Mobile bottom nav */}
-        <nav className="md:hidden grid grid-cols-5 border-t bg-card">
-          {nav.slice(0, 5).map((item) => {
-            const active = pathname === item.to;
-            return (
-              <Link key={item.to} to={item.to} className={`flex flex-col items-center gap-1 py-2 text-xs ${active ? "text-primary" : "text-muted-foreground"}`}>
-                <item.icon className="w-5 h-5" /> {item.label}
-              </Link>
-            );
-          })}
-        </nav>
       </div>
     </div>
   );
