@@ -9,29 +9,42 @@ const InterpretInput = z.object({
 
 const SYSTEM_PROMPT = `Você é o motor de personalizações do app financeiro "Orna".
 O usuário escreve em linguagem natural um pedido de mudança no app.
-Responda APENAS com JSON válido (sem markdown) no formato:
+Responda APENAS com JSON válido (sem markdown). Classifique o pedido em "easy" (a IA aplica sozinha) ou "advanced" (precisa de revisão humana).
+
+Formato:
 
 {
   "type": "label_rename" | "card_visibility" | "category_rule" | "saved_filter" | "new_category" | "dashboard_card" | "other",
-  "complexity": "simple" | "medium" | "advanced",
+  "complexity": "easy" | "advanced",
+  "reason": string,
   "estimated_credits": number,
   "summary": string,
-  "configuration_json": object,
-  "auto_appliable": boolean
+  "configuration_json": object
 }
 
-Tipos e configuration_json:
-- label_rename: { "labels": { "income"|"expense"|"balance"|"transactions"|"incomeSingular"|"expenseSingular": "Novo texto" } }. simple, auto=true, 1 crédito.
-- card_visibility: { "card_id": "income"|"expense"|"balance"|"accounts_balance"|"top_category"|"recent_transactions", "visible": boolean }. simple, auto=true, 1 crédito.
-- category_rule: { "contains": ["uber","99"], "category_name": "Transporte", "transaction_type": "expense" }. simple, auto=true, 1 crédito.
-- saved_filter: { "name": "Gastos da reforma", "filters": { "category_name"?: string, "type"?: "income"|"expense", "search"?: string } }. simple, auto=true, 1 crédito.
-- new_category: { "name": string, "type": "income"|"expense", "color"?: "#aabbcc", "importance_level"?: "essential"|"important"|"flexible"|"superfluous" }. simple, auto=true, 1 crédito.
-- dashboard_card: { "title": string, "metric": "sum_transactions", "filters": {...}, "format": "currency" }. medium, auto=false, 3-5 créditos.
-- other: nova tela, módulo, integração, cálculo complexo. medium/advanced, auto=false, 5-20 créditos.
+Tipos "easy" (a IA aplica direto):
+- label_rename: { "labels": { "income"|"expense"|"balance"|"transactions"|"incomeSingular"|"expenseSingular": "Novo texto" } }. 1 crédito.
+- card_visibility: { "card_id": "income"|"expense"|"balance"|"accounts_balance"|"top_category"|"recent_transactions", "visible": boolean }. 1 crédito.
+- category_rule: { "contains": ["uber","99"], "category_name": "Transporte", "transaction_type": "expense" }. 1 crédito.
+- saved_filter: { "name": "Gastos da reforma", "filters": { "category_name"?: string, "type"?: "income"|"expense", "search"?: string } }. 1 crédito.
+- new_category: { "name": string, "type": "income"|"expense", "color"?: "#aabbcc", "importance_level"?: "essential"|"important"|"flexible"|"superfluous" }. 1 crédito.
 
-summary: 1 frase em pt-BR explicando o que será aplicado.`;
+Tipos "advanced" (precisam revisão do super-admin — IA NÃO aplica):
+- dashboard_card: novo card no dashboard. 3-5 créditos.
+- other: mudanças visuais globais (cores, tema), novas telas, novos módulos, integrações, mudanças estruturais. 5-30 créditos.
 
-export const interpretCustomization = createServerFn({ method: "POST" })
+Regras:
+- Mudanças de paleta/tema/cor global → advanced, type "other".
+- Renomear menu/tab/aba do sidebar → easy, type "label_rename" se o destino for uma das labels acima.
+- summary: 1 frase em pt-BR explicando o que será aplicado.
+- reason: explique em 1 frase por que classificou como easy ou advanced.`;
+
+/**
+ * Submits a customization request, classifies it with Lovable AI,
+ * and either auto-applies "easy" changes (entering testing state)
+ * or routes "advanced" changes to the super-admin queue.
+ */
+export const submitCustomizationRequest = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => InterpretInput.parse(input))
   .handler(async ({ data, context }) => {
@@ -45,6 +58,17 @@ export const interpretCustomization = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!member) throw new Error("Forbidden");
 
+    // Block if another test is in progress
+    const { data: existingTest } = await (supabase as any)
+      .from("customization_requests")
+      .select("id")
+      .eq("workspace_id", data.workspace_id)
+      .eq("status", "testing")
+      .maybeSingle();
+    if (existingTest) {
+      throw new Error("Já existe uma personalização em teste neste workspace. Aprove ou rejeite antes de enviar outra.");
+    }
+
     const apiKey = process.env.LOVABLE_API_KEY;
     if (!apiKey) throw new Error("Missing LOVABLE_API_KEY");
 
@@ -55,7 +79,7 @@ export const interpretCustomization = createServerFn({ method: "POST" })
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: data.request_text },
@@ -80,25 +104,166 @@ export const interpretCustomization = createServerFn({ method: "POST" })
       throw new Error("Resposta da IA inválida.");
     }
 
-    const complexity = ["simple", "medium", "advanced"].includes(interpretation?.complexity)
-      ? interpretation.complexity
-      : "medium";
-    const estimated = Math.max(1, Math.min(20, Number(interpretation?.estimated_credits) || 1));
+    const complexity: "easy" | "advanced" =
+      interpretation?.complexity === "easy" ? "easy" : "advanced";
+    const estimated = Math.max(1, Math.min(30, Number(interpretation?.estimated_credits) || 1));
+    const reason: string = String(interpretation?.reason ?? "");
+    const type: string = String(interpretation?.type ?? "other");
+    const summary: string = String(interpretation?.summary ?? "");
+    const config = interpretation?.configuration_json ?? {};
 
+    const easyTypes = new Set([
+      "label_rename",
+      "card_visibility",
+      "category_rule",
+      "saved_filter",
+      "new_category",
+    ]);
+    const canAutoApply = complexity === "easy" && easyTypes.has(type);
+
+    // Insert the request first
     const { data: inserted, error } = await (supabase as any)
       .from("customization_requests")
       .insert({
         workspace_id: data.workspace_id,
         user_id: userId,
         request_text: data.request_text,
-        request_type: complexity,
+        request_type: complexity === "easy" ? "simple" : "advanced",
+        complexity,
+        ai_classification_reason: reason,
         estimated_credits: estimated,
-        status: "analyzed",
+        status: canAutoApply ? "interpreting" : "needs_admin_review",
         ai_interpretation: interpretation,
       })
       .select()
       .single();
-
     if (error) throw new Error(error.message);
-    return inserted;
+
+    if (!canAutoApply) {
+      return { request: inserted, autoApplied: false as const };
+    }
+
+    // Auto-apply easy: consume credits, create the customization, mark as testing
+    const { data: creditOk, error: ce } = await (supabase as any).rpc("consume_credits", {
+      _workspace_id: data.workspace_id,
+      _request_id: inserted.id,
+      _credits: estimated,
+      _reason: summary || "Personalização aplicada",
+    });
+    if (ce) throw new Error(ce.message);
+    if (!creditOk) {
+      await (supabase as any)
+        .from("customization_requests")
+        .update({ status: "needs_admin_review", ai_classification_reason: (reason ? reason + " " : "") + "(créditos insuficientes — enviado para revisão)" })
+        .eq("id", inserted.id);
+      throw new Error("Créditos insuficientes para aplicar agora. Pedido enviado para revisão.");
+    }
+
+    // Side-effect for new_category
+    if (type === "new_category") {
+      await (supabase as any).from("categories").insert({
+        workspace_id: data.workspace_id,
+        name: config?.name ?? "Nova categoria",
+        type: config?.type ?? "expense",
+        color: config?.color ?? "#c2410c",
+        importance_level: config?.importance_level ?? "flexible",
+      });
+    }
+
+    const { data: createdCust, error: cErr } = await (supabase as any)
+      .from("customizations")
+      .insert({
+        workspace_id: data.workspace_id,
+        type,
+        name: (summary || data.request_text).slice(0, 80),
+        description: summary || null,
+        configuration_json: config,
+        created_by: userId,
+        request_id: inserted.id,
+      })
+      .select()
+      .single();
+    if (cErr) throw new Error(cErr.message);
+
+    const { data: updated } = await (supabase as any)
+      .from("customization_requests")
+      .update({
+        status: "testing",
+        auto_applied: true,
+        approved_credits: estimated,
+        applied_customization_id: createdCust.id,
+        tested_at: new Date().toISOString(),
+        rollback_payload: { kind: "delete_customization", customization_id: createdCust.id },
+      })
+      .eq("id", inserted.id)
+      .select()
+      .single();
+
+    return { request: updated ?? inserted, autoApplied: true as const };
+  });
+
+// ============================================================
+// User testing flow
+// ============================================================
+
+const TestActionInput = z.object({
+  request_id: z.string().uuid(),
+  reason: z.string().max(500).optional(),
+});
+
+export const userApproveTest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => TestActionInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: row, error } = await (context.supabase as any).rpc("user_approve_test", {
+      _request_id: data.request_id,
+    });
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+export const userRejectTest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => TestActionInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: row, error } = await (context.supabase as any).rpc("user_reject_test", {
+      _request_id: data.request_id,
+      _reason: data.reason ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+// ============================================================
+// Super-admin flow
+// ============================================================
+
+const AdminActionInput = z.object({
+  request_id: z.string().uuid(),
+  note: z.string().max(500).optional(),
+  reason: z.string().max(500).optional(),
+});
+
+export const adminApproveRequest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => AdminActionInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: row, error } = await (context.supabase as any).rpc("admin_approve_request", {
+      _request_id: data.request_id,
+      _admin_note: data.note ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+export const adminRejectRequest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => AdminActionInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: row, error } = await (context.supabase as any).rpc("admin_reject_request", {
+      _request_id: data.request_id,
+      _reason: data.reason ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return row;
   });

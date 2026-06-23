@@ -1,82 +1,158 @@
-## Personalizações — V0
 
-Objetivo: entregar a aba **Personalizações** funcional, com sistema de créditos mensais por workspace, pedidos em linguagem natural interpretados por IA, histórico, e aplicação automática das personalizações simples (renomear label, ocultar card, criar regra, criar filtro salvo, criar categoria).
+## Objetivo
 
-### 1. Banco de dados (uma migration)
+Transformar o módulo **Personalizações** em um fluxo de aprovação real, com três atores:
 
-Criar tabelas no schema `public` com RLS + GRANT (membros do workspace):
+1. **Lovable AI** — interpreta automaticamente cada pedido e aplica sozinha o que for "fácil" (ex.: renomear labels, mudar textos da UI).
+2. **Super-admin (você)** — recebe em uma fila global os pedidos que a IA considerou "avançados" (ex.: mudar paleta, criar feature nova) e decide aplicar ou rejeitar.
+3. **Usuário do workspace** — quando uma personalização é aplicada, ela entra em modo **"em teste"**. Ele navega pelo app, vê a mudança em produção e clica em **Aprovar** ou **Rejeitar**. Se rejeitar, o sistema faz **rollback** automático e a UI volta exatamente como estava.
 
-- **customization_requests** — `workspace_id`, `user_id`, `request_text`, `request_type` (simple/medium/advanced), `status` (pending/analyzing/approved/applied/rejected/in_review), `estimated_credits`, `approved_credits`, `ai_interpretation` (jsonb), `applied_customization_id`, `approved_at`, `completed_at`.
-- **customizations** — `workspace_id`, `type` (`label_rename` | `card_visibility` | `category_rule` | `saved_filter` | `new_category` | `dashboard_card`), `name`, `description`, `configuration_json` (jsonb), `is_active`, `created_by`, `request_id`.
-- **customization_credits** — `workspace_id`, `period_month`, `period_year`, `credits_included`, `credits_used`, `credits_remaining` (gerado), `expires_at`. Único por (workspace, mês, ano).
-- **customization_usage** — `workspace_id`, `request_id`, `credits_used`, `usage_reason`.
+---
 
-Adicionar `plan` (text, default `'personal'`) em `workspaces`. Mapa de créditos/plano (constante no frontend): personal=3, personal_plus=8, business=10, business_pro=25.
+## Nova máquina de estados de `customization_requests`
 
-Função `ensure_current_credits(_workspace_id uuid)` (SECURITY DEFINER): cria a linha do mês atual se não existir, usando o plano do workspace. Chamada ao abrir a página.
+```text
+                  ┌─────────────────────────────────────────┐
+                  │                                         ▼
+submitted ─► interpreting ─► auto_applicable ─► testing ─► approved
+                │                                  │
+                │                                  └─► rejected (rollback)
+                └─► needs_admin_review ─► (admin) ─┤
+                                          │       └─► rejected_by_admin
+                                          └─► testing ─► approved / rejected
+```
 
-Função `consume_credits(_workspace_id uuid, _request_id uuid, _credits int, _reason text)` (SECURITY DEFINER): valida saldo, atualiza `credits_used`, insere `customization_usage`. Retorna boolean.
+Estados:
+- `submitted` — usuário acabou de enviar.
+- `interpreting` — Lovable AI está classificando (assíncrono).
+- `auto_applicable` — IA classificou como fácil; vai aplicar sozinha.
+- `needs_admin_review` — IA classificou como avançada; entra na fila do super-admin.
+- `rejected_by_ai` — IA rejeitou (fora de escopo, inseguro, vazio).
+- `rejected_by_admin` — super-admin rejeitou.
+- `testing` — mudança aplicada; aguardando aprovação do usuário.
+- `approved` — usuário aprovou; mudança permanente.
+- `rejected` — usuário rejeitou no teste; rollback executado.
 
-### 2. Server function de interpretação (Lovable AI)
+---
 
-`src/lib/customizations.functions.ts` — `interpretCustomization` protegido por `requireSupabaseAuth`:
+## Mudanças no banco
 
-- Input: `{ workspace_id, request_text }`.
-- Chama Lovable AI Gateway (`google/gemini-2.5-flash`) com system prompt que retorna JSON estruturado:
-  ```json
-  { "type": "label_rename|card_visibility|category_rule|saved_filter|new_category|other",
-    "complexity": "simple|medium|advanced",
-    "estimated_credits": 1,
-    "summary": "...",
-    "configuration_json": { ... },
-    "auto_appliable": true }
-  ```
-- Persiste `customization_requests` com `ai_interpretation`, `estimated_credits`, `request_type`.
-- Retorna o pedido criado (não aplica ainda — confirmação do usuário em etapa 2).
+Migration única:
 
-`applyCustomization` (server fn): valida ownership, chama `consume_credits`, cria linha em `customizations` com `is_active=true`, marca pedido como `applied`. Pedidos `medium`/`advanced` ficam `in_review` (sem consumir créditos).
+1. **`customization_requests`** — novas colunas:
+   - `status` (substitui o atual; enum com os estados acima)
+   - `complexity` (`easy` | `advanced`) — classificação da IA
+   - `ai_classification_reason` (text)
+   - `auto_applied` (boolean)
+   - `tested_at`, `approved_at`, `rejected_at` (timestamps)
+   - `rollback_payload` (jsonb) — snapshot do estado anterior para reverter
 
-### 3. Tela `/customizations`
+2. **`super_admins`** (tabela nova, global, fora de workspace):
+   ```
+   user_id uuid PRIMARY KEY references auth.users
+   created_at timestamptz
+   ```
+   Função `is_super_admin(uuid)` SECURITY DEFINER. Você é seeded como super-admin via migration (seu user_id atual).
 
-Layout em duas colunas (stack no mobile):
+3. **Policies novas**:
+   - super-admins podem `SELECT/UPDATE` qualquer `customization_request` em qualquer workspace.
+   - membros do workspace só veem os seus.
 
-**Topo — cards de créditos**
-- Créditos do mês / usados / restantes (barra de progresso terracota).
-- Badge do plano atual + link "ver planos" (modal só informativo na V0).
+4. **RPCs novas** (todas SECURITY DEFINER):
+   - `admin_approve_request(_request_id)` — só super-admin; move para `testing` e aplica.
+   - `admin_reject_request(_request_id, _reason)` — só super-admin.
+   - `user_approve_test(_request_id)` — membro do workspace; finaliza como `approved`.
+   - `user_reject_test(_request_id)` — membro; executa rollback e marca como `rejected`.
 
-**Coluna esquerda — Novo pedido**
-- `Textarea` grande com placeholder rotativo dos exemplos da spec.
-- Botão "Interpretar pedido" → chama `interpretCustomization`, mostra card de prévia: tipo, complexidade, créditos estimados, resumo, JSON colapsável.
-- Se `auto_appliable` e há créditos: botão **Aplicar agora** (consome créditos). Se `medium`/`advanced`: botão **Enviar para análise**. Botão **Descartar**.
+---
 
-**Coluna direita — Tabs**
-- **Histórico de pedidos** — lista cronológica com status colorido, créditos, data, ações (reaplicar / descartar).
-- **Personalizações ativas** — agrupadas por tipo, cada item com switch `is_active` e botão "Remover".
+## Fluxo de "auto-aplicar fácil"
 
-### 4. Aplicação efetiva das personalizações ativas
+Server function `interpret_and_route_request` (TanStack `createServerFn` + Lovable AI):
 
-Hook `useActiveCustomizations(workspaceId)` retorna mapa `{ labelRenames, hiddenCards, savedFilters, categoryRules, newCategories }`.
+1. Chama `google/gemini-3-flash-preview` com schema estruturado:
+   ```json
+   {
+     "complexity": "easy" | "advanced",
+     "reason": "...",
+     "action": {
+       "type": "rename_label" | "rename_category" | "rename_account" | "none",
+       "target": "...",
+       "new_value": "..."
+     } | null,
+     "credits_estimate": 1..30
+   }
+   ```
+2. Se `complexity = easy` e `action.type ≠ none`:
+   - grava `rollback_payload` (valor atual)
+   - aplica a mudança em `customizations` (mesma tabela já existente)
+   - marca `status = testing`, `auto_applied = true`
+3. Se `complexity = advanced`:
+   - marca `status = needs_admin_review`
 
-- **label_rename**: estender `src/lib/labels.ts` para mesclar com `labelRenames` antes de devolver o texto. Aplica em sidebar, page headers, dashboard.
-- **card_visibility**: dashboard filtra cards cujo `id` está em `hiddenCards`.
-- **category_rule**: ao criar/importar transações, percorrer regras ativas e sugerir categoria (usa lógica já existente em `csv.ts` + nova chamada em `transaction-dialog.tsx`).
-- **saved_filter**: lista de chips na tela de Transações para aplicar filtros salvos.
-- **new_category**: cria de fato linha em `categories` no momento do apply (não fica só em `customizations`).
+Chamada assim que o usuário envia o pedido (substitui o passo manual de "Interpretar com IA").
 
-### 5. Navegação
+---
 
-Adicionar item **Personalizações** (ícone `Sparkles`) no `app-shell.tsx` entre Categorias e Importar. Atualizar o card "Personalizações" em `settings.tsx` para linkar para a nova rota.
+## Fluxo de teste do usuário (rollback)
 
-### Detalhes técnicos
+Na aba de Personalizações, qualquer pedido com `status = testing` mostra um banner sticky no topo do app inteiro (via `AppShell`):
 
-- Toda comunicação com banco via `supabase` cliente (RLS aplica). `interpretCustomization` é a única server fn (precisa da `LOVABLE_API_KEY`).
-- Validação no frontend com `zod` para `configuration_json` por tipo, antes de aplicar.
-- Toasts para sucesso/erro. Estados de loading em todos os botões.
-- Privacy mode respeitado (não afeta esta tela, mas valores em cards de créditos não são sensíveis).
-- Tipos em `src/integrations/supabase/types.ts` ficam desatualizados até a migration rodar; usar `as any` localizado nas queries das novas tabelas, como já feito em `budget-analysis.tsx`.
+> ⚠️ Testando personalização: "muda o nome da tab contas para contas 2.0"
+> [Aprovar mudança] [Rejeitar e reverter]
 
-### Fora do escopo desta entrega
+- **Aprovar** → `user_approve_test` → status `approved`. Banner some.
+- **Rejeitar** → `user_reject_test`:
+  - lê `rollback_payload`
+  - reverte a entrada em `customizations` (delete ou volta valor anterior)
+  - status `rejected`. Banner some, UI volta ao original.
 
-- Pagamento real de planos (mock).
-- Personalizações médias/avançadas geram código real (ficam só em "Em análise").
-- Card calculado custom (`dashboard_card` complexo) — estrutura existe mas renderização fica para próxima fase.
+Limite: só **uma** personalização em `testing` por workspace por vez (constraint parcial unique), para não embaralhar testes.
+
+---
+
+## Tela do super-admin
+
+Nova rota `/super-admin/customizations` (gated por `is_super_admin`):
+- Lista global de pedidos com `status = needs_admin_review` de todos os workspaces.
+- Cada card mostra: workspace, autor, pedido, interpretação da IA, motivo, créditos estimados.
+- Ações: **Aprovar e aplicar** (vai para `testing` no workspace do usuário) / **Rejeitar com motivo**.
+- Item no menu lateral só aparece se `is_super_admin(auth.uid()) = true`.
+
+---
+
+## Arquivos a criar / editar
+
+**Banco:**
+- `supabase/migrations/<timestamp>_customization_approval_flow.sql` — migration única com tudo acima + seed do super-admin.
+
+**Server:**
+- `src/lib/customizations.functions.ts` — adicionar `interpretAndRouteRequest`, `adminApproveRequest`, `adminRejectRequest`, `userApproveTest`, `userRejectTest`, `listAdminQueue`, `getActiveTest`.
+- `src/lib/ai-gateway.server.ts` — helper de provider Lovable AI (se ainda não existir).
+
+**UI:**
+- `src/routes/_authenticated/customizations.tsx` — atualizar para nova máquina de estados; remover botão "Interpretar com IA" (agora automático); adicionar badges de status novos.
+- `src/routes/_authenticated/super-admin.customizations.tsx` — nova fila de super-admin.
+- `src/components/app/testing-banner.tsx` — banner sticky de teste em curso.
+- `src/components/app/app-shell.tsx` — montar `TestingBanner` + esconder/exibir item "Super admin" no menu.
+- `src/hooks/use-super-admin.ts` — hook `useIsSuperAdmin()`.
+- `src/hooks/use-active-test.ts` — hook que retorna pedido em `testing` do workspace atual.
+
+---
+
+## Detalhes técnicos relevantes
+
+- IA: `google/gemini-3-flash-preview` via Lovable AI Gateway (`createLovableAiGatewayProvider`), com `Output.object` (Zod schema) — sem texto livre, só JSON.
+- Consumo de créditos: continua descontando ao **aplicar** (auto ou via admin), não ao enviar.
+- Rollback é determinístico: cada `action.type` suportado tem inverso registrado em `rollback_payload` no momento da aplicação.
+- Para `advanced`, a IA não tenta executar — só descreve. O super-admin decide manualmente (por enquanto a "aplicação" do super-admin grava um registro genérico em `customizations` apontando para o pedido; mudanças avançadas reais ainda exigem você fazer pelo Lovable editor, mas o fluxo de aprovação/teste funciona).
+- Constraint: índice parcial `UNIQUE (workspace_id) WHERE status = 'testing'`.
+
+---
+
+## Fora do escopo desta entrega
+
+- Aplicar mudanças "avançadas" de verdade (paleta, novas features) automaticamente — só o **fluxo de aprovação** delas. A execução real continua manual via Lovable.
+- Notificações por email ao super-admin (pode ser adicionado depois).
+
+Confirma que posso seguir com esse plano?

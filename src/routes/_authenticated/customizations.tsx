@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { useCustomizations } from "@/hooks/use-customizations";
-import { interpretCustomization } from "@/lib/customizations.functions";
+import { submitCustomizationRequest } from "@/lib/customizations.functions";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
-import { Sparkles, Wand2, Trash2, Check, Clock, X, Loader2 } from "lucide-react";
+import { Sparkles, Wand2, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/format";
 
@@ -42,7 +42,7 @@ function CustomizationsPage() {
   const { workspace } = useCurrentWorkspace();
   const wsId = workspace?.id;
   const qc = useQueryClient();
-  const interpret = useServerFn(interpretCustomization);
+  const submit = useServerFn(submitCustomizationRequest);
 
   const [text, setText] = useState("");
   const [exampleIdx, setExampleIdx] = useState(0);
@@ -99,109 +99,24 @@ function CustomizationsPage() {
     ? (credits.credits_used / credits.credits_included) * 100
     : 0;
 
-  const interpretMut = useMutation({
+  const submitMut = useMutation({
     mutationFn: async () => {
       if (!wsId) throw new Error("Sem workspace");
-      return await interpret({ data: { workspace_id: wsId, request_text: text } });
+      return await submit({ data: { workspace_id: wsId, request_text: text } });
     },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       setText("");
       qc.invalidateQueries({ queryKey: ["customization-requests", wsId] });
-      toast.success("Pedido interpretado pela IA");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const applyMut = useMutation({
-    mutationFn: async (req: any) => {
-      if (!wsId) throw new Error("Sem workspace");
-      const interp = req.ai_interpretation ?? {};
-      const credits = req.estimated_credits ?? 1;
-
-      // Try consume credits
-      const { data: ok, error: ce } = await (supabase as any).rpc("consume_credits", {
-        _workspace_id: wsId,
-        _request_id: req.id,
-        _credits: credits,
-        _reason: interp?.summary ?? "Personalização aplicada",
-      });
-      if (ce) throw new Error(ce.message);
-      if (!ok) throw new Error("Créditos insuficientes neste mês.");
-
-      // Side-effect: for new_category, also create the category row
-      if (interp.type === "new_category") {
-        const cfg = interp.configuration_json ?? {};
-        await supabase.from("categories").insert({
-          workspace_id: wsId,
-          name: cfg.name,
-          type: cfg.type ?? "expense",
-          color: cfg.color ?? "#c2410c",
-          importance_level: cfg.importance_level ?? "flexible",
-        } as any);
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-
-      const { data: created, error } = await (supabase as any)
-        .from("customizations")
-        .insert({
-          workspace_id: wsId,
-          type: interp.type ?? "other",
-          name: interp.summary?.slice(0, 80) ?? req.request_text.slice(0, 80),
-          description: interp.summary ?? null,
-          configuration_json: interp.configuration_json ?? {},
-          created_by: user!.id,
-          request_id: req.id,
-        })
-        .select()
-        .single();
-      if (error) throw new Error(error.message);
-
-      await (supabase as any)
-        .from("customization_requests")
-        .update({
-          status: "applied",
-          approved_credits: credits,
-          applied_customization_id: created.id,
-          approved_at: new Date().toISOString(),
-          completed_at: new Date().toISOString(),
-        })
-        .eq("id", req.id);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["credits", wsId] });
-      qc.invalidateQueries({ queryKey: ["customization-requests", wsId] });
       qc.invalidateQueries({ queryKey: ["customizations", wsId] });
+      qc.invalidateQueries({ queryKey: ["credits", wsId] });
+      qc.invalidateQueries({ queryKey: ["active-test", wsId] });
       qc.invalidateQueries({ queryKey: ["categories", wsId] });
-      toast.success("Personalização aplicada");
+      if (res?.autoApplied) {
+        toast.success("Mudança aplicada — teste agora e aprove ou rejeite no banner no topo.");
+      } else {
+        toast.success("Pedido enviado para análise do admin.");
+      }
     },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const reviewMut = useMutation({
-    mutationFn: async (req: any) => {
-      const { error } = await (supabase as any)
-        .from("customization_requests")
-        .update({ status: "in_review" })
-        .eq("id", req.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["customization-requests", wsId] });
-      toast.success("Pedido enviado para análise");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const discardMut = useMutation({
-    mutationFn: async (req: any) => {
-      const { error } = await (supabase as any)
-        .from("customization_requests")
-        .update({ status: "discarded" })
-        .eq("id", req.id);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["customization-requests", wsId] }),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -277,13 +192,13 @@ function CustomizationsPage() {
             />
             <div className="flex items-center gap-2">
               <Button
-                onClick={() => interpretMut.mutate()}
-                disabled={interpretMut.isPending || text.trim().length < 3}
+                onClick={() => submitMut.mutate()}
+                disabled={submitMut.isPending || text.trim().length < 3}
               >
-                {interpretMut.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Interpretar com IA
+                {submitMut.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Enviar pedido
               </Button>
-              <span className="text-xs text-muted-foreground">A IA estima quantos créditos serão usados antes de aplicar.</span>
+              <span className="text-xs text-muted-foreground">Mudanças simples são aplicadas na hora em modo teste. Mudanças avançadas vão para análise do admin.</span>
             </div>
           </CardContent>
         </Card>
@@ -302,15 +217,7 @@ function CustomizationsPage() {
                   <div className="text-sm text-muted-foreground py-4 text-center">Nenhum pedido ainda.</div>
                 )}
                 {(requests ?? []).map((r: any) => (
-                  <RequestRow
-                    key={r.id}
-                    req={r}
-                    canAfford={remaining >= (r.estimated_credits ?? 1)}
-                    onApply={() => applyMut.mutate(r)}
-                    onReview={() => reviewMut.mutate(r)}
-                    onDiscard={() => discardMut.mutate(r)}
-                    applying={applyMut.isPending}
-                  />
+                  <RequestRow key={r.id} req={r} />
                 ))}
               </TabsContent>
 
@@ -345,24 +252,17 @@ function CustomizationsPage() {
   );
 }
 
-function RequestRow({
-  req,
-  canAfford,
-  onApply,
-  onReview,
-  onDiscard,
-  applying,
-}: {
-  req: any;
-  canAfford: boolean;
-  onApply: () => void;
-  onReview: () => void;
-  onDiscard: () => void;
-  applying: boolean;
-}) {
+function RequestRow({ req }: { req: any }) {
   const interp = req.ai_interpretation ?? {};
-  const auto = interp.auto_appliable === true && interp.complexity === "simple";
   const statusColor: Record<string, string> = {
+    testing: "bg-amber-100 text-amber-800",
+    approved: "bg-emerald-100 text-emerald-800",
+    needs_admin_review: "bg-sky-100 text-sky-800",
+    rejected: "bg-rose-100 text-rose-800",
+    rejected_by_admin: "bg-rose-100 text-rose-800",
+    rejected_by_ai: "bg-muted text-muted-foreground",
+    interpreting: "bg-muted text-muted-foreground",
+    // legacy
     analyzed: "bg-amber-100 text-amber-800",
     applied: "bg-emerald-100 text-emerald-800",
     in_review: "bg-sky-100 text-sky-800",
@@ -375,6 +275,12 @@ function RequestRow({
         <div className="flex-1 min-w-0">
           <div className="text-sm">{req.request_text}</div>
           {interp.summary && <div className="text-xs text-muted-foreground mt-1">{interp.summary}</div>}
+          {req.ai_classification_reason && (
+            <div className="text-xs text-muted-foreground/80 mt-1 italic">{req.ai_classification_reason}</div>
+          )}
+          {req.rejection_reason && (
+            <div className="text-xs text-rose-700 mt-1">Motivo: {req.rejection_reason}</div>
+          )}
         </div>
         <Badge className={statusColor[req.status] ?? "bg-muted"}>{statusLabel(req.status)}</Badge>
       </div>
@@ -382,32 +288,22 @@ function RequestRow({
         <Badge variant="outline">{interp.type ?? req.request_type}</Badge>
         <span>~{req.estimated_credits} crédito{req.estimated_credits === 1 ? "" : "s"}</span>
         <span>· {formatDate(req.created_at)}</span>
+        {req.auto_applied && <Badge variant="secondary" className="text-[10px]">auto</Badge>}
       </div>
-      {req.status === "analyzed" && (
-        <div className="flex flex-wrap gap-2 pt-1">
-          {auto ? (
-            <Button size="sm" onClick={onApply} disabled={!canAfford || applying}>
-              <Check className="w-3.5 h-3.5 mr-1" /> Aplicar agora
-            </Button>
-          ) : (
-            <Button size="sm" variant="secondary" onClick={onReview}>
-              <Clock className="w-3.5 h-3.5 mr-1" /> Enviar para análise
-            </Button>
-          )}
-          <Button size="sm" variant="ghost" onClick={onDiscard}>
-            <X className="w-3.5 h-3.5 mr-1" /> Descartar
-          </Button>
-          {auto && !canAfford && (
-            <span className="text-xs text-destructive self-center">Créditos insuficientes.</span>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
 function statusLabel(s: string) {
   return ({
+    interpreting: "Interpretando",
+    needs_admin_review: "Aguardando admin",
+    testing: "Em teste",
+    approved: "Aprovada",
+    rejected: "Rejeitada (revertida)",
+    rejected_by_admin: "Recusada pelo admin",
+    rejected_by_ai: "Descartada",
+    // legacy
     analyzed: "Analisado",
     applied: "Aplicado",
     in_review: "Em análise",

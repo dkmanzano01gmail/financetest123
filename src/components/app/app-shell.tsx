@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, ArrowLeftRight, Wallet, CreditCard, Tags, Settings, Eye, EyeOff, LogOut, ChevronDown, Plus, Sparkles, Upload, PieChart, Scale, Wand2 } from "lucide-react";
+import { LayoutDashboard, ArrowLeftRight, Wallet, CreditCard, Tags, Settings, Eye, EyeOff, LogOut, ChevronDown, Plus, Sparkles, Upload, PieChart, Scale, Wand2, ShieldCheck } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,8 +7,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEffect } from "react";
+import { useIsSuperAdmin } from "@/hooks/use-super-admin";
+import { TestingBanner } from "@/components/app/testing-banner";
 
-const nav = [
+const baseNav = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/transactions", icon: ArrowLeftRight, label: "Transações" },
   { to: "/accounts", icon: Wallet, label: "Contas" },
@@ -26,6 +28,11 @@ export function AppShell() {
   const qc = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { workspace, workspaces, switchTo, loading } = useCurrentWorkspace();
+  const { data: isSuperAdmin } = useIsSuperAdmin();
+
+  const nav = isSuperAdmin
+    ? [...baseNav, { to: "/super-admin/customizations", icon: ShieldCheck, label: "Aprovações (admin)" }]
+    : baseNav;
 
   // Redirect to onboarding if no workspace
   useEffect(() => {
@@ -145,6 +152,7 @@ export function AppShell() {
         </header>
 
         <main className="flex-1 min-w-0 overflow-auto">
+          <TestingBanner />
           <Outlet />
         </main>
 
