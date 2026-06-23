@@ -332,6 +332,208 @@ export type Database = {
           },
         ]
       }
+      customization_credits: {
+        Row: {
+          created_at: string
+          credits_included: number
+          credits_used: number
+          expires_at: string | null
+          id: string
+          period_month: number
+          period_year: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          credits_included?: number
+          credits_used?: number
+          expires_at?: string | null
+          id?: string
+          period_month: number
+          period_year: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          credits_included?: number
+          credits_used?: number
+          expires_at?: string | null
+          id?: string
+          period_month?: number
+          period_year?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customization_credits_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customization_requests: {
+        Row: {
+          ai_interpretation: Json | null
+          applied_customization_id: string | null
+          approved_at: string | null
+          approved_credits: number | null
+          completed_at: string | null
+          created_at: string
+          estimated_credits: number
+          id: string
+          request_text: string
+          request_type: string
+          status: string
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          ai_interpretation?: Json | null
+          applied_customization_id?: string | null
+          approved_at?: string | null
+          approved_credits?: number | null
+          completed_at?: string | null
+          created_at?: string
+          estimated_credits?: number
+          id?: string
+          request_text: string
+          request_type?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          ai_interpretation?: Json | null
+          applied_customization_id?: string | null
+          approved_at?: string | null
+          approved_credits?: number | null
+          completed_at?: string | null
+          created_at?: string
+          estimated_credits?: number
+          id?: string
+          request_text?: string
+          request_type?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customization_requests_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customization_usage: {
+        Row: {
+          created_at: string
+          credits_used: number
+          id: string
+          request_id: string | null
+          usage_reason: string | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          credits_used: number
+          id?: string
+          request_id?: string | null
+          usage_reason?: string | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          credits_used?: number
+          id?: string
+          request_id?: string | null
+          usage_reason?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customization_usage_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "customization_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customization_usage_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customizations: {
+        Row: {
+          configuration_json: Json
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          request_id: string | null
+          type: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          configuration_json?: Json
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          request_id?: string | null
+          type: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          configuration_json?: Json
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          request_id?: string | null
+          type?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customizations_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "customization_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customizations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -491,6 +693,7 @@ export type Database = {
           id: string
           name: string
           owner_id: string
+          plan: string
           privacy_mode: boolean
           type: Database["public"]["Enums"]["workspace_type"]
           updated_at: string
@@ -502,6 +705,7 @@ export type Database = {
           id?: string
           name: string
           owner_id: string
+          plan?: string
           privacy_mode?: boolean
           type?: Database["public"]["Enums"]["workspace_type"]
           updated_at?: string
@@ -513,6 +717,7 @@ export type Database = {
           id?: string
           name?: string
           owner_id?: string
+          plan?: string
           privacy_mode?: boolean
           type?: Database["public"]["Enums"]["workspace_type"]
           updated_at?: string
@@ -524,6 +729,35 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      consume_credits: {
+        Args: {
+          _credits: number
+          _reason: string
+          _request_id: string
+          _workspace_id: string
+        }
+        Returns: boolean
+      }
+      ensure_current_credits: {
+        Args: { _workspace_id: string }
+        Returns: {
+          created_at: string
+          credits_included: number
+          credits_used: number
+          expires_at: string | null
+          id: string
+          period_month: number
+          period_year: number
+          updated_at: string
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "customization_credits"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       is_workspace_member: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
