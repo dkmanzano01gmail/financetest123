@@ -32,13 +32,22 @@ function Onboarding() {
     const userId = userData.user?.id;
     if (!userId) { setLoading(false); return; }
 
-    const { data: ws, error } = await supabase
+    const { error } = await supabase
       .from("workspaces")
-      .insert({ name, type, currency, country: "BR", owner_id: userId })
-      .select()
-      .single();
+      .insert({ name, type, currency, country: "BR", owner_id: userId });
 
-    if (error || !ws) { setLoading(false); return toast.error(error?.message ?? "Erro"); }
+    if (error) { setLoading(false); return toast.error(error.message); }
+
+    const { data: workspaces, error: listError } = await supabase
+      .from("workspaces")
+      .select("*")
+      .eq("owner_id", userId)
+      .eq("name", name)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const ws = workspaces?.[0];
+    if (listError || !ws) { setLoading(false); return toast.error(listError?.message ?? "Workspace criado, mas não foi possível carregá-lo."); }
 
     if (accountName.trim()) {
       const bal = Number(initialBalance.replace(",", ".") || 0);
