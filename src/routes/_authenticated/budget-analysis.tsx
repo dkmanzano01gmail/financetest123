@@ -44,12 +44,12 @@ function BudgetAnalysisPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
-        .select("id,date,description,amount,type,status,category_id,credit_card_id,account_id,importance_level" as any)
+        .select("id,date,description,amount,type,status,category_id,credit_card_id,account_id,importance_level")
         .eq("workspace_id", wsId!)
         .gte("date", fromISO)
         .neq("status", "ignored");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as any[];
     },
   });
 
