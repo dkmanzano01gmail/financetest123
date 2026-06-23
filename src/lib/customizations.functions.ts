@@ -150,21 +150,13 @@ export const submitCustomizationRequest = createServerFn({ method: "POST" })
       return { request: inserted, autoApplied: false as const };
     }
 
-    // Auto-apply easy: consume credits, create the customization, mark as testing
-    const { data: creditOk, error: ce } = await (supabase as any).rpc("consume_credits", {
+    // Credits are unlimited for now — log usage but never block.
+    await (supabase as any).rpc("consume_credits", {
       _workspace_id: data.workspace_id,
       _request_id: inserted.id,
       _credits: estimated,
       _reason: summary || "Personalização aplicada",
-    });
-    if (ce) throw new Error(ce.message);
-    if (!creditOk) {
-      await (supabase as any)
-        .from("customization_requests")
-        .update({ status: "needs_admin_review", ai_classification_reason: (reason ? reason + " " : "") + "(créditos insuficientes — enviado para revisão)" })
-        .eq("id", inserted.id);
-      throw new Error("Créditos insuficientes para aplicar agora. Pedido enviado para revisão.");
-    }
+    }).catch(() => null);
 
     // Side-effect for new_category
     if (type === "new_category") {
