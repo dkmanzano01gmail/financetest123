@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
+import { useCustomizations } from "@/hooks/use-customizations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
@@ -26,7 +27,8 @@ function Dashboard() {
   const wsId = workspace?.id;
   const privacy = workspace?.privacy_mode ?? false;
   const currency = workspace?.currency ?? "BRL";
-  const t = workspace ? L(workspace.type) : L("personal");
+  const { labelOverrides, hiddenCards } = useCustomizations(wsId);
+  const t = L(workspace?.type ?? "personal", labelOverrides);
 
   const { data: txs } = useQuery({
     queryKey: ["transactions", wsId, year, month],
