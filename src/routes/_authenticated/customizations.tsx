@@ -18,7 +18,10 @@ import { Sparkles, Wand2, Trash2, Check, Clock, X, Loader2 } from "lucide-react"
 import { toast } from "sonner";
 import { formatDate } from "@/lib/format";
 
-export const Route = createFileRoute("/_authenticated/customizations")({ component: CustomizationsPage });
+export const Route = createFileRoute("/_authenticated/customizations")({
+  ssr: false,
+  component: CustomizationsPage,
+});
 
 const PLAN_LABELS: Record<string, string> = {
   personal: "Pessoal · 3 créditos/mês",
