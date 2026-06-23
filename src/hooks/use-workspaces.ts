@@ -11,6 +11,7 @@ export type Workspace = {
   country: string;
   privacy_mode: boolean;
   owner_id: string;
+  plan?: string;
 };
 
 export function useWorkspaces() {
