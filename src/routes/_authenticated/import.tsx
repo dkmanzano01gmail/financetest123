@@ -152,6 +152,8 @@ function ImportPage() {
       const payload = selected.map((p) => ({
         workspace_id: wsId!,
         date: p.date!,
+        month: Number(p.date!.slice(5, 7)),
+        year: Number(p.date!.slice(0, 4)),
         type: p.type,
         description: p.description || "(sem descrição)",
         amount: p.amount!,
