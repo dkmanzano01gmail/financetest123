@@ -116,6 +116,7 @@ function CustomizationsPage() {
       } else {
         toast.success("Pedido enviado para análise do admin.");
       }
+      setTimeout(() => window.location.reload(), 600);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -128,7 +129,10 @@ function CustomizationsPage() {
         .eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["customizations", wsId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["customizations", wsId] });
+      window.location.reload();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -140,6 +144,7 @@ function CustomizationsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customizations", wsId] });
       toast.success("Personalização removida");
+      setTimeout(() => window.location.reload(), 400);
     },
     onError: (e: Error) => toast.error(e.message),
   });
