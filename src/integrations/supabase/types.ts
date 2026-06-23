@@ -145,7 +145,9 @@ export type Database = {
           institution: string | null
           is_active: boolean
           name: string
+          notes: string | null
           type: Database["public"]["Enums"]["account_type"]
+          updated_at: string
           workspace_id: string
         }
         Insert: {
@@ -158,7 +160,9 @@ export type Database = {
           institution?: string | null
           is_active?: boolean
           name: string
+          notes?: string | null
           type?: Database["public"]["Enums"]["account_type"]
+          updated_at?: string
           workspace_id: string
         }
         Update: {
@@ -171,7 +175,9 @@ export type Database = {
           institution?: string | null
           is_active?: boolean
           name?: string
+          notes?: string | null
           type?: Database["public"]["Enums"]["account_type"]
+          updated_at?: string
           workspace_id?: string
         }
         Relationships: [
