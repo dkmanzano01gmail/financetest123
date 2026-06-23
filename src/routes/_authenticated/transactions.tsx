@@ -11,9 +11,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { TransactionDialog } from "@/components/app/transaction-dialog";
+import { SuggestReviewDialog } from "@/components/app/suggest-review-dialog";
+import { Badge } from "@/components/ui/badge";
+import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
 import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
-import { Plus, Receipt, Trash2 } from "lucide-react";
+import { Plus, Receipt, Trash2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/transactions")({
@@ -30,6 +33,7 @@ function TransactionsPage() {
   const [type, setType] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
   const wsId = workspace?.id;
   const t = workspace ? L(workspace.type) : L("personal");
   const currency = workspace?.currency ?? "BRL";
@@ -83,7 +87,14 @@ function TransactionsPage() {
       <PageHeader
         title="Transações"
         description={`Histórico de ${workspace?.name ?? ""}`}
-        action={<Button onClick={() => setOpen(true)}><Plus className="w-4 h-4 mr-1" />Nova transação</Button>}
+        action={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setSuggestOpen(true)} disabled={!filtered.length}>
+              <Sparkles className="w-4 h-4 mr-1" />Sugerir categorias
+            </Button>
+            <Button onClick={() => setOpen(true)}><Plus className="w-4 h-4 mr-1" />Nova transação</Button>
+          </div>
+        }
       />
 
       <Card className="mb-4">
@@ -132,6 +143,7 @@ function TransactionsPage() {
                   <TableHead>Data</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead>Categoria</TableHead>
+                  <TableHead>Importância</TableHead>
                   <TableHead>Conta/Cartão</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead></TableHead>
@@ -155,6 +167,15 @@ function TransactionsPage() {
                         </SelectContent>
                       </Select>
                     </TableCell>
+                    <TableCell>
+                      {tx.importance_level ? (
+                        <Badge variant="secondary" className={importanceBadgeClass(tx.importance_level as Importance)}>
+                          {labelImp(tx.importance_level as Importance)}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{tx.accounts?.name ?? tx.credit_cards?.name ?? "—"}</TableCell>
                     <TableCell className={`text-right font-medium tabular-nums ${tx.type === "income" ? "text-[var(--income)]" : "text-[var(--expense)]"}`}>
                       {tx.type === "income" ? "+" : "-"}{formatCurrency(Number(tx.amount), currency, privacy)}
@@ -173,6 +194,24 @@ function TransactionsPage() {
       </Card>
 
       <TransactionDialog open={open} onOpenChange={setOpen} />
+      {wsId && workspace && (
+        <SuggestReviewDialog
+          open={suggestOpen}
+          onOpenChange={setSuggestOpen}
+          workspaceId={wsId}
+          workspaceType={workspace.type}
+          transactions={filtered.map((tx: any) => ({
+            id: tx.id,
+            description: tx.description,
+            counterparty: tx.counterparty,
+            type: tx.type,
+            amount: Number(tx.amount),
+            category_id: tx.category_id,
+            importance_level: tx.importance_level,
+            current_category_name: tx.categories?.name ?? null,
+          })) as any}
+        />
+      )}
     </PageContainer>
   );
 }
