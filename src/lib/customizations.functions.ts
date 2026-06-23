@@ -65,17 +65,6 @@ export const submitCustomizationRequest = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!member) throw new Error("Forbidden");
 
-    // Block if another test is in progress
-    const { data: existingTest } = await (supabase as any)
-      .from("customization_requests")
-      .select("id")
-      .eq("workspace_id", data.workspace_id)
-      .eq("status", "testing")
-      .maybeSingle();
-    if (existingTest) {
-      throw new Error("Já existe uma personalização em teste neste workspace. Aprove ou rejeite antes de enviar outra.");
-    }
-
     const apiKey = process.env.LOVABLE_API_KEY;
     if (!apiKey) throw new Error("Missing LOVABLE_API_KEY");
 
@@ -119,14 +108,15 @@ export const submitCustomizationRequest = createServerFn({ method: "POST" })
     const summary: string = String(interpretation?.summary ?? "");
     const config = interpretation?.configuration_json ?? {};
 
-    const easyTypes = new Set([
+    // Auto-apply everything — no approval flow.
+    const applicableTypes = new Set([
       "label_rename",
       "card_visibility",
       "category_rule",
       "saved_filter",
       "new_category",
     ]);
-    const canAutoApply = complexity === "easy" && easyTypes.has(type);
+    const hasSideEffect = applicableTypes.has(type);
 
     // Insert the request first
     const { data: inserted, error } = await (supabase as any)
@@ -139,16 +129,12 @@ export const submitCustomizationRequest = createServerFn({ method: "POST" })
         complexity,
         ai_classification_reason: reason,
         estimated_credits: estimated,
-        status: canAutoApply ? "interpreting" : "needs_admin_review",
+        status: "interpreting",
         ai_interpretation: interpretation,
       })
       .select()
       .single();
     if (error) throw new Error(error.message);
-
-    if (!canAutoApply) {
-      return { request: inserted, autoApplied: false as const };
-    }
 
     // Credits are unlimited for now — log usage but never block.
     await (supabase as any).rpc("consume_credits", {
@@ -179,19 +165,23 @@ export const submitCustomizationRequest = createServerFn({ method: "POST" })
         configuration_json: config,
         created_by: userId,
         request_id: inserted.id,
+        is_active: hasSideEffect,
       })
       .select()
       .single();
     if (cErr) throw new Error(cErr.message);
 
+    const now = new Date().toISOString();
     const { data: updated } = await (supabase as any)
       .from("customization_requests")
       .update({
-        status: "testing",
+        status: "approved",
         auto_applied: true,
         approved_credits: estimated,
         applied_customization_id: createdCust.id,
-        tested_at: new Date().toISOString(),
+        tested_at: now,
+        approved_at: now,
+        completed_at: now,
         rollback_payload: { kind: "delete_customization", customization_id: createdCust.id },
       })
       .eq("id", inserted.id)
