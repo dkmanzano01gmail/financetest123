@@ -378,49 +378,70 @@ export type Database = {
       }
       customization_requests: {
         Row: {
+          ai_classification_reason: string | null
           ai_interpretation: Json | null
           applied_customization_id: string | null
           approved_at: string | null
           approved_credits: number | null
+          auto_applied: boolean
           completed_at: string | null
+          complexity: string | null
           created_at: string
           estimated_credits: number
           id: string
+          rejected_at: string | null
+          rejection_reason: string | null
           request_text: string
           request_type: string
+          rollback_payload: Json | null
           status: string
+          tested_at: string | null
           updated_at: string
           user_id: string
           workspace_id: string
         }
         Insert: {
+          ai_classification_reason?: string | null
           ai_interpretation?: Json | null
           applied_customization_id?: string | null
           approved_at?: string | null
           approved_credits?: number | null
+          auto_applied?: boolean
           completed_at?: string | null
+          complexity?: string | null
           created_at?: string
           estimated_credits?: number
           id?: string
+          rejected_at?: string | null
+          rejection_reason?: string | null
           request_text: string
           request_type?: string
+          rollback_payload?: Json | null
           status?: string
+          tested_at?: string | null
           updated_at?: string
           user_id: string
           workspace_id: string
         }
         Update: {
+          ai_classification_reason?: string | null
           ai_interpretation?: Json | null
           applied_customization_id?: string | null
           approved_at?: string | null
           approved_credits?: number | null
+          auto_applied?: boolean
           completed_at?: string | null
+          complexity?: string | null
           created_at?: string
           estimated_credits?: number
           id?: string
+          rejected_at?: string | null
+          rejection_reason?: string | null
           request_text?: string
           request_type?: string
+          rollback_payload?: Json | null
           status?: string
+          tested_at?: string | null
           updated_at?: string
           user_id?: string
           workspace_id?: string
@@ -555,6 +576,21 @@ export type Database = {
           email?: string | null
           id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      super_admins: {
+        Row: {
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -729,6 +765,70 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_approve_request: {
+        Args: { _admin_note?: string; _request_id: string }
+        Returns: {
+          ai_classification_reason: string | null
+          ai_interpretation: Json | null
+          applied_customization_id: string | null
+          approved_at: string | null
+          approved_credits: number | null
+          auto_applied: boolean
+          completed_at: string | null
+          complexity: string | null
+          created_at: string
+          estimated_credits: number
+          id: string
+          rejected_at: string | null
+          rejection_reason: string | null
+          request_text: string
+          request_type: string
+          rollback_payload: Json | null
+          status: string
+          tested_at: string | null
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "customization_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      admin_reject_request: {
+        Args: { _reason?: string; _request_id: string }
+        Returns: {
+          ai_classification_reason: string | null
+          ai_interpretation: Json | null
+          applied_customization_id: string | null
+          approved_at: string | null
+          approved_credits: number | null
+          auto_applied: boolean
+          completed_at: string | null
+          complexity: string | null
+          created_at: string
+          estimated_credits: number
+          id: string
+          rejected_at: string | null
+          rejection_reason: string | null
+          request_text: string
+          request_type: string
+          rollback_payload: Json | null
+          status: string
+          tested_at: string | null
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "customization_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       consume_credits: {
         Args: {
           _credits: number
@@ -758,9 +858,74 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       is_workspace_member: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
+      }
+      user_approve_test: {
+        Args: { _request_id: string }
+        Returns: {
+          ai_classification_reason: string | null
+          ai_interpretation: Json | null
+          applied_customization_id: string | null
+          approved_at: string | null
+          approved_credits: number | null
+          auto_applied: boolean
+          completed_at: string | null
+          complexity: string | null
+          created_at: string
+          estimated_credits: number
+          id: string
+          rejected_at: string | null
+          rejection_reason: string | null
+          request_text: string
+          request_type: string
+          rollback_payload: Json | null
+          status: string
+          tested_at: string | null
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "customization_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      user_reject_test: {
+        Args: { _reason?: string; _request_id: string }
+        Returns: {
+          ai_classification_reason: string | null
+          ai_interpretation: Json | null
+          applied_customization_id: string | null
+          approved_at: string | null
+          approved_credits: number | null
+          auto_applied: boolean
+          completed_at: string | null
+          complexity: string | null
+          created_at: string
+          estimated_credits: number
+          id: string
+          rejected_at: string | null
+          rejection_reason: string | null
+          request_text: string
+          request_type: string
+          rollback_payload: Json | null
+          status: string
+          tested_at: string | null
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "customization_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       workspace_role_of: {
         Args: { _user_id: string; _workspace_id: string }
