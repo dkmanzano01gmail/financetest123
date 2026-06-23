@@ -92,12 +92,10 @@ function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" />Personalizações</CardTitle>
-            <CardDescription>Em breve você poderá pedir mudanças no app em linguagem natural, consumindo créditos mensais.</CardDescription>
+            <CardDescription>Peça mudanças no app em linguagem natural. Cada workspace tem créditos mensais de personalização.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg bg-accent/40 p-4 text-sm">
-              Módulo previsto na próxima fase: criar cards, regras de categorização, filtros salvos e renomear labels com 1 crédito cada.
-            </div>
+            <Button variant="secondary" onClick={() => navigate({ to: "/customizations" })}>Abrir Personalizações</Button>
           </CardContent>
         </Card>
 

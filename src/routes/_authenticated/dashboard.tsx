@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
+import { useCustomizations } from "@/hooks/use-customizations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
@@ -26,7 +27,8 @@ function Dashboard() {
   const wsId = workspace?.id;
   const privacy = workspace?.privacy_mode ?? false;
   const currency = workspace?.currency ?? "BRL";
-  const t = workspace ? L(workspace.type) : L("personal");
+  const { labelOverrides, hiddenCards } = useCustomizations(wsId);
+  const t = L(workspace?.type ?? "personal", labelOverrides);
 
   const { data: txs } = useQuery({
     queryKey: ["transactions", wsId, year, month],
@@ -135,10 +137,10 @@ function Dashboard() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <StatCard label={`${t.income} do mês`} value={formatCurrency(totals.income, currency, privacy)} icon={ArrowUpRight} tone="income" />
-        <StatCard label={`${t.expense} do mês`} value={formatCurrency(totals.expense, currency, privacy)} icon={ArrowDownRight} tone="expense" />
-        <StatCard label={t.balance} value={formatCurrency(totals.net, currency, privacy)} icon={TrendingUp} tone={totals.net >= 0 ? "income" : "expense"} />
-        <StatCard label="Saldo em contas" value={formatCurrency(accountsBalance, currency, privacy)} icon={Wallet} />
+        {!hiddenCards.has("income") && <StatCard label={`${t.income} do mês`} value={formatCurrency(totals.income, currency, privacy)} icon={ArrowUpRight} tone="income" />}
+        {!hiddenCards.has("expense") && <StatCard label={`${t.expense} do mês`} value={formatCurrency(totals.expense, currency, privacy)} icon={ArrowDownRight} tone="expense" />}
+        {!hiddenCards.has("balance") && <StatCard label={t.balance} value={formatCurrency(totals.net, currency, privacy)} icon={TrendingUp} tone={totals.net >= 0 ? "income" : "expense"} />}
+        {!hiddenCards.has("accounts_balance") && <StatCard label="Saldo em contas" value={formatCurrency(accountsBalance, currency, privacy)} icon={Wallet} />}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">

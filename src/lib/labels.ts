@@ -1,6 +1,16 @@
 export type WorkspaceType = "personal" | "business";
 
-export const labels = {
+export type LabelKey =
+  | "income"
+  | "incomeSingular"
+  | "expense"
+  | "expenseSingular"
+  | "balance"
+  | "transactions";
+
+export type LabelMap = Record<LabelKey, string>;
+
+export const labels: Record<WorkspaceType, LabelMap> = {
   personal: {
     income: "Entradas",
     incomeSingular: "Entrada",
@@ -17,8 +27,8 @@ export const labels = {
     balance: "Lucro",
     transactions: "Transações",
   },
-} as const;
+};
 
-export function L(type: WorkspaceType) {
-  return labels[type];
+export function L(type: WorkspaceType, overrides?: Partial<LabelMap>): LabelMap {
+  return { ...labels[type], ...(overrides ?? {}) };
 }
