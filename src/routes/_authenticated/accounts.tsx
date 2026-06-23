@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Plus, Wallet, Pencil, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { useLabelOverrides, applyLabel } from "@/hooks/use-label-overrides";
 
 export const Route = createFileRoute("/_authenticated/accounts")({ component: AccountsPage });
 
