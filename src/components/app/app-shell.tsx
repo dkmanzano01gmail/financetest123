@@ -9,18 +9,19 @@ import { toast } from "sonner";
 import { useEffect } from "react";
 import { useIsSuperAdmin } from "@/hooks/use-super-admin";
 import { TestingBanner } from "@/components/app/testing-banner";
+import { useLabelOverrides, applyLabel } from "@/hooks/use-label-overrides";
 
-const baseNav = [
-  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/transactions", icon: ArrowLeftRight, label: "Transações" },
-  { to: "/accounts", icon: Wallet, label: "Contas" },
-  { to: "/cards", icon: CreditCard, label: "Cartões" },
-  { to: "/budget-analysis", icon: PieChart, label: "Análise de Orçamento" },
-  { to: "/reconciliation", icon: Scale, label: "Conciliação" },
-  { to: "/categories", icon: Tags, label: "Categorias" },
-  { to: "/import", icon: Upload, label: "Importar" },
-  { to: "/customizations", icon: Wand2, label: "Personalizações" },
-  { to: "/settings", icon: Settings, label: "Configurações" },
+const baseNavDef = [
+  { to: "/dashboard", icon: LayoutDashboard, key: "nav.dashboard", label: "Dashboard" },
+  { to: "/transactions", icon: ArrowLeftRight, key: "nav.transactions", label: "Transações" },
+  { to: "/accounts", icon: Wallet, key: "nav.accounts", label: "Contas" },
+  { to: "/cards", icon: CreditCard, key: "nav.cards", label: "Cartões" },
+  { to: "/budget-analysis", icon: PieChart, key: "nav.budget", label: "Análise de Orçamento" },
+  { to: "/reconciliation", icon: Scale, key: "nav.reconciliation", label: "Conciliação" },
+  { to: "/categories", icon: Tags, key: "nav.categories", label: "Categorias" },
+  { to: "/import", icon: Upload, key: "nav.import", label: "Importar" },
+  { to: "/customizations", icon: Wand2, key: "nav.customizations", label: "Personalizações" },
+  { to: "/settings", icon: Settings, key: "nav.settings", label: "Configurações" },
 ];
 
 export function AppShell() {
@@ -29,9 +30,11 @@ export function AppShell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { workspace, workspaces, switchTo, loading } = useCurrentWorkspace();
   const { data: isSuperAdmin } = useIsSuperAdmin();
+  const { data: labels } = useLabelOverrides(workspace?.id);
 
+  const baseNav = baseNavDef.map((n) => ({ ...n, label: applyLabel(labels, n.key, n.label) }));
   const nav = isSuperAdmin
-    ? [...baseNav, { to: "/super-admin/customizations", icon: ShieldCheck, label: "Aprovações (admin)" }]
+    ? [...baseNav, { to: "/super-admin/customizations", icon: ShieldCheck, key: "nav.admin", label: applyLabel(labels, "nav.admin", "Aprovações (admin)") }]
     : baseNav;
 
   // Redirect to onboarding if no workspace
