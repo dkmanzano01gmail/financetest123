@@ -23,7 +23,14 @@ Formato:
 }
 
 Tipos "easy" (a IA aplica direto):
-- label_rename: { "labels": { "income"|"expense"|"balance"|"transactions"|"incomeSingular"|"expenseSingular": "Novo texto" } }. 1 crédito.
+- label_rename: { "labels": { <chave>: "Novo texto" } }. 1 crédito.
+  Chaves suportadas:
+    • Dashboard/transações: "income", "expense", "balance", "transactions", "incomeSingular", "expenseSingular".
+    • Itens do menu lateral (sidebar): "nav.dashboard", "nav.transactions", "nav.accounts", "nav.cards", "nav.budget", "nav.reconciliation", "nav.categories", "nav.import", "nav.customizations", "nav.settings", "nav.admin".
+  Mapeie o que o usuário disser para a chave correta. Exemplos:
+    • "renomeie a aba Contas para Contas Pessoais" → { "labels": { "nav.accounts": "Contas Pessoais" } }
+    • "mude Transações para Lançamentos" → { "labels": { "nav.transactions": "Lançamentos" } }
+    • "renomeie Cartões para Cartões de Crédito" → { "labels": { "nav.cards": "Cartões de Crédito" } }
 - card_visibility: { "card_id": "income"|"expense"|"balance"|"accounts_balance"|"top_category"|"recent_transactions", "visible": boolean }. 1 crédito.
 - category_rule: { "contains": ["uber","99"], "category_name": "Transporte", "transaction_type": "expense" }. 1 crédito.
 - saved_filter: { "name": "Gastos da reforma", "filters": { "category_name"?: string, "type"?: "income"|"expense", "search"?: string } }. 1 crédito.
