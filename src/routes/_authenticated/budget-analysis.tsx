@@ -44,7 +44,7 @@ function BudgetAnalysisPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
-        .select("id,date,description,amount,type,status,category_id,credit_card_id,account_id")
+        .select("id,date,description,amount,type,status,category_id,credit_card_id,account_id,importance_level" as any)
         .eq("workspace_id", wsId!)
         .gte("date", fromISO)
         .neq("status", "ignored");
@@ -87,15 +87,16 @@ function BudgetAnalysisPage() {
       const amt = Math.abs(Number(t.amount));
       totalMonth += amt;
       const cat = t.category_id ? catMap.get(t.category_id) : null;
-      const imp = (cat?.importance ?? "flexible") as Importance;
+      const imp = (((t as any).importance_level as Importance | null) ?? cat?.importance ?? "flexible") as Importance;
       byImportance[imp] += amt;
     }
     for (const t of expenses) {
       const cat = t.category_id ? catMap.get(t.category_id) : null;
       const key = t.category_id ?? "uncategorized";
+      const txImp = ((t as any).importance_level as Importance | null) ?? cat?.importance ?? "flexible";
       const cur = byCategory.get(key) ?? {
         name: cat?.name ?? "Sem categoria",
-        importance: (cat?.importance ?? "flexible") as Importance,
+        importance: txImp as Importance,
         monthAmount: 0, count: 0, total6m: 0,
       };
       const amt = Math.abs(Number(t.amount));
