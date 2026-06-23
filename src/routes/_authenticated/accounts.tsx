@@ -58,6 +58,8 @@ function AccountsPage() {
     enabled: !!wsId,
     queryFn: async () => (await supabase.from("accounts").select("*").eq("workspace_id", wsId!).order("created_at")).data ?? [],
   });
+  const { data: labels } = useLabelOverrides(wsId);
+  const pageTitle = applyLabel(labels, "nav.accounts", "Contas");
 
   function openCreate() {
     setEditingId(null);
@@ -133,7 +135,7 @@ function AccountsPage() {
 
   return (
     <PageContainer>
-      <PageHeader title="Contas" description="Suas contas bancárias e carteiras"
+      <PageHeader title={pageTitle} description="Suas contas bancárias e carteiras"
         action={<Button onClick={openCreate}><Plus className="w-4 h-4 mr-1" />Nova conta</Button>} />
 
       {(accounts?.length ?? 0) === 0 ? (
