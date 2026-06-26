@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { useCustomizations } from "@/hooks/use-customizations";
@@ -141,7 +141,7 @@ function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {(() => {
           const hide = new Set<string>([...hiddenCards, ...hiddenCards2]);
-          const cards: Array<{ key: string; node: JSX.Element }> = [
+          const cards: Array<{ key: string; node: ReactNode }> = [
             { key: "income", node: <StatCard label={`${t.income} do mês`} value={formatCurrency(totals.income, currency, privacy)} icon={ArrowUpRight} tone="income" /> },
             { key: "expense", node: <StatCard label={`${t.expense} do mês`} value={formatCurrency(totals.expense, currency, privacy)} icon={ArrowDownRight} tone="expense" /> },
             { key: "balance", node: <StatCard label={t.balance} value={formatCurrency(totals.net, currency, privacy)} icon={TrendingUp} tone={totals.net >= 0 ? "income" : "expense"} /> },
