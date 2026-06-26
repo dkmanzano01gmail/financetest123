@@ -43,7 +43,11 @@ function TransactionsPage() {
     queryKey: ["transactions", wsId, year, month],
     enabled: !!wsId,
     queryFn: async () => {
-      let q = supabase.from("transactions").select("*, categories(name,color), accounts(name), credit_cards(name)").eq("workspace_id", wsId!).order("date", { ascending: false });
+      let q = supabase
+        .from("transactions")
+        .select("*, categories!transactions_category_id_fkey(name,color), accounts(name), credit_cards(name)")
+        .eq("workspace_id", wsId!)
+        .order("date", { ascending: false });
       if (year !== "all") q = q.eq("year", Number(year));
       if (month !== "all") q = q.eq("month", Number(month));
       const { data, error } = await q;

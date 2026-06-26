@@ -36,7 +36,7 @@ function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
-        .select("*, categories(name, color)")
+        .select("*, categories!transactions_category_id_fkey(name, color)")
         .eq("workspace_id", wsId!)
         .eq("year", year)
         .eq("month", month);
