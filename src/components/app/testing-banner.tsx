@@ -21,8 +21,8 @@ export function TestingBanner() {
       qc.invalidateQueries({ queryKey: ["active-test", wsId] });
       qc.invalidateQueries({ queryKey: ["customization-requests", wsId] });
       qc.invalidateQueries({ queryKey: ["customizations", wsId] });
+      qc.invalidateQueries({ queryKey: ["label-overrides", wsId] });
       toast.success("Personalização aprovada!");
-      setTimeout(() => window.location.reload(), 500);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -33,9 +33,9 @@ export function TestingBanner() {
       qc.invalidateQueries({ queryKey: ["active-test", wsId] });
       qc.invalidateQueries({ queryKey: ["customization-requests", wsId] });
       qc.invalidateQueries({ queryKey: ["customizations", wsId] });
+      qc.invalidateQueries({ queryKey: ["label-overrides", wsId] });
       qc.invalidateQueries({ queryKey: ["categories", wsId] });
       toast.success("Personalização revertida. O app voltou ao estado anterior.");
-      setTimeout(() => window.location.reload(), 500);
     },
     onError: (e: Error) => toast.error(e.message),
   });

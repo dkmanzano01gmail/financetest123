@@ -515,6 +515,8 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          is_testing: boolean
+          menu_key: string | null
           name: string
           request_id: string | null
           type: string
@@ -528,6 +530,8 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          is_testing?: boolean
+          menu_key?: string | null
           name: string
           request_id?: string | null
           type: string
@@ -541,6 +545,8 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          is_testing?: boolean
+          menu_key?: string | null
           name?: string
           request_id?: string | null
           type?: string

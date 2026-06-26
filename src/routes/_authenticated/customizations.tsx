@@ -333,12 +333,13 @@ function RequestRow({ req }: { req: any }) {
 function statusLabel(s: string) {
   return ({
     interpreting: "Interpretando",
-    needs_admin_review: "Aguardando admin",
+    needs_admin_review: "Em análise",
     testing: "Em teste",
-    approved: "Aprovada",
+    approved: "Aplicada",
     rejected: "Rejeitada (revertida)",
     rejected_by_admin: "Recusada pelo admin",
     rejected_by_ai: "Descartada",
+    waiting_credits: "Aguardando créditos",
     // legacy
     analyzed: "Analisado",
     applied: "Aplicado",
