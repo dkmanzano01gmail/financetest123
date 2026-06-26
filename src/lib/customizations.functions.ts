@@ -46,10 +46,273 @@ Regras:
 - summary: 1 frase em pt-BR explicando o que será aplicado.
 - reason: explique em 1 frase por que classificou como easy ou advanced.`;
 
+// ============================================================
+// Local deterministic classifier — works without AI
+// ============================================================
+
+type LocalClassification = {
+  type: string;
+  complexity: "easy" | "advanced";
+  summary: string;
+  reason: string;
+  estimated_credits: number;
+  configuration_json: Record<string, any>;
+};
+
+const ADVANCED_KEYWORDS = [
+  "nova aba", "nova tab", "novo módulo", "novo modulo", "nova tela",
+  "integração", "integracao", "relatório avançado", "relatorio avancado",
+  "banco de dados", "permiss", "nova funcionalidade", "automaç", "automac",
+  "fluxo de caixa", "deploy", "código", "codigo", "api ", "webhook",
+  "paleta", "tema", "cor de fundo", "trocar cor", "mudar cor",
+];
+
+const NAV_LABEL_MAP: Record<string, string> = {
+  "dashboard": "nav.dashboard",
+  "transaç": "nav.transactions", "transac": "nav.transactions", "lançament": "nav.transactions", "lancament": "nav.transactions",
+  "conta": "nav.accounts",
+  "cartã": "nav.cards", "cartao": "nav.cards", "cartões": "nav.cards", "cartoes": "nav.cards",
+  "orçament": "nav.budget", "orcament": "nav.budget",
+  "conciliaç": "nav.reconciliation", "conciliac": "nav.reconciliation",
+  "categor": "nav.categories",
+  "importaç": "nav.import", "importac": "nav.import",
+  "personalizaç": "nav.customizations", "personalizac": "nav.customizations",
+  "configuraç": "nav.settings", "configurac": "nav.settings", "ajuste": "nav.settings",
+};
+
+function classifyLocally(text: string): LocalClassification {
+  const t = text.toLowerCase().trim();
+
+  // Advanced detection
+  if (ADVANCED_KEYWORDS.some((k) => t.includes(k))) {
+    return {
+      type: "other", complexity: "advanced",
+      summary: text.slice(0, 80),
+      reason: "Pedido envolve mudança estrutural ou nova funcionalidade — requer revisão.",
+      estimated_credits: 10, configuration_json: {},
+    };
+  }
+
+  // Rename label/tab
+  const renameMatch = t.match(/(?:renomei[ae]|mude o nome|trocar? o? nome|altere o nome|chamar?)\s+(?:da?|do|de)?\s*(?:aba|tab|menu|item)?\s*["']?([\wçãáéíóúâêôà\s]+?)["']?\s+(?:para|por|de|->)\s+["']?([\wçãáéíóúâêôà\s]+?)["']?$/i);
+  if (renameMatch || /renomei|mudar o nome|trocar nome|chamar de/i.test(t)) {
+    // Find which nav key matches
+    let key: string | null = null;
+    let newValue = "";
+    if (renameMatch) {
+      const from = renameMatch[1].toLowerCase();
+      newValue = renameMatch[2].trim();
+      for (const [needle, navKey] of Object.entries(NAV_LABEL_MAP)) {
+        if (from.includes(needle)) { key = navKey; break; }
+      }
+    }
+    if (key && newValue) {
+      return {
+        type: "label_rename", complexity: "easy",
+        summary: `Renomear "${key}" para "${newValue}"`,
+        reason: "Renomeação simples de label.",
+        estimated_credits: 1,
+        configuration_json: { labels: { [key]: newValue } },
+      };
+    }
+  }
+
+  // New category
+  const newCatMatch = t.match(/(?:criar?|adicionar?|nova)\s+(?:uma\s+)?categoria(?:\s+chamada)?\s+["']?([\wçãáéíóúâêôà\s]+?)["']?$/i);
+  if (newCatMatch) {
+    const name = newCatMatch[1].trim().replace(/\.$/, "");
+    const type = /receit|entrad|ganh|salar/i.test(t) ? "income" : "expense";
+    return {
+      type: "new_category", complexity: "easy",
+      summary: `Criar categoria "${name}"`,
+      reason: "Criação direta de categoria.",
+      estimated_credits: 1,
+      configuration_json: { name, type, importance_level: "flexible" },
+    };
+  }
+
+  // Category rule
+  if (/sempre que|toda(?:s)? (?:as )?transaç|categoriz|classificar como/i.test(t)) {
+    const catMatch = t.match(/(?:como|categoria)\s+["']?([\wçãáéíóúâêôà\s]+?)["']?[\.\s$]/i)
+                  || t.match(/(?:como|categoria)\s+["']?([\wçãáéíóúâêôà\s]+?)["']?$/i);
+    const category_name = catMatch ? catMatch[1].trim() : "Sugerida";
+    const transaction_type = /receb|positiv|entrad|receit/i.test(t) ? "income" : "expense";
+    return {
+      type: "category_rule", complexity: "easy",
+      summary: `Regra: categorizar como "${category_name}"`,
+      reason: "Regra de categorização automática.",
+      estimated_credits: 1,
+      configuration_json: { description: text, category_name, transaction_type },
+    };
+  }
+
+  // Hide/show card
+  if (/ocultar|esconder|mostrar|exibir/i.test(t)) {
+    const visible = /mostrar|exibir/i.test(t);
+    let card_id = "balance";
+    if (/receit|entrad|incom/i.test(t)) card_id = "income";
+    else if (/despes|gast|expense/i.test(t)) card_id = "expense";
+    else if (/saldo|balance/i.test(t)) card_id = "balance";
+    return {
+      type: "card_visibility", complexity: "easy",
+      summary: `${visible ? "Mostrar" : "Ocultar"} card "${card_id}"`,
+      reason: "Visibilidade de card do dashboard.",
+      estimated_credits: 1,
+      configuration_json: { card_id, visible },
+    };
+  }
+
+  // Saved filter
+  if (/filtro|filtrar/i.test(t)) {
+    return {
+      type: "saved_filter", complexity: "easy",
+      summary: text.slice(0, 80),
+      reason: "Criação de filtro salvo.",
+      estimated_credits: 1,
+      configuration_json: { name: text.slice(0, 60), filters: { search: "" } },
+    };
+  }
+
+  // Default: advanced — sends to admin queue rather than getting stuck
+  return {
+    type: "other", complexity: "advanced",
+    summary: text.slice(0, 80),
+    reason: "Não foi possível classificar automaticamente — enviado para revisão.",
+    estimated_credits: 5, configuration_json: {},
+  };
+}
+
+async function tryAiInterpret(requestText: string, signal?: AbortSignal): Promise<LocalClassification | null> {
+  const apiKey = process.env.LOVABLE_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: requestText },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!resp.ok) return null;
+    const json: any = await resp.json();
+    const raw = json?.choices?.[0]?.message?.content ?? "{}";
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (!obj || typeof obj !== "object" || !obj.type) return null;
+    return {
+      type: String(obj.type),
+      complexity: obj.complexity === "easy" ? "easy" : "advanced",
+      summary: String(obj.summary ?? ""),
+      reason: String(obj.reason ?? ""),
+      estimated_credits: Math.max(1, Math.min(30, Number(obj.estimated_credits) || 1)),
+      configuration_json: obj.configuration_json ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+const APPLICABLE_TYPES = new Set([
+  "label_rename", "card_visibility", "category_rule", "saved_filter", "new_category",
+]);
+
+async function applyAndPersist(
+  supabase: any,
+  workspaceId: string,
+  userId: string,
+  requestText: string,
+  interp: LocalClassification,
+) {
+  const isApplicable = interp.complexity === "easy" && APPLICABLE_TYPES.has(interp.type);
+
+  // Insert request with FINAL status — never persist "interpreting"
+  const finalStatus = isApplicable ? "approved" : "needs_admin_review";
+  const { data: inserted, error } = await supabase
+    .from("customization_requests")
+    .insert({
+      workspace_id: workspaceId,
+      user_id: userId,
+      request_text: requestText,
+      request_type: interp.complexity === "easy" ? "simple" : "advanced",
+      complexity: interp.complexity,
+      ai_classification_reason: interp.reason,
+      estimated_credits: interp.estimated_credits,
+      status: finalStatus,
+      ai_interpretation: interp,
+      auto_applied: isApplicable,
+    })
+    .select().single();
+  if (error) throw new Error(error.message);
+
+  // Best-effort credit logging
+  await supabase.rpc("consume_credits", {
+    _workspace_id: workspaceId,
+    _request_id: inserted.id,
+    _credits: interp.estimated_credits,
+    _reason: interp.summary || "Personalização",
+  }).catch(() => null);
+
+  if (!isApplicable) {
+    return { request: inserted, autoApplied: false as const };
+  }
+
+  // Side-effects
+  if (interp.type === "new_category") {
+    await supabase.from("categories").insert({
+      workspace_id: workspaceId,
+      name: interp.configuration_json?.name ?? "Nova categoria",
+      type: interp.configuration_json?.type ?? "expense",
+      color: interp.configuration_json?.color ?? "#c2410c",
+      importance_level: interp.configuration_json?.importance_level ?? "flexible",
+    });
+  }
+
+  const { data: cust, error: cErr } = await supabase
+    .from("customizations")
+    .insert({
+      workspace_id: workspaceId,
+      type: interp.type,
+      name: (interp.summary || requestText).slice(0, 80) || "Personalização",
+      description: interp.summary || null,
+      configuration_json: interp.configuration_json ?? {},
+      created_by: userId,
+      request_id: inserted.id,
+      is_active: true,
+    })
+    .select().single();
+
+  if (cErr) {
+    // Don't leave the request orphaned — mark as needing review
+    await supabase.from("customization_requests")
+      .update({ status: "needs_admin_review", auto_applied: false, ai_classification_reason: `Falha ao aplicar: ${cErr.message}` })
+      .eq("id", inserted.id);
+    return { request: { ...inserted, status: "needs_admin_review" }, autoApplied: false as const };
+  }
+
+  const now = new Date().toISOString();
+  await supabase.from("customization_requests")
+    .update({
+      applied_customization_id: cust.id,
+      approved_credits: interp.estimated_credits,
+      approved_at: now,
+      completed_at: now,
+    })
+    .eq("id", inserted.id);
+
+  return { request: { ...inserted, applied_customization_id: cust.id }, autoApplied: true as const };
+}
+
 /**
- * Submits a customization request, classifies it with Lovable AI,
- * and either auto-applies "easy" changes (entering testing state)
- * or routes "advanced" changes to the super-admin queue.
+ * Submits a customization request and processes it end-to-end:
+ * classifies locally (deterministic), optionally enhances with AI (best-effort
+ * with timeout), applies easy changes immediately, or routes advanced ones
+ * to the super-admin queue. Never leaves a request in "interpreting" state.
  */
 export const submitCustomizationRequest = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -65,130 +328,114 @@ export const submitCustomizationRequest = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!member) throw new Error("Forbidden");
 
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("Missing LOVABLE_API_KEY");
+    // 1) Local classification (always works)
+    const local = classifyLocally(data.request_text);
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: data.request_text },
-        ],
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    if (!aiResp.ok) {
-      const text = await aiResp.text().catch(() => "");
-      if (aiResp.status === 429) throw new Error("Limite de requisições à IA atingido. Tente novamente em instantes.");
-      if (aiResp.status === 402) throw new Error("Créditos de IA esgotados.");
-      throw new Error(`AI gateway error ${aiResp.status}: ${text.slice(0, 200)}`);
-    }
-
-    const aiJson: any = await aiResp.json();
-    const raw = aiJson?.choices?.[0]?.message?.content ?? "{}";
-    let interpretation: any;
+    // 2) Try AI enhancement with 8s timeout — best effort, never blocks
+    let interp = local;
     try {
-      interpretation = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      const ai = await tryAiInterpret(data.request_text, ctrl.signal);
+      clearTimeout(timer);
+      if (ai) interp = ai;
     } catch {
-      throw new Error("Resposta da IA inválida.");
+      // keep local
     }
 
-    const complexity: "easy" | "advanced" =
-      interpretation?.complexity === "easy" ? "easy" : "advanced";
-    const estimated = Math.max(1, Math.min(30, Number(interpretation?.estimated_credits) || 1));
-    const reason: string = String(interpretation?.reason ?? "");
-    const type: string = String(interpretation?.type ?? "other");
-    const summary: string = String(interpretation?.summary ?? "");
-    const config = interpretation?.configuration_json ?? {};
+    return await applyAndPersist(supabase as any, data.workspace_id, userId, data.request_text, interp);
+  });
 
-    // Auto-apply everything — no approval flow.
-    const applicableTypes = new Set([
-      "label_rename",
-      "card_visibility",
-      "category_rule",
-      "saved_filter",
-      "new_category",
-    ]);
-    const hasSideEffect = applicableTypes.has(type);
+// ============================================================
+// Reprocess stuck requests (interpreting/submitted/pending without resolution)
+// ============================================================
 
-    // Insert the request first
-    const { data: inserted, error } = await (supabase as any)
+const ReprocessInput = z.object({ workspace_id: z.string().uuid() });
+
+export const reprocessPendingRequests = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => ReprocessInput.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    const { data: member } = await supabase
+      .from("workspace_members")
+      .select("workspace_id")
+      .eq("workspace_id", data.workspace_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!member) throw new Error("Forbidden");
+
+    const { data: stuck } = await (supabase as any)
       .from("customization_requests")
-      .insert({
-        workspace_id: data.workspace_id,
-        user_id: userId,
-        request_text: data.request_text,
-        request_type: complexity === "easy" ? "simple" : "advanced",
-        complexity,
-        ai_classification_reason: reason,
-        estimated_credits: estimated,
-        status: "interpreting",
-        ai_interpretation: interpretation,
-      })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
+      .select("*")
+      .eq("workspace_id", data.workspace_id)
+      .in("status", ["interpreting", "submitted", "pending"])
+      .limit(50);
 
-    // Credits are unlimited for now — log usage but never block.
-    await (supabase as any).rpc("consume_credits", {
-      _workspace_id: data.workspace_id,
-      _request_id: inserted.id,
-      _credits: estimated,
-      _reason: summary || "Personalização aplicada",
-    }).catch(() => null);
+    let processed = 0;
+    for (const row of (stuck ?? [])) {
+      const existing = row.ai_interpretation;
+      let interp: LocalClassification;
+      if (existing && typeof existing === "object" && !Array.isArray(existing) && existing.type) {
+        interp = {
+          type: String(existing.type),
+          complexity: existing.complexity === "easy" ? "easy" : "advanced",
+          summary: String(existing.summary ?? row.request_text.slice(0, 80)),
+          reason: String(existing.reason ?? ""),
+          estimated_credits: Math.max(1, Math.min(30, Number(existing.estimated_credits) || 1)),
+          configuration_json: existing.configuration_json ?? {},
+        };
+      } else {
+        interp = classifyLocally(row.request_text);
+      }
 
-    // Side-effect for new_category
-    if (type === "new_category") {
-      await (supabase as any).from("categories").insert({
-        workspace_id: data.workspace_id,
-        name: config?.name ?? "Nova categoria",
-        type: config?.type ?? "expense",
-        color: config?.color ?? "#c2410c",
-        importance_level: config?.importance_level ?? "flexible",
-      });
+      const isApplicable = interp.complexity === "easy" && APPLICABLE_TYPES.has(interp.type);
+      const finalStatus = isApplicable ? "approved" : "needs_admin_review";
+
+      // Side-effect
+      if (isApplicable && interp.type === "new_category") {
+        await (supabase as any).from("categories").insert({
+          workspace_id: row.workspace_id,
+          name: interp.configuration_json?.name ?? "Nova categoria",
+          type: interp.configuration_json?.type ?? "expense",
+          color: interp.configuration_json?.color ?? "#c2410c",
+          importance_level: interp.configuration_json?.importance_level ?? "flexible",
+        });
+      }
+
+      let appliedCustId: string | null = null;
+      if (isApplicable) {
+        const { data: cust } = await (supabase as any).from("customizations").insert({
+          workspace_id: row.workspace_id,
+          type: interp.type,
+          name: (interp.summary || row.request_text).slice(0, 80) || "Personalização",
+          description: interp.summary || null,
+          configuration_json: interp.configuration_json ?? {},
+          created_by: row.user_id,
+          request_id: row.id,
+          is_active: true,
+        }).select().single();
+        appliedCustId = cust?.id ?? null;
+      }
+
+      const now = new Date().toISOString();
+      await (supabase as any).from("customization_requests").update({
+        status: finalStatus,
+        complexity: interp.complexity,
+        request_type: interp.complexity === "easy" ? "simple" : "advanced",
+        ai_classification_reason: interp.reason,
+        ai_interpretation: interp,
+        auto_applied: isApplicable,
+        applied_customization_id: appliedCustId,
+        approved_at: isApplicable ? now : null,
+        completed_at: isApplicable ? now : null,
+      }).eq("id", row.id);
+
+      processed += 1;
     }
 
-    const { data: createdCust, error: cErr } = await (supabase as any)
-      .from("customizations")
-      .insert({
-        workspace_id: data.workspace_id,
-        type,
-        name: (summary || data.request_text).slice(0, 80),
-        description: summary || null,
-        configuration_json: config,
-        created_by: userId,
-        request_id: inserted.id,
-        is_active: hasSideEffect,
-      })
-      .select()
-      .single();
-    if (cErr) throw new Error(cErr.message);
-
-    const now = new Date().toISOString();
-    const { data: updated } = await (supabase as any)
-      .from("customization_requests")
-      .update({
-        status: "approved",
-        auto_applied: true,
-        approved_credits: estimated,
-        applied_customization_id: createdCust.id,
-        tested_at: now,
-        approved_at: now,
-        completed_at: now,
-        rollback_payload: { kind: "delete_customization", customization_id: createdCust.id },
-      })
-      .eq("id", inserted.id)
-      .select()
-      .single();
-
-    return { request: updated ?? inserted, autoApplied: true as const };
+    return { processed };
   });
 
 // ============================================================
