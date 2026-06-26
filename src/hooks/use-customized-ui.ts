@@ -35,9 +35,18 @@ export function useCustomizedUI(workspaceId?: string) {
   const hiddenNav = useMemo(() => {
     const s = new Set<string>();
     for (const r of rows) {
-      if (r.type === "nav_visibility" && r.configuration_json?.visible === false) {
-        const k = r.configuration_json?.menu_key;
-        if (typeof k === "string") s.add(k);
+      const cfg = r.configuration_json ?? {};
+      // Accept both the canonical shape and a nested { nav_visibility: {...} } shape
+      // that older AI responses produced.
+      const nested = cfg.nav_visibility ?? null;
+      const isNavType =
+        r.type === "nav_visibility" ||
+        (nested && typeof nested === "object") ||
+        (typeof cfg.menu_key === "string" && cfg.card_id == null);
+      if (!isNavType) continue;
+      const payload = nested && typeof nested === "object" ? nested : cfg;
+      if (payload.visible === false && typeof payload.menu_key === "string") {
+        s.add(payload.menu_key);
       }
     }
     return s;
