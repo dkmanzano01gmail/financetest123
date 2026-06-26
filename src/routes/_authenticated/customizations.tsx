@@ -5,7 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { useCustomizations } from "@/hooks/use-customizations";
-import { submitCustomizationRequest } from "@/lib/customizations.functions";
+import { submitCustomizationRequest, reprocessPendingRequests } from "@/lib/customizations.functions";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
-import { Sparkles, Wand2, Trash2, Loader2 } from "lucide-react";
+import { Sparkles, Wand2, Trash2, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/format";
 
@@ -43,6 +43,7 @@ function CustomizationsPage() {
   const wsId = workspace?.id;
   const qc = useQueryClient();
   const submit = useServerFn(submitCustomizationRequest);
+  const reprocess = useServerFn(reprocessPendingRequests);
 
   const [text, setText] = useState("");
   const [exampleIdx, setExampleIdx] = useState(0);
@@ -112,14 +113,30 @@ function CustomizationsPage() {
       qc.invalidateQueries({ queryKey: ["active-test", wsId] });
       qc.invalidateQueries({ queryKey: ["categories", wsId] });
       if (res?.autoApplied) {
-        toast.success("Mudança aplicada — teste agora e aprove ou rejeite no banner no topo.");
+        toast.success("Personalização aplicada com sucesso.");
       } else {
-        toast.success("Pedido enviado para análise do admin.");
+        toast.success("Pedido enviado para aprovação de modificações.");
       }
       setTimeout(() => window.location.reload(), 600);
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const reprocessMut = useMutation({
+    mutationFn: async () => {
+      if (!wsId) throw new Error("Sem workspace");
+      return await reprocess({ data: { workspace_id: wsId } });
+    },
+    onSuccess: (res: any) => {
+      toast.success(`${res?.processed ?? 0} pedido(s) reprocessado(s).`);
+      setTimeout(() => window.location.reload(), 500);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const hasStuck = (requests ?? []).some((r: any) =>
+    ["interpreting", "submitted", "pending"].includes(r.status),
+  );
 
   const toggleMut = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
@@ -218,6 +235,20 @@ function CustomizationsPage() {
               </TabsList>
 
               <TabsContent value="history" className="space-y-2 max-h-[500px] overflow-auto">
+                {hasStuck && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full mb-2"
+                    onClick={() => reprocessMut.mutate()}
+                    disabled={reprocessMut.isPending}
+                  >
+                    {reprocessMut.isPending
+                      ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+                    Reprocessar pedidos pendentes
+                  </Button>
+                )}
                 {(requests ?? []).length === 0 && (
                   <div className="text-sm text-muted-foreground py-4 text-center">Nenhum pedido ainda.</div>
                 )}
