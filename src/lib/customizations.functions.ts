@@ -231,8 +231,9 @@ async function applyAndPersist(
 ) {
   const isApplicable = interp.complexity === "easy" && APPLICABLE_TYPES.has(interp.type);
 
-  // Insert request with FINAL status — never persist "interpreting"
-  const finalStatus = isApplicable ? "approved" : "needs_admin_review";
+  // Easy changes go to "testing" so the user must approve via banner before
+  // they become definitive. Advanced ones still queue for super-admin.
+  const finalStatus = isApplicable ? "testing" : "needs_admin_review";
   const { data: inserted, error } = await supabase
     .from("customization_requests")
     .insert({
@@ -263,14 +264,16 @@ async function applyAndPersist(
   }
 
   // Side-effects
+  let createdCategoryId: string | null = null;
   if (interp.type === "new_category") {
-    await supabase.from("categories").insert({
+    const { data: newCat } = await supabase.from("categories").insert({
       workspace_id: workspaceId,
       name: interp.configuration_json?.name ?? "Nova categoria",
       type: interp.configuration_json?.type ?? "expense",
       color: interp.configuration_json?.color ?? "#c2410c",
       importance_level: interp.configuration_json?.importance_level ?? "flexible",
-    });
+    }).select("id").single();
+    createdCategoryId = newCat?.id ?? null;
   }
 
   const { data: cust, error: cErr } = await supabase
@@ -296,16 +299,22 @@ async function applyAndPersist(
   }
 
   const now = new Date().toISOString();
+  const rollback: Record<string, any> = {
+    kind: "delete_customization",
+    customization_id: cust.id,
+  };
+  if (createdCategoryId) rollback.category_id = createdCategoryId;
+
   await supabase.from("customization_requests")
     .update({
       applied_customization_id: cust.id,
       approved_credits: interp.estimated_credits,
-      approved_at: now,
-      completed_at: now,
+      tested_at: now,
+      rollback_payload: rollback,
     })
     .eq("id", inserted.id);
 
-  return { request: { ...inserted, applied_customization_id: cust.id }, autoApplied: true as const };
+  return { request: { ...inserted, applied_customization_id: cust.id, status: "testing" }, autoApplied: true as const };
 }
 
 /**
