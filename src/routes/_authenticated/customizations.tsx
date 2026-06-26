@@ -113,9 +113,9 @@ function CustomizationsPage() {
       qc.invalidateQueries({ queryKey: ["active-test", wsId] });
       qc.invalidateQueries({ queryKey: ["categories", wsId] });
       if (res?.autoApplied) {
-        toast.success("Personalização aplicada com sucesso.");
+        toast.success("Personalização em teste. Aprove pelo banner no topo para tornar definitiva.");
       } else {
-        toast.success("Pedido enviado para aprovação de modificações.");
+        toast.success("Pedido enviado para aprovação do admin.");
       }
       setTimeout(() => window.location.reload(), 600);
     },
