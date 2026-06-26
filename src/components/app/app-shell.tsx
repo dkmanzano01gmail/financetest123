@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { useIsSuperAdmin } from "@/hooks/use-super-admin";
 import { TestingBanner } from "@/components/app/testing-banner";
 import { useLabelOverrides, applyLabel } from "@/hooks/use-label-overrides";
+import { useCustomizedUI, arrangeNav } from "@/hooks/use-customized-ui";
 
 const baseNavDef = [
   { to: "/dashboard", icon: LayoutDashboard, key: "nav.dashboard", label: "Dashboard" },
@@ -31,11 +32,13 @@ export function AppShell() {
   const { workspace, workspaces, switchTo, loading } = useCurrentWorkspace();
   const { data: isSuperAdmin } = useIsSuperAdmin();
   const { data: labels } = useLabelOverrides(workspace?.id);
+  const { hiddenNav, navOrder } = useCustomizedUI(workspace?.id);
 
   const baseNav = baseNavDef.map((n) => ({ ...n, label: applyLabel(labels, n.key, n.label) }));
-  const nav = isSuperAdmin
+  const navWithAdmin = isSuperAdmin
     ? [...baseNav, { to: "/super-admin/customizations", icon: ShieldCheck, key: "nav.admin", label: applyLabel(labels, "nav.admin", "Aprovações (admin)") }]
     : baseNav;
+  const nav = arrangeNav(navWithAdmin, navOrder, hiddenNav);
 
   // Redirect to onboarding if no workspace
   useEffect(() => {

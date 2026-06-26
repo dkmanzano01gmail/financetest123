@@ -32,6 +32,9 @@ export const CARD_KEYS: CardKey[] = [
 export type Operation =
   | { kind: "label_rename"; menu_key: string; new_label: string }
   | { kind: "card_visibility"; card_id: CardKey | string; visible: boolean }
+  | { kind: "nav_visibility"; menu_key: NavKey; visible: boolean }
+  | { kind: "nav_reorder"; order: NavKey[] }
+  | { kind: "dashboard_widget_order"; order: CardKey[] }
   | { kind: "new_category"; name: string; type: "income"|"expense"; color?: string; importance_level?: "essential"|"important"|"flexible"|"superfluous" }
   | { kind: "saved_filter"; name: string; filters: Record<string, unknown> }
   | { kind: "category_rule"; rule: CategoryRule };
@@ -65,9 +68,12 @@ export function registryAsPromptFragment(): string {
     "",
     `1. label_rename — renomeia item de menu. menu_key ∈ {${NAV_KEYS.join(", ")}}.`,
     `2. card_visibility — mostra/esconde card. card_id ∈ {${CARD_KEYS.join(", ")}}.`,
-    "3. new_category — cria categoria (name, type, color?, importance_level?).",
-    "4. saved_filter — salva filtro nomeado (name, filters).",
-    "5. category_rule — cria regra automática de categorização. Pode combinar várias condições (AND):",
+    `3. nav_visibility — esconde/mostra aba do menu. menu_key ∈ {${NAV_KEYS.join(", ")}}.`,
+    `4. nav_reorder — reordena abas do menu. order: array com NAV_KEYS na ordem desejada.`,
+    `5. dashboard_widget_order — reordena cards do dashboard. order: array com CARD_KEYS.`,
+    "6. new_category — cria categoria (name, type, color?, importance_level?).",
+    "7. saved_filter — salva filtro nomeado (name, filters: { search?, type?, year?, month? }).",
+    "8. category_rule — cria regra automática de categorização. Pode combinar várias condições (AND):",
     "   • descriptor: match_text + match_mode (contains|equals|starts_with|regex)",
     "   • counterparty: match_text + match_mode (contains|equals|starts_with)",
     "   • amount: operator (equals|multiple_of|between|greater_than|less_than) + value [+ value2 para between]",
