@@ -251,13 +251,18 @@ async function applyAndPersist(
     .select().single();
   if (error) throw new Error(error.message);
 
-  // Best-effort credit logging
-  await supabase.rpc("consume_credits", {
-    _workspace_id: workspaceId,
-    _request_id: inserted.id,
-    _credits: interp.estimated_credits,
-    _reason: interp.summary || "Personalização",
-  }).catch(() => null);
+  // Best-effort credit logging — never let RPC failures break the flow.
+  try {
+    const { error: rpcErr } = await supabase.rpc("consume_credits", {
+      _workspace_id: workspaceId,
+      _request_id: inserted.id,
+      _credits: interp.estimated_credits,
+      _reason: interp.summary || "Personalização",
+    });
+    if (rpcErr) console.error("consume_credits error:", rpcErr);
+  } catch (err) {
+    console.error("consume_credits threw:", err);
+  }
 
   if (!isApplicable) {
     return { request: inserted, autoApplied: false as const };
