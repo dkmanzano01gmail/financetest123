@@ -312,6 +312,10 @@ async function applyAndPersist(
       created_by: userId,
       request_id: inserted.id,
       is_active: true,
+      is_testing: true,
+      menu_key: interp.type === "label_rename"
+        ? Object.keys(interp.configuration_json?.labels ?? {})[0] ?? null
+        : null,
     })
     .select().single();
 
@@ -458,6 +462,10 @@ export const reprocessPendingRequests = createServerFn({ method: "POST" })
           created_by: row.user_id,
           request_id: row.id,
           is_active: true,
+          is_testing: true,
+          menu_key: interp.type === "label_rename"
+            ? Object.keys(interp.configuration_json?.labels ?? {})[0] ?? null
+            : null,
         }).select().single();
         appliedCustId = cust?.id ?? null;
       }
