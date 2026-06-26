@@ -297,6 +297,171 @@ const APPLICABLE_TYPES = new Set([
   "label_rename", "card_visibility", "category_rule", "saved_filter", "new_category",
 ]);
 
+/**
+ * Persists a CategoryRule as importance_rules rows and applies it
+ * retroactively to existing transactions. Returns the new rule id +
+ * number of transactions affected.
+ */
+async function applyCategoryRule(
+  supabase: any,
+  workspaceId: string,
+  rule: CategoryRule,
+): Promise<{ rule_id: string | null; category_id: string | null; affected: number; created_category: boolean }> {
+  // 1) Resolve category — create if missing
+  let { data: cat } = await supabase
+    .from("categories")
+    .select("id,name,type,importance_level")
+    .eq("workspace_id", workspaceId)
+    .ilike("name", rule.category_name)
+    .maybeSingle();
+  let createdCategory = false;
+  if (!cat) {
+    const { data: newCat, error: cErr } = await supabase.from("categories").insert({
+      workspace_id: workspaceId,
+      name: rule.category_name,
+      type: rule.transaction_type ?? "expense",
+      color: rule.transaction_type === "income" ? "#16a34a" : "#c2410c",
+      importance_level: rule.importance_level ?? "flexible",
+    }).select("id,name,type,importance_level").single();
+    if (cErr) throw new Error(cErr.message);
+    cat = newCat;
+    createdCategory = true;
+  }
+
+  // 2) Build importance_rules row from conditions (AND)
+  const desc = rule.conditions.find((c) => c.kind === "descriptor") as Extract<RuleCondition,{kind:"descriptor"}> | undefined;
+  const cp = rule.conditions.find((c) => c.kind === "counterparty") as Extract<RuleCondition,{kind:"counterparty"}> | undefined;
+  const amt = rule.conditions.find((c) => c.kind === "amount") as Extract<RuleCondition,{kind:"amount"}> | undefined;
+  const rec = rule.conditions.find((c) => c.kind === "recurrence") as Extract<RuleCondition,{kind:"recurrence"}> | undefined;
+
+  const ruleRow: Record<string, any> = {
+    workspace_id: workspaceId,
+    rule_kind: rule.conditions.length > 1 ? "composite" : (rule.conditions[0]?.kind ?? "descriptor"),
+    match_text: desc?.match_text ?? "",
+    match_mode: desc?.match_mode ?? "contains",
+    category_hint: cat?.name ?? rule.category_name,
+    category_id: cat?.id ?? null,
+    importance_level: rule.importance_level ?? cat?.importance_level ?? "flexible",
+    transaction_type: rule.transaction_type ?? null,
+    source_type: "user",
+    confidence: 0.95,
+    is_active: true,
+    amount_operator: amt?.operator ?? null,
+    amount_value: amt?.value ?? null,
+    amount_value_2: amt?.value2 ?? null,
+    counterparty_match: cp?.match_text ?? null,
+    counterparty_match_mode: cp?.match_mode ?? (cp ? "contains" : null),
+    recurrence_min_count: rec?.min_count ?? null,
+    recurrence_window_days: rec?.window_days ?? null,
+    priority: rule.priority ?? 50,
+    notes: rule.notes ?? null,
+  };
+
+  const { data: insertedRule, error: rErr } = await supabase
+    .from("importance_rules").insert(ruleRow).select("id").single();
+  if (rErr) throw new Error(rErr.message);
+
+  // 3) Retroactive apply — fetch matching transactions and update.
+  //    We re-evaluate in JS so the same matcher used by the suggestion
+  //    engine governs both new and historical txns.
+  const { data: txs } = await supabase
+    .from("transactions")
+    .select("id,description,counterparty,amount,date,type,category_id")
+    .eq("workspace_id", workspaceId)
+    .limit(5000);
+  const matched: string[] = [];
+  for (const tx of (txs ?? [])) {
+    if (rule.transaction_type && tx.type !== rule.transaction_type) continue;
+    if (!matchesRuleLocally(tx, ruleRow, txs ?? [])) continue;
+    matched.push(tx.id);
+  }
+  if (matched.length > 0 && cat?.id) {
+    // Update in chunks of 200 to avoid huge IN clauses
+    for (let i = 0; i < matched.length; i += 200) {
+      const chunk = matched.slice(i, i + 200);
+      await supabase.from("transactions").update({
+        category_id: cat.id,
+        importance_level: ruleRow.importance_level,
+        importance_suggestion_reason: `Regra "${rule.category_name}" aplicada automaticamente.`,
+        importance_status: "suggested",
+      }).in("id", chunk);
+    }
+  }
+
+  return { rule_id: insertedRule?.id ?? null, category_id: cat?.id ?? null, affected: matched.length, created_category: createdCategory };
+}
+
+function normalizeStr(s: string | null | undefined): string {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function matchesRuleLocally(tx: any, r: any, allTxs: any[]): boolean {
+  // descriptor
+  if (r.match_text && String(r.match_text).trim()) {
+    const txt = normalizeStr(`${tx.description ?? ""} ${tx.counterparty ?? ""}`);
+    const m = normalizeStr(r.match_text);
+    let ok = false;
+    if (r.match_mode === "equals") ok = txt === m;
+    else if (r.match_mode === "starts_with") ok = txt.startsWith(m);
+    else if (r.match_mode === "regex") { try { ok = new RegExp(m, "i").test(txt); } catch { ok = false; } }
+    else ok = txt.includes(m);
+    if (!ok) return false;
+  }
+  // counterparty
+  if (r.counterparty_match) {
+    const cp = normalizeStr(tx.counterparty);
+    const m = normalizeStr(r.counterparty_match);
+    const mode = r.counterparty_match_mode ?? "contains";
+    let ok = false;
+    if (mode === "equals") ok = cp === m;
+    else if (mode === "starts_with") ok = cp.startsWith(m);
+    else ok = cp.includes(m);
+    if (!ok) return false;
+  }
+  // amount
+  if (r.amount_operator && r.amount_value != null) {
+    const a = Math.abs(Number(tx.amount));
+    const v = Math.abs(Number(r.amount_value));
+    let ok = false;
+    if (r.amount_operator === "equals") ok = Math.abs(a - v) < 0.005;
+    else if (r.amount_operator === "multiple_of") ok = v > 0 && Math.abs((a / v) - Math.round(a / v)) < 0.005;
+    else if (r.amount_operator === "greater_than") ok = a > v;
+    else if (r.amount_operator === "less_than") ok = a < v;
+    else if (r.amount_operator === "between") {
+      const v2 = Math.abs(Number(r.amount_value_2 ?? v));
+      const lo = Math.min(v, v2), hi = Math.max(v, v2);
+      ok = a >= lo && a <= hi;
+    }
+    if (!ok) return false;
+  }
+  // recurrence
+  if (r.recurrence_min_count) {
+    const basisDescriptor = !r.counterparty_match;
+    const windowDays = r.recurrence_window_days ?? 90;
+    const cutoff = Date.now() - windowDays * 86_400_000;
+    const subjectText = normalizeStr(tx.description);
+    const subjectCp = normalizeStr(tx.counterparty);
+    let count = 0;
+    for (const other of allTxs) {
+      if (other.id === tx.id) continue;
+      if (other.date) {
+        const d = Date.parse(other.date);
+        if (!Number.isNaN(d) && d < cutoff) continue;
+      }
+      if (basisDescriptor) {
+        const od = normalizeStr(other.description);
+        if (od && (od === subjectText || od.includes(subjectText) || subjectText.includes(od))) count++;
+      } else {
+        const oc = normalizeStr(other.counterparty);
+        if (oc && (oc === subjectCp || oc.includes(subjectCp) || subjectCp.includes(oc))) count++;
+      }
+      if (count + 1 >= r.recurrence_min_count) return true;
+    }
+    return false;
+  }
+  return true;
+}
+
 async function applyAndPersist(
   supabase: any,
   workspaceId: string,
@@ -356,6 +521,20 @@ async function applyAndPersist(
     createdCategoryId = newCat?.id ?? null;
   }
 
+  // category_rule: persist as importance_rules + apply retroactively
+  let ruleResult: { rule_id: string | null; category_id: string | null; affected: number; created_category: boolean } | null = null;
+  if (interp.type === "category_rule") {
+    const rule = (interp.configuration_json as any)?.rule as CategoryRule | undefined;
+    if (rule && Array.isArray(rule.conditions) && rule.conditions.length > 0) {
+      try {
+        ruleResult = await applyCategoryRule(supabase, workspaceId, rule);
+        if (ruleResult.created_category && ruleResult.category_id) createdCategoryId = ruleResult.category_id;
+      } catch (err) {
+        console.error("applyCategoryRule failed:", err);
+      }
+    }
+  }
+
   const { data: cust, error: cErr } = await supabase
     .from("customizations")
     .insert({
@@ -371,6 +550,10 @@ async function applyAndPersist(
       menu_key: interp.type === "label_rename"
         ? Object.keys(interp.configuration_json?.labels ?? {})[0] ?? null
         : null,
+      operation_type: interp.type,
+      operation_payload: ruleResult
+        ? { ...interp.configuration_json, applied_rule_id: ruleResult.rule_id, affected_transactions: ruleResult.affected }
+        : interp.configuration_json,
     })
     .select().single();
 
@@ -388,6 +571,7 @@ async function applyAndPersist(
     customization_id: cust.id,
   };
   if (createdCategoryId) rollback.category_id = createdCategoryId;
+  if (ruleResult?.rule_id) rollback.importance_rule_id = ruleResult.rule_id;
 
   await supabase.from("customization_requests")
     .update({
@@ -398,7 +582,11 @@ async function applyAndPersist(
     })
     .eq("id", inserted.id);
 
-  return { request: { ...inserted, applied_customization_id: cust.id, status: "testing" }, autoApplied: true as const };
+  return {
+    request: { ...inserted, applied_customization_id: cust.id, status: "testing" },
+    autoApplied: true as const,
+    affected_transactions: ruleResult?.affected ?? 0,
+  };
 }
 
 /**
