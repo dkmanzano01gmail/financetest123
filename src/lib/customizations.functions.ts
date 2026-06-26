@@ -1,50 +1,34 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { registryAsPromptFragment, type CategoryRule, type RuleCondition } from "@/lib/customization-registry";
 
 const InterpretInput = z.object({
   workspace_id: z.string().uuid(),
   request_text: z.string().min(3).max(2000),
 });
 
-const SYSTEM_PROMPT = `Você é o motor de personalizações do app financeiro "Orna".
-O usuário escreve em linguagem natural um pedido de mudança no app.
-Responda APENAS com JSON válido (sem markdown). Classifique o pedido em "easy" (a IA aplica sozinha) ou "advanced" (precisa de revisão humana).
+const SYSTEM_PROMPT = `Você é o motor de personalizações do app financeiro Orna.
+O usuário escreve em linguagem natural um pedido de mudança.
+Responda APENAS com JSON válido (sem markdown).
 
 Formato:
-
 {
-  "type": "label_rename" | "card_visibility" | "category_rule" | "saved_filter" | "new_category" | "dashboard_card" | "other",
-  "complexity": "easy" | "advanced",
+  "type": "label_rename"|"card_visibility"|"category_rule"|"saved_filter"|"new_category"|"other",
+  "complexity": "easy"|"advanced",
   "reason": string,
   "estimated_credits": number,
   "summary": string,
   "configuration_json": object
 }
 
-Tipos "easy" (a IA aplica direto):
-- label_rename: { "labels": { <chave>: "Novo texto" } }. 1 crédito.
-  Chaves suportadas:
-    • Dashboard/transações: "income", "expense", "balance", "transactions", "incomeSingular", "expenseSingular".
-    • Itens do menu lateral (sidebar): "nav.dashboard", "nav.transactions", "nav.accounts", "nav.cards", "nav.budget", "nav.reconciliation", "nav.categories", "nav.import", "nav.customizations", "nav.settings", "nav.admin".
-  Mapeie o que o usuário disser para a chave correta. Exemplos:
-    • "renomeie a aba Contas para Contas Pessoais" → { "labels": { "nav.accounts": "Contas Pessoais" } }
-    • "mude Transações para Lançamentos" → { "labels": { "nav.transactions": "Lançamentos" } }
-    • "renomeie Cartões para Cartões de Crédito" → { "labels": { "nav.cards": "Cartões de Crédito" } }
-- card_visibility: { "card_id": "income"|"expense"|"balance"|"accounts_balance"|"top_category"|"recent_transactions", "visible": boolean }. 1 crédito.
-- category_rule: { "contains": ["uber","99"], "category_name": "Transporte", "transaction_type": "expense" }. 1 crédito.
-- saved_filter: { "name": "Gastos da reforma", "filters": { "category_name"?: string, "type"?: "income"|"expense", "search"?: string } }. 1 crédito.
-- new_category: { "name": string, "type": "income"|"expense", "color"?: "#aabbcc", "importance_level"?: "essential"|"important"|"flexible"|"superfluous" }. 1 crédito.
+${registryAsPromptFragment()}
 
-Tipos "advanced" (precisam revisão do super-admin — IA NÃO aplica):
-- dashboard_card: novo card no dashboard. 3-5 créditos.
-- other: mudanças visuais globais (cores, tema), novas telas, novos módulos, integrações, mudanças estruturais. 5-30 créditos.
-
-Regras:
-- Mudanças de paleta/tema/cor global → advanced, type "other".
-- Renomear menu/tab/aba do sidebar → easy, type "label_rename" se o destino for uma das labels acima.
-- summary: 1 frase em pt-BR explicando o que será aplicado.
-- reason: explique em 1 frase por que classificou como easy ou advanced.`;
+Regras de classificação:
+- Se o pedido couber em uma das primitivas acima → "easy", e configuration_json segue o shape descrito.
+- Se for criação de categoria + condição automática (ex.: "tudo do mesmo nome todo mês = Aulas"), use category_rule com a nova schema { rule: { category_name, transaction_type?, conditions:[...] } }.
+- Mudanças de tema/cor global, criação de telas novas, integrações → "advanced" type "other".
+- summary: 1 frase em pt-BR.`;
 
 // ============================================================
 // Local deterministic classifier — works without AI
@@ -60,7 +44,7 @@ type LocalClassification = {
 };
 
 const ADVANCED_KEYWORDS = [
-  "nova aba", "nova tab", "novo módulo", "novo modulo", "nova tela",
+  "novo módulo", "novo modulo", "nova tela",
   "integração", "integracao", "relatório avançado", "relatorio avancado",
   "banco de dados", "permiss", "nova funcionalidade", "automaç", "automac",
   "fluxo de caixa", "deploy", "código", "codigo", "api ", "webhook",
@@ -151,19 +135,11 @@ function classifyLocally(text: string): LocalClassification {
     };
   }
 
-  // Category rule
-  if (/sempre que|toda(?:s)? (?:as )?transaç|categoriz|classificar como/i.test(t)) {
-    const catMatch = t.match(/(?:como|categoria)\s+["']?([\wçãáéíóúâêôà\s]+?)["']?[\.\s$]/i)
-                  || t.match(/(?:como|categoria)\s+["']?([\wçãáéíóúâêôà\s]+?)["']?$/i);
-    const category_name = catMatch ? catMatch[1].trim() : "Sugerida";
-    const transaction_type = /receb|positiv|entrad|receit/i.test(t) ? "income" : "expense";
-    return {
-      type: "category_rule", complexity: "easy",
-      summary: `Regra: categorizar como "${category_name}"`,
-      reason: "Regra de categorização automática.",
-      estimated_credits: 1,
-      configuration_json: { description: text, category_name, transaction_type },
-    };
+  // Category rule — rich detection (descriptor / amount / recurrence / counterparty)
+  const looksLikeRule =
+    /sempre que|toda(?:s)? (?:as )?transaç|categoriz|classificar como|considerar? como|considere|pode considerar/i.test(t);
+  if (looksLikeRule) {
+    return buildLocalCategoryRule(text);
   }
 
   // Hide/show card
@@ -199,6 +175,85 @@ function classifyLocally(text: string): LocalClassification {
     summary: text.slice(0, 80),
     reason: "Não foi possível classificar automaticamente — enviado para revisão.",
     estimated_credits: 5, configuration_json: {},
+  };
+}
+
+// ----- Local category rule builder -----------------------------------------
+
+function extractCategoryName(text: string): string {
+  // "categoria X", "como X", "= X", quoted strings
+  const patterns = [
+    /categoria\s+["']([^"']{1,60})["']/i,
+    /categoria\s+([A-Za-zÀ-ÿ][\wÀ-ÿ\s\-]{0,59})/i,
+    /(?:como|=|virar?)\s+["']([^"']{1,60})["']/i,
+    /(?:como|=|virar?)\s+([A-Za-zÀ-ÿ][\wÀ-ÿ\s\-]{0,59})/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m && m[1]) {
+      return m[1].trim()
+        .replace(/\.$/, "")
+        .replace(/\s+(se|quando|caso)\s+.*$/i, "")
+        .trim();
+    }
+  }
+  return "Categoria automática";
+}
+
+function buildLocalCategoryRule(text: string): LocalClassification {
+  const t = text.toLowerCase();
+  const transaction_type: "income"|"expense" =
+    /receb|positiv|entrad|receit|venda|ganho/i.test(t) ? "income" : "expense";
+
+  const conditions: RuleCondition[] = [];
+  let detected = "";
+
+  // Amount equals / multiple_of: "valor de 290", "290 reais", "múltiplo de 290"
+  const amountMatch = text.match(/\b(?:R\$\s*)?(\d{1,7}(?:[\.,]\d{1,2})?)\s*(?:reais?)?\b/);
+  const wantsMultiple = /m[uú]ltipl|m[uú]ltipo/i.test(t);
+  if (amountMatch) {
+    const v = parseFloat(amountMatch[1].replace(/\./g, "").replace(",", "."));
+    if (!Number.isNaN(v) && v > 0) {
+      conditions.push({ kind: "amount", operator: wantsMultiple ? "multiple_of" : "equals", value: v });
+      detected += wantsMultiple ? `valor múltiplo de ${v}` : `valor ${v}`;
+    }
+  }
+
+  // Recurrence: "todo mês", "mensalmente", "repetidas", "refeita(s)"
+  if (/todo\s+m[eê]s|mensal|recorrent|repet|refeit/i.test(t)) {
+    const basis: "descriptor"|"counterparty" =
+      /mesma pessoa|mesmo pagador|mesmo cliente|mesmo remetente|mesmo nome/i.test(t)
+        ? "counterparty" : "descriptor";
+    conditions.push({ kind: "recurrence", basis, min_count: 2, window_days: 90 });
+    detected += (detected ? " + " : "") + `recorrência (${basis})`;
+  }
+
+  // Descriptor / counterparty literal — "contendo X", "com o nome Y"
+  const descMatch = text.match(/(?:contendo|com\s+(?:o\s+)?(?:descritivo|nome|texto))\s+["']?([^"'\n]{2,40})["']?/i);
+  if (descMatch) {
+    const v = descMatch[1].trim().replace(/[\.,]$/, "");
+    conditions.push({ kind: "descriptor", match_text: v, match_mode: "contains" });
+    detected += (detected ? " + " : "") + `descritivo "${v}"`;
+  }
+
+  // If we still have no condition, mark advanced rather than create a useless rule.
+  if (conditions.length === 0) {
+    return {
+      type: "other", complexity: "advanced",
+      summary: text.slice(0, 80),
+      reason: "Regra de categorização sem critério claro — enviado para revisão.",
+      estimated_credits: 3, configuration_json: { original_text: text },
+    };
+  }
+
+  const category_name = extractCategoryName(text);
+  const rule: CategoryRule = { category_name, transaction_type, conditions };
+  return {
+    type: "category_rule", complexity: "easy",
+    summary: `Regra: ${detected} → ${category_name}`,
+    reason: "Regra de categorização automática.",
+    estimated_credits: 1,
+    configuration_json: { rule },
   };
 }
 
