@@ -31,7 +31,8 @@ const PLAN_LABELS: Record<string, string> = {
 };
 
 const EXAMPLES = [
-  "Crie um card mostrando quanto gastei com restaurantes este mês",
+  "Recebimentos com o mesmo descritivo todo mês = Aulas regulares",
+  "Valores de 290 ou múltiplos = Workshops",
   "Toda transação com Uber deve virar Transporte",
   "Mude o nome de Receitas para Entradas",
   "Quero ocultar o card de saldo no dashboard",
@@ -112,8 +113,14 @@ function CustomizationsPage() {
       qc.invalidateQueries({ queryKey: ["credits", wsId] });
       qc.invalidateQueries({ queryKey: ["active-test", wsId] });
       qc.invalidateQueries({ queryKey: ["categories", wsId] });
+      qc.invalidateQueries({ queryKey: ["transactions", wsId] });
       if (res?.autoApplied) {
-        toast.success("Personalização em teste. Aprove pelo banner no topo para tornar definitiva.");
+        const affected = Number(res?.affected_transactions ?? 0);
+        if (affected > 0) {
+          toast.success(`Regra criada e aplicada — ${affected} transação(ões) recategorizada(s). Aprove pelo banner no topo para confirmar.`);
+        } else {
+          toast.success("Personalização em teste. Aprove pelo banner no topo para tornar definitiva.");
+        }
       } else {
         toast.success("Pedido enviado para aprovação do admin.");
       }
