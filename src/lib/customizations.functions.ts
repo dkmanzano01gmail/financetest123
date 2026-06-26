@@ -80,6 +80,32 @@ const NAV_LABEL_MAP: Record<string, string> = {
   "configuraç": "nav.settings", "configurac": "nav.settings", "ajuste": "nav.settings",
 };
 
+function detectNavKey(text: string): string | null {
+  const t = text.toLowerCase();
+  for (const [needle, key] of Object.entries(NAV_LABEL_MAP)) {
+    if (t.includes(needle)) return key;
+  }
+  return null;
+}
+
+function extractNewName(text: string): string | null {
+  // "para X", "por X", "chamar de X", "ao invés de X", "->" X
+  const patterns: RegExp[] = [
+    /\bpara\s+["']([^"']{1,60})["']/i,
+    /\bpor\s+["']([^"']{1,60})["']/i,
+    /\bchamar\s+(?:de\s+)?["']([^"']{1,60})["']/i,
+    /->\s*["']?([^"'\n]{1,60})["']?$/i,
+    /\bpara\s+([A-Za-zÀ-ÿ0-9][\wÀ-ÿ\s\-]{0,59})$/i,
+    /\bpor\s+([A-Za-zÀ-ÿ0-9][\wÀ-ÿ\s\-]{0,59})$/i,
+    /\bchamar\s+(?:de\s+)?([A-Za-zÀ-ÿ0-9][\wÀ-ÿ\s\-]{0,59})$/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m && m[1]) return m[1].trim().replace(/[\.\s]+$/, "");
+  }
+  return null;
+}
+
 function classifyLocally(text: string): LocalClassification {
   const t = text.toLowerCase().trim();
 
@@ -93,24 +119,18 @@ function classifyLocally(text: string): LocalClassification {
     };
   }
 
-  // Rename label/tab
-  const renameMatch = t.match(/(?:renomei[ae]|mude o nome|trocar? o? nome|altere o nome|chamar?)\s+(?:da?|do|de)?\s*(?:aba|tab|menu|item)?\s*["']?([\wçãáéíóúâêôà\s]+?)["']?\s+(?:para|por|de|->)\s+["']?([\wçãáéíóúâêôà\s]+?)["']?$/i);
-  if (renameMatch || /renomei|mudar o nome|trocar nome|chamar de/i.test(t)) {
-    // Find which nav key matches
-    let key: string | null = null;
-    let newValue = "";
-    if (renameMatch) {
-      const from = renameMatch[1].toLowerCase();
-      newValue = renameMatch[2].trim();
-      for (const [needle, navKey] of Object.entries(NAV_LABEL_MAP)) {
-        if (from.includes(needle)) { key = navKey; break; }
-      }
-    }
+  // Rename label/tab — robust: find nav keyword + extract new name.
+  // Handles "voltar para X", "ao invés de Y", "mude o nome para X", etc.
+  const looksLikeRename = /renomei|nome|chamar|trocar|altere|voltar|volte|ao inv[eé]s|mude|mudar/i.test(t)
+    || /aba|tab|menu|item/i.test(t);
+  if (looksLikeRename) {
+    const key = detectNavKey(t);
+    const newValue = extractNewName(text);
     if (key && newValue) {
       return {
         type: "label_rename", complexity: "easy",
         summary: `Renomear "${key}" para "${newValue}"`,
-        reason: "Renomeação simples de label.",
+        reason: "Renomeação simples de label de menu.",
         estimated_credits: 1,
         configuration_json: { labels: { [key]: newValue } },
       };
