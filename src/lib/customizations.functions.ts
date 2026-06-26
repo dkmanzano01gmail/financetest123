@@ -407,17 +407,19 @@ export const reprocessPendingRequests = createServerFn({ method: "POST" })
       }
 
       const isApplicable = interp.complexity === "easy" && APPLICABLE_TYPES.has(interp.type);
-      const finalStatus = isApplicable ? "approved" : "needs_admin_review";
+      const finalStatus = isApplicable ? "testing" : "needs_admin_review";
 
       // Side-effect
+      let createdCategoryId: string | null = null;
       if (isApplicable && interp.type === "new_category") {
-        await (supabase as any).from("categories").insert({
+        const { data: newCat } = await (supabase as any).from("categories").insert({
           workspace_id: row.workspace_id,
           name: interp.configuration_json?.name ?? "Nova categoria",
           type: interp.configuration_json?.type ?? "expense",
           color: interp.configuration_json?.color ?? "#c2410c",
           importance_level: interp.configuration_json?.importance_level ?? "flexible",
-        });
+        }).select("id").single();
+        createdCategoryId = newCat?.id ?? null;
       }
 
       let appliedCustId: string | null = null;
@@ -436,6 +438,9 @@ export const reprocessPendingRequests = createServerFn({ method: "POST" })
       }
 
       const now = new Date().toISOString();
+      const rollback: Record<string, any> | null = isApplicable && appliedCustId
+        ? { kind: "delete_customization", customization_id: appliedCustId, ...(createdCategoryId ? { category_id: createdCategoryId } : {}) }
+        : null;
       await (supabase as any).from("customization_requests").update({
         status: finalStatus,
         complexity: interp.complexity,
@@ -444,8 +449,10 @@ export const reprocessPendingRequests = createServerFn({ method: "POST" })
         ai_interpretation: interp,
         auto_applied: isApplicable,
         applied_customization_id: appliedCustId,
-        approved_at: isApplicable ? now : null,
-        completed_at: isApplicable ? now : null,
+        tested_at: isApplicable ? now : null,
+        rollback_payload: rollback,
+        approved_at: null,
+        completed_at: null,
       }).eq("id", row.id);
 
       processed += 1;
