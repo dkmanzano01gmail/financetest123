@@ -518,6 +518,8 @@ export type Database = {
           is_testing: boolean
           menu_key: string | null
           name: string
+          operation_payload: Json | null
+          operation_type: string | null
           request_id: string | null
           type: string
           updated_at: string
@@ -533,6 +535,8 @@ export type Database = {
           is_testing?: boolean
           menu_key?: string | null
           name: string
+          operation_payload?: Json | null
+          operation_type?: string | null
           request_id?: string | null
           type: string
           updated_at?: string
@@ -548,6 +552,8 @@ export type Database = {
           is_testing?: boolean
           menu_key?: string | null
           name?: string
+          operation_payload?: Json | null
+          operation_type?: string | null
           request_id?: string | null
           type?: string
           updated_at?: string
@@ -572,15 +578,25 @@ export type Database = {
       }
       importance_rules: {
         Row: {
+          amount_operator: string | null
+          amount_value: number | null
+          amount_value_2: number | null
           category_hint: string | null
           category_id: string | null
           confidence: number
+          counterparty_match: string | null
+          counterparty_match_mode: string | null
           created_at: string
           id: string
           importance_level: Database["public"]["Enums"]["importance_level"]
           is_active: boolean
           match_mode: string
-          match_text: string
+          match_text: string | null
+          notes: string | null
+          priority: number
+          recurrence_min_count: number | null
+          recurrence_window_days: number | null
+          rule_kind: string
           source_type: string
           transaction_type:
             | Database["public"]["Enums"]["transaction_type"]
@@ -590,15 +606,25 @@ export type Database = {
           workspace_type: string | null
         }
         Insert: {
+          amount_operator?: string | null
+          amount_value?: number | null
+          amount_value_2?: number | null
           category_hint?: string | null
           category_id?: string | null
           confidence?: number
+          counterparty_match?: string | null
+          counterparty_match_mode?: string | null
           created_at?: string
           id?: string
           importance_level: Database["public"]["Enums"]["importance_level"]
           is_active?: boolean
           match_mode?: string
-          match_text: string
+          match_text?: string | null
+          notes?: string | null
+          priority?: number
+          recurrence_min_count?: number | null
+          recurrence_window_days?: number | null
+          rule_kind?: string
           source_type?: string
           transaction_type?:
             | Database["public"]["Enums"]["transaction_type"]
@@ -608,15 +634,25 @@ export type Database = {
           workspace_type?: string | null
         }
         Update: {
+          amount_operator?: string | null
+          amount_value?: number | null
+          amount_value_2?: number | null
           category_hint?: string | null
           category_id?: string | null
           confidence?: number
+          counterparty_match?: string | null
+          counterparty_match_mode?: string | null
           created_at?: string
           id?: string
           importance_level?: Database["public"]["Enums"]["importance_level"]
           is_active?: boolean
           match_mode?: string
-          match_text?: string
+          match_text?: string | null
+          notes?: string | null
+          priority?: number
+          recurrence_min_count?: number | null
+          recurrence_window_days?: number | null
+          rule_kind?: string
           source_type?: string
           transaction_type?:
             | Database["public"]["Enums"]["transaction_type"]
