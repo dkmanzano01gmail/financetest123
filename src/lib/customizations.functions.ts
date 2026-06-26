@@ -366,12 +366,19 @@ export const reprocessPendingRequests = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!member) throw new Error("Forbidden");
 
-    const { data: stuck } = await (supabase as any)
+    // Pick up: stuck-in-interpreting AND approved requests that never
+    // produced a customization row (silent insert failure recovery).
+    const { data: stuckRaw } = await (supabase as any)
       .from("customization_requests")
-      .select("*")
+      .select("*, customizations(id)")
       .eq("workspace_id", data.workspace_id)
-      .in("status", ["interpreting", "submitted", "pending"])
-      .limit(50);
+      .in("status", ["interpreting", "submitted", "pending", "approved"])
+      .limit(100);
+    const stuck = (stuckRaw ?? []).filter((r: any) => {
+      if (r.status !== "approved") return true;
+      const hasCust = Array.isArray(r.customizations) && r.customizations.length > 0;
+      return !hasCust;
+    });
 
     let processed = 0;
     for (const row of (stuck ?? [])) {
