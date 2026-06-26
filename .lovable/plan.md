@@ -1,85 +1,131 @@
-# Plano — Personalizações com efeito visual real
 
-## Causa raiz
+# Plano — Motor de Personalização Genérico
 
-1. `useLabelOverrides` carrega TODAS as customizações `label_rename` ativas e mescla via `Object.assign` sem ordenação determinística. Quando existe uma antiga ("Dashboard NEW") + uma em teste ("Dashboard") para a mesma chave `nav.dashboard`, qual vence é loteria.
-2. `applyAndPersist` insere uma NOVA customização `is_active=true` toda vez, sem desativar conflitos prévios do mesmo `menu_key`. Resultado: duas linhas ativas competindo.
-3. Não existe distinção entre customização "em teste" e "aceita pelo usuário". Não há campo de prioridade ou estado de candidata.
-4. O parser regex de rename só captura padrões simples (`X para Y`) e não trata "voltar X para Y" / "ao invés de". Quando falha, cai no fallback `advanced` e nem aplica.
-5. `customization_requests.status='approved'` antigos foram backfillados como `is_active=true`, então mesmo rejeitando o teste, a antiga continua dominando.
-6. Sidebar e PageHeader usam labels resolvidas no momento do render, mas sem invalidação automática após approve/reject (depende de `window.location.reload`).
+## Verdade de fundo (importante ler antes)
 
-## O que vou mudar
+Um app já publicado **não pode reescrever o próprio código-fonte em produção** como o Lovable faz — Lovable tem acesso ao repositório e ao build. Então "fazer qualquer coisa" na prática significa **uma de duas coisas**:
 
-### 1. Schema — distinguir teste vs. aceita
-Migration adicionando:
-- `customizations.menu_key text` (gerado/preenchido para `label_rename`: a chave única dentro de `configuration_json.labels`).
-- `customizations.is_testing boolean default false` — true enquanto o request associado está em `testing`.
-- Índice único parcial: `(workspace_id, type, menu_key) WHERE is_active AND NOT is_testing AND type='label_rename'` — garante uma só ativa-definitiva por chave.
-- Backfill: preencher `menu_key` para linhas existentes a partir da primeira chave de `configuration_json.labels`.
+1. **Cobrir ~85% dos pedidos com um motor de runtime poderoso** — um conjunto rico de "primitivas" (renomear, esconder, reordenar, recolorir, criar regra de categoria, criar filtro salvo, mudar comportamento de listagem, etc.) que a IA combina como JSON e o app aplica em tempo de execução, sem precisar de deploy. Isso é o que vamos construir.
+2. **Mandar o resto pro admin** (eu) implementar como mudança de código — exatamente o que o Lovable faz quando você pede algo fora do escopo do gerador.
 
-### 2. Aplicação com prioridade correta
-Em `applyAndPersist` (label_rename easy):
-- Calcular `menu_key` do payload.
-- Antes de inserir, NÃO desativar a anterior — ela continua ativa como fallback caso rejeitem.
-- Inserir nova com `is_active=true, is_testing=true, menu_key=<chave>`.
-- Request fica `status='testing'`.
+Não existe caminho honesto onde 100% dos pedidos são executados automaticamente sem nenhum trabalho de desenvolvedor. O que existe é deixar a fronteira do "automático" o mais larga possível.
 
-Em `user_approve_test` (RPC):
-- Achar a customização do request.
-- Marcar `is_testing=false` (vira definitiva).
-- Desativar (`is_active=false`) outras customizações `label_rename` do mesmo `workspace_id + menu_key` (exceto a nova).
+## Arquitetura proposta
 
-Em `user_reject_test` (RPC, já remove a nova):
-- A anterior continua `is_active=true, is_testing=false` → sidebar volta sozinha.
+```text
+Pedido do usuário (NL)
+       │
+       ▼
+┌──────────────────┐   conhece todas as
+│  AI Interpreter  │◄──surfaces e operações
+│  (Gemini Flash)  │   suportadas (Capability
+└──────┬───────────┘   Registry)
+       │ emite JSON tipado
+       ▼
+┌──────────────────────────────┐
+│  Validador + Classificador   │
+│  - "executável agora"  ──► aplica, vai p/ teste, depois ativo
+│  - "precisa admin"     ──► fila de aprovação (admin pode codar)
+│  - "ambíguo"           ──► pede esclarecimento ao usuário
+└──────────────────────────────┘
+       │
+       ▼ (executável)
+┌──────────────────────────────┐
+│  Customization Store         │
+│  (tabela customizations já   │
+│  existe — extender schema)   │
+└──────┬───────────────────────┘
+       │ lido por hooks
+       ▼
+┌──────────────────────────────┐
+│  Runtime Appliers            │
+│  useCustomizedNav            │
+│  useCustomizedCards          │
+│  useCustomizedTheme          │
+│  useCategorizationRules      │
+│  useCustomFilters            │
+│  useDashboardLayout          │
+└──────────────────────────────┘
+```
 
-### 3. Hook único com precedência
-Reescrever `useLabelOverrides`:
-- Buscar todas as label_rename ativas ordenadas por `is_testing DESC, updated_at DESC`.
-- Agrupar por `menu_key` → primeira ganha → testing sempre vence definitiva.
-- Expor `getMenuLabel(key, default)` para consumo. Sidebar e `page-header` usam essa API.
-- Adicionar invalidação via `qc.invalidateQueries(["label-overrides", workspaceId])` no `TestingBanner` (approve/reject) — remover `window.location.reload`.
+## Capability Registry — primitivas que vamos suportar de cara
 
-### 4. Parser mais robusto
-Reescrever `classifyLocally` para rename:
-- Primeiro tentar achar uma palavra-chave de NAV no texto (dashboard, contas, transações, …) → define `menu_key` sem depender de regex posicional.
-- Em seguida extrair o "novo nome" via:
-  - `para "X"` / `para X`
-  - `chamar de X`
-  - `ao invés de Y` → menu_key vem de Y se mais específico
-  - "voltar (o nome )?para X" → ainda determina menu_key pela ocorrência de palavra-chave nav.
-- Se achou menu_key + novo nome → easy `label_rename` com `{ labels: { [key]: newName } }`.
-- Atualizar o SYSTEM_PROMPT da IA reforçando: "se o pedido menciona dashboard, a chave é sempre `nav.dashboard` mesmo que label atual seja outra".
+Cada surface tem **chaves estáveis** e um set de operações. Tudo isso vira input do prompt da IA, então ela só pode emitir coisas válidas.
 
-### 5. Status humanizados
-Em `customizations.tsx` mapear:
-- `testing` → "Em teste"
-- `approved` → "Aplicada" (e renomear a label exibida — manter status DB como `approved`)
-- `needs_admin_review` → "Em análise"
-- `rejected`/`rejected_by_admin` → "Rejeitada"
-- `waiting_credits` → "Aguardando créditos"
+| Categoria | Operações | Exemplos de pedido |
+|---|---|---|
+| **Label/Text** | `rename(menu_key, new_label)` | "Chamar Contas de Contas Pessoais" ✅ já funciona |
+| **Visibility** | `hide(surface_key)` / `show(surface_key)` | "Esconder card de Investimentos", "Tirar a aba Cartões" |
+| **Ordering** | `reorder(surface_group, [keys...])` | "Colocar Transações antes de Contas no menu" |
+| **Theme** | `set_color(token, value)` / `set_density(level)` | "Deixar o app mais escuro", "Cor primária verde" |
+| **Categorization Rule** | `add_rule({when, then})` com operadores: `descriptor_contains`, `descriptor_equals`, `amount_equals`, `amount_multiple_of`, `amount_between`, `counterparty_matches`, `recurring_same_descriptor`, `recurring_same_counterparty` → ação: `set_category(name)`, `set_importance(level)` | "Recebimentos repetidos do mesmo nome todo mês = Aulas regulares"; "Valores de 290 ou múltiplo = Workshops" |
+| **Filtros salvos** | `save_filter(page, name, criteria)` | "Salvar filtro 'Despesas essenciais deste ano' em Transações" |
+| **Dashboard Layout** | `toggle_widget(key)` / `reorder_widgets([keys])` | "Tirar gráfico de pizza do dashboard" |
+| **Default sort/grouping** | `set_default_sort(page, field, dir)` / `set_grouping(page, field)` | "Ordenar transações por valor decrescente por padrão" |
+| **Validação de formulários** | `require_field(form, field)` / `make_optional(form, field)` | "Exigir descrição em toda transação" |
 
-### 6. Rotina de reparo
-Atualizar `reprocessPendingRequests`:
-- Após reprocessar, executar limpeza global: para cada `(workspace_id, menu_key)` com mais de uma ativa não-testing, manter só a mais recente.
-- Recalcular `menu_key` para linhas antigas baseadas no payload.
+Tudo o que **não cair** numa dessas primitivas → fila do admin (`needs_admin_review`), com a interpretação da IA salva, e eu implemento código real depois (igual fluxo Lovable).
 
-### 7. Erros Supabase RPC
-Auditar `rg "\.rpc\([^)]*\)\.catch"` no projeto. Onde encontrar, substituir por `try { const { error } = await supabase.rpc(...); if (error) throw error; } catch (e) {...}`. Já está OK no `customizations.functions.ts`; verificar UI.
+## Especificamente o seu exemplo das aulas/workshops
 
-## Arquivos afetados
-- `supabase/migrations/...sql` (novo): coluna `menu_key`, `is_testing`, índice, backfill; ajuste das RPCs `user_approve_test` / `user_reject_test`.
-- `src/lib/customizations.functions.ts`: parser, `applyAndPersist`, reprocess.
-- `src/hooks/use-label-overrides.ts`: precedência testing > active.
-- `src/components/app/testing-banner.tsx`: trocar `window.location.reload` por invalidate.
-- `src/components/app/app-shell.tsx`: já usa `applyLabel`, só validar.
-- `src/routes/_authenticated/customizations.tsx`: status humanizados + botão "Reprocessar" (já existe — manter).
-- `src/components/app/page-header.tsx` (opcional): nada a mudar — labels de página vêm dos componentes que já usam o hook.
+O pedido "transações positivas recorrentes com mesmo descritivo/pessoa = Aulas regulares" e "valor 290 ou múltiplo = Workshops" é **um caso de Categorization Rule** — entra como `add_rule` no motor acima. O sistema então:
 
-## Validação
-1. Pedir "renomear Dashboard para Dashboard NEW" → banner aparece → sidebar mostra "Dashboard NEW" sem refresh manual → aprovar → permanece.
-2. Pedir "voltar nome para Dashboard ao invés de Dashboard NEW" → banner aparece → sidebar mostra "Dashboard" → aprovar → antiga é desativada.
-3. Mesmo cenário porém rejeitar → sidebar volta para "Dashboard NEW".
-4. Rodar "Reprocessar pedidos pendentes" → conflitos antigos resolvidos para uma ativa por menu_key.
+1. Cria 2 registros em `importance_rules` (tabela já existe; vamos estender o schema):
+   - Regra 1: `type=income AND counterparty_recurring_monthly=true → category="Aulas regulares"`
+   - Regra 2: `type=income AND (amount=290 OR amount%290=0) → category="Workshops"`
+2. Aplica retroativamente a todas as transações existentes que casam.
+3. Aplica automaticamente em novas transações/importações.
+4. Mostra no banner de teste: "X transações foram recategorizadas — manter?"
 
-Pronto para implementar?
+## Fases de entrega
+
+### Fase 1 — Fundação (essencial pro motor funcionar)
+- Estender tabela `customizations` com `operation_type` + `operation_payload` tipados
+- Estender tabela `importance_rules` com novos operadores (`amount_multiple_of`, `recurring_same_descriptor`, `recurring_same_counterparty`)
+- Criar **Capability Registry** em `src/lib/customization-registry.ts` — fonte única da verdade do que existe
+- Reescrever prompt da IA pra conhecer o registry inteiro e emitir JSON validado por Zod
+- Validador local que rejeita ops desconhecidas → admin queue
+
+### Fase 2 — Appliers de UI (5 primitivas)
+- `useCustomizedNav` (rename ✅, hide, reorder)
+- `useCustomizedCards` (hide, reorder) — dashboard e páginas
+- `useCustomizedTheme` (cor primária, modo denso/espaçado)
+- Atualizar todos os componentes-chave (sidebar, dashboard, transactions, accounts) pra ler dos appliers em vez de hard-coded
+
+### Fase 3 — Engine de regras (o seu caso de uso)
+- Extender `src/lib/suggestions.ts` com novos operadores
+- UI de gestão de regras em `/customizations` (listar, editar, deletar regras criadas via NL)
+- Reprocessamento retroativo: quando uma regra nova é aprovada, rodar contra histórico
+- Banner de teste mostra "N transações afetadas — aprovar?"
+
+### Fase 4 — Filtros salvos + Dashboard layout
+- Sistema de filtros salvos por página
+- Reordenação/toggle de widgets do dashboard
+
+### Fase 5 — Fila do admin com contexto
+- Pedidos `needs_admin_review` mostram pra mim: interpretação da IA + por que não foi automatizado + sugestão de qual primitiva nova adicionaria a capacidade
+- Eu (ou outro dev) implemento e a próxima vez aquele tipo de pedido vira automático
+
+## O que isso resolve vs não resolve
+
+**Resolve automaticamente:** renomear, esconder/mostrar, reordenar, recolorir, criar regras de categorização (incluindo seu caso), salvar filtros, mudar ordenação padrão, toggle de widgets.
+
+**Continua precisando de admin:** criar uma página nova do zero, integrar com API externa nova, mudar fundamentalmente como uma feature funciona (ex: "trocar transações por entradas de diário"), criar gráficos com tipos novos de visualização, lógicas de negócio muito específicas.
+
+## Detalhes técnicos resumidos
+
+- Stack: TanStack Start, Supabase. AI via Lovable AI Gateway com `google/gemini-3-flash-preview`, structured output (Zod schema espelhando o registry).
+- Migrações: `customizations.operation_type`/`operation_payload`; `importance_rules` ganha colunas `operator`, `amount_operator`, `recurrence_window_days`, `counterparty_match`.
+- Hooks novos em `src/hooks/`, leem `customizations` + `importance_rules` ativos via React Query com `staleTime` curto.
+- Registry exportado pra ser injetado no prompt — quando adicionarmos primitiva nova, prompt atualiza sozinho.
+- Fluxo de teste (`testing` → `approved`/`rejected` via banner) já existe e continua sendo usado pra toda mudança.
+
+## Estimativa de esforço
+
+- Fase 1: ~3 turnos
+- Fase 2: ~2 turnos
+- Fase 3 (seu caso): ~2 turnos
+- Fase 4: ~2 turnos
+- Fase 5: ~1 turno
+
+Posso começar pela **Fase 1 + Fase 3** se você quer ver o seu exemplo de aulas/workshops funcionando antes do resto — é o caminho mais curto pra valor concreto. Ou posso seguir 1→2→3→4→5 sequencial. Me diz.

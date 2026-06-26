@@ -1,50 +1,34 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { registryAsPromptFragment, type CategoryRule, type RuleCondition } from "@/lib/customization-registry";
 
 const InterpretInput = z.object({
   workspace_id: z.string().uuid(),
   request_text: z.string().min(3).max(2000),
 });
 
-const SYSTEM_PROMPT = `Você é o motor de personalizações do app financeiro "Orna".
-O usuário escreve em linguagem natural um pedido de mudança no app.
-Responda APENAS com JSON válido (sem markdown). Classifique o pedido em "easy" (a IA aplica sozinha) ou "advanced" (precisa de revisão humana).
+const SYSTEM_PROMPT = `Você é o motor de personalizações do app financeiro Orna.
+O usuário escreve em linguagem natural um pedido de mudança.
+Responda APENAS com JSON válido (sem markdown).
 
 Formato:
-
 {
-  "type": "label_rename" | "card_visibility" | "category_rule" | "saved_filter" | "new_category" | "dashboard_card" | "other",
-  "complexity": "easy" | "advanced",
+  "type": "label_rename"|"card_visibility"|"category_rule"|"saved_filter"|"new_category"|"other",
+  "complexity": "easy"|"advanced",
   "reason": string,
   "estimated_credits": number,
   "summary": string,
   "configuration_json": object
 }
 
-Tipos "easy" (a IA aplica direto):
-- label_rename: { "labels": { <chave>: "Novo texto" } }. 1 crédito.
-  Chaves suportadas:
-    • Dashboard/transações: "income", "expense", "balance", "transactions", "incomeSingular", "expenseSingular".
-    • Itens do menu lateral (sidebar): "nav.dashboard", "nav.transactions", "nav.accounts", "nav.cards", "nav.budget", "nav.reconciliation", "nav.categories", "nav.import", "nav.customizations", "nav.settings", "nav.admin".
-  Mapeie o que o usuário disser para a chave correta. Exemplos:
-    • "renomeie a aba Contas para Contas Pessoais" → { "labels": { "nav.accounts": "Contas Pessoais" } }
-    • "mude Transações para Lançamentos" → { "labels": { "nav.transactions": "Lançamentos" } }
-    • "renomeie Cartões para Cartões de Crédito" → { "labels": { "nav.cards": "Cartões de Crédito" } }
-- card_visibility: { "card_id": "income"|"expense"|"balance"|"accounts_balance"|"top_category"|"recent_transactions", "visible": boolean }. 1 crédito.
-- category_rule: { "contains": ["uber","99"], "category_name": "Transporte", "transaction_type": "expense" }. 1 crédito.
-- saved_filter: { "name": "Gastos da reforma", "filters": { "category_name"?: string, "type"?: "income"|"expense", "search"?: string } }. 1 crédito.
-- new_category: { "name": string, "type": "income"|"expense", "color"?: "#aabbcc", "importance_level"?: "essential"|"important"|"flexible"|"superfluous" }. 1 crédito.
+${registryAsPromptFragment()}
 
-Tipos "advanced" (precisam revisão do super-admin — IA NÃO aplica):
-- dashboard_card: novo card no dashboard. 3-5 créditos.
-- other: mudanças visuais globais (cores, tema), novas telas, novos módulos, integrações, mudanças estruturais. 5-30 créditos.
-
-Regras:
-- Mudanças de paleta/tema/cor global → advanced, type "other".
-- Renomear menu/tab/aba do sidebar → easy, type "label_rename" se o destino for uma das labels acima.
-- summary: 1 frase em pt-BR explicando o que será aplicado.
-- reason: explique em 1 frase por que classificou como easy ou advanced.`;
+Regras de classificação:
+- Se o pedido couber em uma das primitivas acima → "easy", e configuration_json segue o shape descrito.
+- Se for criação de categoria + condição automática (ex.: "tudo do mesmo nome todo mês = Aulas"), use category_rule com a nova schema { rule: { category_name, transaction_type?, conditions:[...] } }.
+- Mudanças de tema/cor global, criação de telas novas, integrações → "advanced" type "other".
+- summary: 1 frase em pt-BR.`;
 
 // ============================================================
 // Local deterministic classifier — works without AI
@@ -60,7 +44,7 @@ type LocalClassification = {
 };
 
 const ADVANCED_KEYWORDS = [
-  "nova aba", "nova tab", "novo módulo", "novo modulo", "nova tela",
+  "novo módulo", "novo modulo", "nova tela",
   "integração", "integracao", "relatório avançado", "relatorio avancado",
   "banco de dados", "permiss", "nova funcionalidade", "automaç", "automac",
   "fluxo de caixa", "deploy", "código", "codigo", "api ", "webhook",
@@ -151,19 +135,11 @@ function classifyLocally(text: string): LocalClassification {
     };
   }
 
-  // Category rule
-  if (/sempre que|toda(?:s)? (?:as )?transaç|categoriz|classificar como/i.test(t)) {
-    const catMatch = t.match(/(?:como|categoria)\s+["']?([\wçãáéíóúâêôà\s]+?)["']?[\.\s$]/i)
-                  || t.match(/(?:como|categoria)\s+["']?([\wçãáéíóúâêôà\s]+?)["']?$/i);
-    const category_name = catMatch ? catMatch[1].trim() : "Sugerida";
-    const transaction_type = /receb|positiv|entrad|receit/i.test(t) ? "income" : "expense";
-    return {
-      type: "category_rule", complexity: "easy",
-      summary: `Regra: categorizar como "${category_name}"`,
-      reason: "Regra de categorização automática.",
-      estimated_credits: 1,
-      configuration_json: { description: text, category_name, transaction_type },
-    };
+  // Category rule — rich detection (descriptor / amount / recurrence / counterparty)
+  const looksLikeRule =
+    /sempre que|toda(?:s)? (?:as )?transaç|categoriz|classificar como|considerar? como|considere|pode considerar/i.test(t);
+  if (looksLikeRule) {
+    return buildLocalCategoryRule(text);
   }
 
   // Hide/show card
@@ -199,6 +175,85 @@ function classifyLocally(text: string): LocalClassification {
     summary: text.slice(0, 80),
     reason: "Não foi possível classificar automaticamente — enviado para revisão.",
     estimated_credits: 5, configuration_json: {},
+  };
+}
+
+// ----- Local category rule builder -----------------------------------------
+
+function extractCategoryName(text: string): string {
+  // "categoria X", "como X", "= X", quoted strings
+  const patterns = [
+    /categoria\s+["']([^"']{1,60})["']/i,
+    /categoria\s+([A-Za-zÀ-ÿ][\wÀ-ÿ\s\-]{0,59})/i,
+    /(?:como|=|virar?)\s+["']([^"']{1,60})["']/i,
+    /(?:como|=|virar?)\s+([A-Za-zÀ-ÿ][\wÀ-ÿ\s\-]{0,59})/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m && m[1]) {
+      return m[1].trim()
+        .replace(/\.$/, "")
+        .replace(/\s+(se|quando|caso)\s+.*$/i, "")
+        .trim();
+    }
+  }
+  return "Categoria automática";
+}
+
+function buildLocalCategoryRule(text: string): LocalClassification {
+  const t = text.toLowerCase();
+  const transaction_type: "income"|"expense" =
+    /receb|positiv|entrad|receit|venda|ganho/i.test(t) ? "income" : "expense";
+
+  const conditions: RuleCondition[] = [];
+  let detected = "";
+
+  // Amount equals / multiple_of: "valor de 290", "290 reais", "múltiplo de 290"
+  const amountMatch = text.match(/\b(?:R\$\s*)?(\d{1,7}(?:[\.,]\d{1,2})?)\s*(?:reais?)?\b/);
+  const wantsMultiple = /m[uú]ltipl|m[uú]ltipo/i.test(t);
+  if (amountMatch) {
+    const v = parseFloat(amountMatch[1].replace(/\./g, "").replace(",", "."));
+    if (!Number.isNaN(v) && v > 0) {
+      conditions.push({ kind: "amount", operator: wantsMultiple ? "multiple_of" : "equals", value: v });
+      detected += wantsMultiple ? `valor múltiplo de ${v}` : `valor ${v}`;
+    }
+  }
+
+  // Recurrence: "todo mês", "mensalmente", "repetidas", "refeita(s)"
+  if (/todo\s+m[eê]s|mensal|recorrent|repet|refeit/i.test(t)) {
+    const basis: "descriptor"|"counterparty" =
+      /mesma pessoa|mesmo pagador|mesmo cliente|mesmo remetente|mesmo nome/i.test(t)
+        ? "counterparty" : "descriptor";
+    conditions.push({ kind: "recurrence", basis, min_count: 2, window_days: 90 });
+    detected += (detected ? " + " : "") + `recorrência (${basis})`;
+  }
+
+  // Descriptor / counterparty literal — "contendo X", "com o nome Y"
+  const descMatch = text.match(/(?:contendo|com\s+(?:o\s+)?(?:descritivo|nome|texto))\s+["']?([^"'\n]{2,40})["']?/i);
+  if (descMatch) {
+    const v = descMatch[1].trim().replace(/[\.,]$/, "");
+    conditions.push({ kind: "descriptor", match_text: v, match_mode: "contains" });
+    detected += (detected ? " + " : "") + `descritivo "${v}"`;
+  }
+
+  // If we still have no condition, mark advanced rather than create a useless rule.
+  if (conditions.length === 0) {
+    return {
+      type: "other", complexity: "advanced",
+      summary: text.slice(0, 80),
+      reason: "Regra de categorização sem critério claro — enviado para revisão.",
+      estimated_credits: 3, configuration_json: { original_text: text },
+    };
+  }
+
+  const category_name = extractCategoryName(text);
+  const rule: CategoryRule = { category_name, transaction_type, conditions };
+  return {
+    type: "category_rule", complexity: "easy",
+    summary: `Regra: ${detected} → ${category_name}`,
+    reason: "Regra de categorização automática.",
+    estimated_credits: 1,
+    configuration_json: { rule },
   };
 }
 
@@ -241,6 +296,171 @@ async function tryAiInterpret(requestText: string, signal?: AbortSignal): Promis
 const APPLICABLE_TYPES = new Set([
   "label_rename", "card_visibility", "category_rule", "saved_filter", "new_category",
 ]);
+
+/**
+ * Persists a CategoryRule as importance_rules rows and applies it
+ * retroactively to existing transactions. Returns the new rule id +
+ * number of transactions affected.
+ */
+async function applyCategoryRule(
+  supabase: any,
+  workspaceId: string,
+  rule: CategoryRule,
+): Promise<{ rule_id: string | null; category_id: string | null; affected: number; created_category: boolean }> {
+  // 1) Resolve category — create if missing
+  let { data: cat } = await supabase
+    .from("categories")
+    .select("id,name,type,importance_level")
+    .eq("workspace_id", workspaceId)
+    .ilike("name", rule.category_name)
+    .maybeSingle();
+  let createdCategory = false;
+  if (!cat) {
+    const { data: newCat, error: cErr } = await supabase.from("categories").insert({
+      workspace_id: workspaceId,
+      name: rule.category_name,
+      type: rule.transaction_type ?? "expense",
+      color: rule.transaction_type === "income" ? "#16a34a" : "#c2410c",
+      importance_level: rule.importance_level ?? "flexible",
+    }).select("id,name,type,importance_level").single();
+    if (cErr) throw new Error(cErr.message);
+    cat = newCat;
+    createdCategory = true;
+  }
+
+  // 2) Build importance_rules row from conditions (AND)
+  const desc = rule.conditions.find((c) => c.kind === "descriptor") as Extract<RuleCondition,{kind:"descriptor"}> | undefined;
+  const cp = rule.conditions.find((c) => c.kind === "counterparty") as Extract<RuleCondition,{kind:"counterparty"}> | undefined;
+  const amt = rule.conditions.find((c) => c.kind === "amount") as Extract<RuleCondition,{kind:"amount"}> | undefined;
+  const rec = rule.conditions.find((c) => c.kind === "recurrence") as Extract<RuleCondition,{kind:"recurrence"}> | undefined;
+
+  const ruleRow: Record<string, any> = {
+    workspace_id: workspaceId,
+    rule_kind: rule.conditions.length > 1 ? "composite" : (rule.conditions[0]?.kind ?? "descriptor"),
+    match_text: desc?.match_text ?? "",
+    match_mode: desc?.match_mode ?? "contains",
+    category_hint: cat?.name ?? rule.category_name,
+    category_id: cat?.id ?? null,
+    importance_level: rule.importance_level ?? cat?.importance_level ?? "flexible",
+    transaction_type: rule.transaction_type ?? null,
+    source_type: "user",
+    confidence: 0.95,
+    is_active: true,
+    amount_operator: amt?.operator ?? null,
+    amount_value: amt?.value ?? null,
+    amount_value_2: amt?.value2 ?? null,
+    counterparty_match: cp?.match_text ?? null,
+    counterparty_match_mode: cp?.match_mode ?? (cp ? "contains" : null),
+    recurrence_min_count: rec?.min_count ?? null,
+    recurrence_window_days: rec?.window_days ?? null,
+    priority: rule.priority ?? 50,
+    notes: rule.notes ?? null,
+  };
+
+  const { data: insertedRule, error: rErr } = await supabase
+    .from("importance_rules").insert(ruleRow).select("id").single();
+  if (rErr) throw new Error(rErr.message);
+
+  // 3) Retroactive apply — fetch matching transactions and update.
+  //    We re-evaluate in JS so the same matcher used by the suggestion
+  //    engine governs both new and historical txns.
+  const { data: txs } = await supabase
+    .from("transactions")
+    .select("id,description,counterparty,amount,date,type,category_id")
+    .eq("workspace_id", workspaceId)
+    .limit(5000);
+  const matched: string[] = [];
+  for (const tx of (txs ?? [])) {
+    if (rule.transaction_type && tx.type !== rule.transaction_type) continue;
+    if (!matchesRuleLocally(tx, ruleRow, txs ?? [])) continue;
+    matched.push(tx.id);
+  }
+  if (matched.length > 0 && cat?.id) {
+    // Update in chunks of 200 to avoid huge IN clauses
+    for (let i = 0; i < matched.length; i += 200) {
+      const chunk = matched.slice(i, i + 200);
+      await supabase.from("transactions").update({
+        category_id: cat.id,
+        importance_level: ruleRow.importance_level,
+        importance_suggestion_reason: `Regra "${rule.category_name}" aplicada automaticamente.`,
+        importance_status: "suggested",
+      }).in("id", chunk);
+    }
+  }
+
+  return { rule_id: insertedRule?.id ?? null, category_id: cat?.id ?? null, affected: matched.length, created_category: createdCategory };
+}
+
+function normalizeStr(s: string | null | undefined): string {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function matchesRuleLocally(tx: any, r: any, allTxs: any[]): boolean {
+  // descriptor
+  if (r.match_text && String(r.match_text).trim()) {
+    const txt = normalizeStr(`${tx.description ?? ""} ${tx.counterparty ?? ""}`);
+    const m = normalizeStr(r.match_text);
+    let ok = false;
+    if (r.match_mode === "equals") ok = txt === m;
+    else if (r.match_mode === "starts_with") ok = txt.startsWith(m);
+    else if (r.match_mode === "regex") { try { ok = new RegExp(m, "i").test(txt); } catch { ok = false; } }
+    else ok = txt.includes(m);
+    if (!ok) return false;
+  }
+  // counterparty
+  if (r.counterparty_match) {
+    const cp = normalizeStr(tx.counterparty);
+    const m = normalizeStr(r.counterparty_match);
+    const mode = r.counterparty_match_mode ?? "contains";
+    let ok = false;
+    if (mode === "equals") ok = cp === m;
+    else if (mode === "starts_with") ok = cp.startsWith(m);
+    else ok = cp.includes(m);
+    if (!ok) return false;
+  }
+  // amount
+  if (r.amount_operator && r.amount_value != null) {
+    const a = Math.abs(Number(tx.amount));
+    const v = Math.abs(Number(r.amount_value));
+    let ok = false;
+    if (r.amount_operator === "equals") ok = Math.abs(a - v) < 0.005;
+    else if (r.amount_operator === "multiple_of") ok = v > 0 && Math.abs((a / v) - Math.round(a / v)) < 0.005;
+    else if (r.amount_operator === "greater_than") ok = a > v;
+    else if (r.amount_operator === "less_than") ok = a < v;
+    else if (r.amount_operator === "between") {
+      const v2 = Math.abs(Number(r.amount_value_2 ?? v));
+      const lo = Math.min(v, v2), hi = Math.max(v, v2);
+      ok = a >= lo && a <= hi;
+    }
+    if (!ok) return false;
+  }
+  // recurrence
+  if (r.recurrence_min_count) {
+    const basisDescriptor = !r.counterparty_match;
+    const windowDays = r.recurrence_window_days ?? 90;
+    const cutoff = Date.now() - windowDays * 86_400_000;
+    const subjectText = normalizeStr(tx.description);
+    const subjectCp = normalizeStr(tx.counterparty);
+    let count = 0;
+    for (const other of allTxs) {
+      if (other.id === tx.id) continue;
+      if (other.date) {
+        const d = Date.parse(other.date);
+        if (!Number.isNaN(d) && d < cutoff) continue;
+      }
+      if (basisDescriptor) {
+        const od = normalizeStr(other.description);
+        if (od && (od === subjectText || od.includes(subjectText) || subjectText.includes(od))) count++;
+      } else {
+        const oc = normalizeStr(other.counterparty);
+        if (oc && (oc === subjectCp || oc.includes(subjectCp) || subjectCp.includes(oc))) count++;
+      }
+      if (count + 1 >= r.recurrence_min_count) return true;
+    }
+    return false;
+  }
+  return true;
+}
 
 async function applyAndPersist(
   supabase: any,
@@ -301,6 +521,20 @@ async function applyAndPersist(
     createdCategoryId = newCat?.id ?? null;
   }
 
+  // category_rule: persist as importance_rules + apply retroactively
+  let ruleResult: { rule_id: string | null; category_id: string | null; affected: number; created_category: boolean } | null = null;
+  if (interp.type === "category_rule") {
+    const rule = (interp.configuration_json as any)?.rule as CategoryRule | undefined;
+    if (rule && Array.isArray(rule.conditions) && rule.conditions.length > 0) {
+      try {
+        ruleResult = await applyCategoryRule(supabase, workspaceId, rule);
+        if (ruleResult.created_category && ruleResult.category_id) createdCategoryId = ruleResult.category_id;
+      } catch (err) {
+        console.error("applyCategoryRule failed:", err);
+      }
+    }
+  }
+
   const { data: cust, error: cErr } = await supabase
     .from("customizations")
     .insert({
@@ -316,6 +550,10 @@ async function applyAndPersist(
       menu_key: interp.type === "label_rename"
         ? Object.keys(interp.configuration_json?.labels ?? {})[0] ?? null
         : null,
+      operation_type: interp.type,
+      operation_payload: ruleResult
+        ? { ...interp.configuration_json, applied_rule_id: ruleResult.rule_id, affected_transactions: ruleResult.affected }
+        : interp.configuration_json,
     })
     .select().single();
 
@@ -333,6 +571,7 @@ async function applyAndPersist(
     customization_id: cust.id,
   };
   if (createdCategoryId) rollback.category_id = createdCategoryId;
+  if (ruleResult?.rule_id) rollback.importance_rule_id = ruleResult.rule_id;
 
   await supabase.from("customization_requests")
     .update({
@@ -343,7 +582,11 @@ async function applyAndPersist(
     })
     .eq("id", inserted.id);
 
-  return { request: { ...inserted, applied_customization_id: cust.id, status: "testing" }, autoApplied: true as const };
+  return {
+    request: { ...inserted, applied_customization_id: cust.id, status: "testing" },
+    autoApplied: true as const,
+    affected_transactions: ruleResult?.affected ?? 0,
+  };
 }
 
 /**
