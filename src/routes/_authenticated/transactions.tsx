@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
+import { useCustomizedUI } from "@/hooks/use-customized-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,6 +36,7 @@ function TransactionsPage() {
   const [open, setOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const wsId = workspace?.id;
+  const { savedFilters } = useCustomizedUI(wsId);
   const t = workspace ? L(workspace.type) : L("personal");
   const currency = workspace?.currency ?? "BRL";
   const privacy = workspace?.privacy_mode ?? false;
@@ -128,6 +130,28 @@ function TransactionsPage() {
           </Select>
         </CardContent>
       </Card>
+
+      {savedFilters.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Filtros salvos:</span>
+          {savedFilters.map((f: any) => (
+            <button
+              key={f.id}
+              onClick={() => {
+                const fc = f.configuration_json?.filters ?? {};
+                if (typeof fc.search === "string") setSearch(fc.search);
+                if (fc.type) setType(String(fc.type));
+                if (fc.month) setMonth(String(fc.month));
+                if (fc.year) setYear(String(fc.year));
+                toast.success(`Filtro "${f.name}" aplicado`);
+              }}
+              className="text-xs px-2.5 py-1 rounded-full border bg-card hover:bg-accent transition"
+            >
+              {f.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-0">

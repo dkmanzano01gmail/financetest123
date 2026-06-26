@@ -132,6 +132,12 @@ function AdminRow({
         {req.ai_classification_reason && (
           <div className="text-xs text-muted-foreground italic">{req.ai_classification_reason}</div>
         )}
+        <div className="text-xs text-muted-foreground bg-muted/40 rounded p-2">
+          <span className="font-medium text-foreground">Por que veio para análise:</span>{" "}
+          {interp.type === "other"
+            ? "O pedido não casou com nenhuma primitiva do runtime (renomear, esconder, reordenar, criar categoria/regra, salvar filtro). Implemente como código ou estenda o registry."
+            : "Pedido marcado como advanced pela IA."}
+        </div>
         {interp.configuration_json && Object.keys(interp.configuration_json).length > 0 && (
           <pre className="text-xs bg-muted/50 rounded p-2 overflow-auto max-h-40">
             {JSON.stringify(interp.configuration_json, null, 2)}

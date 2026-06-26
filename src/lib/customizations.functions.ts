@@ -142,20 +142,63 @@ function classifyLocally(text: string): LocalClassification {
     return buildLocalCategoryRule(text);
   }
 
-  // Hide/show card
-  if (/ocultar|esconder|mostrar|exibir/i.test(t)) {
+  // Hide/show menu tab (nav_visibility) — must be checked before card_visibility
+  // because "esconder aba contas" mentions both "esconder" and a nav key.
+  if (/(ocultar|esconder|tirar|remover|mostrar|exibir)/i.test(t) && /(aba|menu|item do menu|sidebar|t[aá]b)/i.test(t)) {
     const visible = /mostrar|exibir/i.test(t);
-    let card_id = "balance";
+    const key = detectNavKey(t);
+    if (key) {
+      return {
+        type: "nav_visibility", complexity: "easy",
+        summary: `${visible ? "Mostrar" : "Ocultar"} aba "${key}"`,
+        reason: "Visibilidade de item de menu.",
+        estimated_credits: 1,
+        configuration_json: { menu_key: key, visible },
+      };
+    }
+  }
+
+  // Reorder menu: "colocar X antes de Y", "mover X para o topo/início/fim"
+  if (/(reorden|coloc(ar|ue)|mover|mude\s+a\s+ordem|trocar\s+a\s+ordem|antes\s+de|depois\s+de|para\s+(o\s+)?(topo|in[ií]cio|fim))/i.test(t)) {
+    // Best-effort: detect 2 nav keys and produce a relative order; full order
+    // is too ambiguous for the local parser, so we mark advanced when not confident.
+    const hits: string[] = [];
+    for (const [needle, key] of Object.entries(NAV_LABEL_MAP)) {
+      if (t.includes(needle) && !hits.includes(key)) hits.push(key);
+    }
+    if (hits.length >= 2) {
+      // "X antes de Y" → [X, Y]; "depois de" → [Y, X]
+      const afterMode = /\bdepois\s+de\b/.test(t);
+      const order = afterMode ? [hits[1], hits[0]] : [hits[0], hits[1]];
+      return {
+        type: "nav_reorder", complexity: "easy",
+        summary: `Reordenar menu: ${order.join(" → ")}`,
+        reason: "Reordenação parcial do menu (demais itens preservados).",
+        estimated_credits: 2,
+        configuration_json: { order },
+      };
+    }
+  }
+
+  // Hide/show dashboard card
+  if (/(ocultar|esconder|tirar|remover|mostrar|exibir)/i.test(t) && /(card|widget|gr[aá]fico|bloco|painel|caixa)/i.test(t)) {
+    const visible = /mostrar|exibir/i.test(t);
+    let card_id: string | null = null;
     if (/receit|entrad|incom/i.test(t)) card_id = "income";
-    else if (/despes|gast|expense/i.test(t)) card_id = "expense";
+    else if (/despes|gast|expense|sa[ií]da/i.test(t)) card_id = "expense";
+    else if (/saldo em contas|conta/i.test(t)) card_id = "accounts_balance";
     else if (/saldo|balance/i.test(t)) card_id = "balance";
-    return {
-      type: "card_visibility", complexity: "easy",
-      summary: `${visible ? "Mostrar" : "Ocultar"} card "${card_id}"`,
-      reason: "Visibilidade de card do dashboard.",
-      estimated_credits: 1,
-      configuration_json: { card_id, visible },
-    };
+    else if (/recente|[uú]ltimas/i.test(t)) card_id = "recent_transactions";
+    else if (/categoria/i.test(t)) card_id = "top_category";
+    if (card_id) {
+      return {
+        type: "card_visibility", complexity: "easy",
+        summary: `${visible ? "Mostrar" : "Ocultar"} card "${card_id}"`,
+        reason: "Visibilidade de card do dashboard.",
+        estimated_credits: 1,
+        configuration_json: { card_id, visible },
+      };
+    }
   }
 
   // Saved filter
@@ -294,7 +337,8 @@ async function tryAiInterpret(requestText: string, signal?: AbortSignal): Promis
 }
 
 const APPLICABLE_TYPES = new Set([
-  "label_rename", "card_visibility", "category_rule", "saved_filter", "new_category",
+  "label_rename", "card_visibility", "nav_visibility", "nav_reorder",
+  "dashboard_widget_order", "category_rule", "saved_filter", "new_category",
 ]);
 
 /**
