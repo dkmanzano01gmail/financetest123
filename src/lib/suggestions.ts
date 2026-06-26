@@ -31,6 +31,7 @@ type Category = {
 };
 
 type Rule = {
+  rule_kind?: "descriptor"|"amount"|"counterparty"|"recurrence"|"composite";
   match_text: string;
   match_mode: "contains" | "equals" | "starts_with" | "regex";
   category_hint: string | null;
@@ -40,12 +41,23 @@ type Rule = {
   workspace_type: "personal" | "business" | null;
   confidence: number;
   source_type: "system" | "user" | "learned";
+  amount_operator?: "equals"|"multiple_of"|"between"|"greater_than"|"less_than" | null;
+  amount_value?: number | null;
+  amount_value_2?: number | null;
+  counterparty_match?: string | null;
+  counterparty_match_mode?: "contains"|"equals"|"starts_with" | null;
+  recurrence_min_count?: number | null;
+  recurrence_window_days?: number | null;
+  priority?: number | null;
 };
 
 type HistoryEntry = {
   description: string;
+  counterparty?: string | null;
   category_id: string | null;
   importance_level: Importance | null;
+  date?: string | null;
+  amount?: number | null;
 };
 
 function normalize(s: string): string {
@@ -68,6 +80,64 @@ function ruleMatches(text: string, r: Rule): boolean {
   return text.includes(m);
 }
 
+function counterpartyMatches(cp: string, r: Rule): boolean {
+  const m = normalize(r.counterparty_match ?? "");
+  if (!m) return false;
+  const mode = r.counterparty_match_mode ?? "contains";
+  if (mode === "equals") return cp === m;
+  if (mode === "starts_with") return cp.startsWith(m);
+  return cp.includes(m);
+}
+
+function amountMatches(amount: number, r: Rule): boolean {
+  const op = r.amount_operator;
+  const v = r.amount_value;
+  if (!op || v === null || v === undefined) return false;
+  const a = Math.abs(amount);
+  const vv = Math.abs(Number(v));
+  if (op === "equals") return Math.abs(a - vv) < 0.005;
+  if (op === "multiple_of") return vv > 0 && Math.abs((a / vv) - Math.round(a / vv)) < 0.005;
+  if (op === "greater_than") return a > vv;
+  if (op === "less_than") return a < vv;
+  if (op === "between") {
+    const v2 = Math.abs(Number(r.amount_value_2 ?? v));
+    const lo = Math.min(vv, v2), hi = Math.max(vv, v2);
+    return a >= lo && a <= hi;
+  }
+  return false;
+}
+
+/** Returns true when the descriptor (or counterparty) repeats N times in the window. */
+function recurrenceMatches(
+  tx: SuggestionInput,
+  r: Rule,
+  history: HistoryEntry[],
+): boolean {
+  const minCount = r.recurrence_min_count ?? 2;
+  const windowDays = r.recurrence_window_days ?? 90;
+  const basisDescriptor = !r.counterparty_match;
+  const cutoff = Date.now() - windowDays * 86_400_000;
+  const subjectText = normalize(tx.description ?? "");
+  const subjectCp = normalize(tx.counterparty ?? "");
+  if (!subjectText && !subjectCp) return false;
+  let count = 0;
+  for (const h of history) {
+    if (h.date) {
+      const t = Date.parse(h.date);
+      if (!Number.isNaN(t) && t < cutoff) continue;
+    }
+    if (basisDescriptor) {
+      const hd = normalize(h.description ?? "");
+      if (hd && (hd === subjectText || hd.includes(subjectText) || subjectText.includes(hd))) count++;
+    } else {
+      const hc = normalize(h.counterparty ?? "");
+      if (hc && (hc === subjectCp || hc.includes(subjectCp) || subjectCp.includes(hc))) count++;
+    }
+    if (count >= minCount) return true;
+  }
+  return false;
+}
+
 function similarHistory(text: string, history: HistoryEntry[]): HistoryEntry | null {
   // Try token overlap to detect e.g. "IFOOD SAO PAULO" vs "IFOOD"
   const tokens = text.split(" ").filter((t) => t.length >= 3);
@@ -87,8 +157,12 @@ function similarHistory(text: string, history: HistoryEntry[]): HistoryEntry | n
 export async function loadSuggestionContext(workspaceId: string, workspaceType: "personal" | "business") {
   const [{ data: cats }, { data: rules }, { data: hist }] = await Promise.all([
     supabase.from("categories").select("id,name,type,importance_level,importance_comment" as any).eq("workspace_id", workspaceId).eq("is_active", true),
-    (supabase as any).from("importance_rules").select("match_text,match_mode,category_hint,category_id,importance_level,transaction_type,workspace_type,confidence,source_type").eq("is_active", true).or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`),
-    supabase.from("transactions").select("description,category_id,importance_level" as any).eq("workspace_id", workspaceId).not("category_id", "is", null).not("importance_level", "is", null).order("created_at", { ascending: false }).limit(500),
+    (supabase as any).from("importance_rules")
+      .select("rule_kind,match_text,match_mode,category_hint,category_id,importance_level,transaction_type,workspace_type,confidence,source_type,amount_operator,amount_value,amount_value_2,counterparty_match,counterparty_match_mode,recurrence_min_count,recurrence_window_days,priority")
+      .eq("is_active", true)
+      .or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
+      .order("priority", { ascending: true }),
+    supabase.from("transactions").select("description,counterparty,date,amount,category_id,importance_level" as any).eq("workspace_id", workspaceId).order("date", { ascending: false }).limit(800),
   ]);
   return {
     categories: ((cats as any[]) ?? []) as Category[],
@@ -126,23 +200,43 @@ export function suggestForTransaction(
 
   // 2) Rules (highest confidence wins, type-matching)
   let bestRule: Rule | null = null;
+  let bestRuleScore = -1;
   for (const r of ctx.rules) {
     if (r.transaction_type && r.transaction_type !== tx.type) continue;
-    if (!ruleMatches(text, r)) continue;
-    if (!bestRule || r.confidence > bestRule.confidence) bestRule = r;
+    const kind = r.rule_kind ?? "descriptor";
+    const hasDesc = !!(r.match_text && r.match_text.trim());
+    const hasAmount = !!r.amount_operator;
+    const hasCp = !!(r.counterparty_match && r.counterparty_match.trim());
+    const hasRec = !!r.recurrence_min_count;
+    let ok = true;
+    if (hasDesc) ok = ok && ruleMatches(text, r);
+    if (ok && hasAmount) ok = ok && amountMatches(tx.amount, r);
+    if (ok && hasCp) ok = ok && counterpartyMatches(normalize(tx.counterparty ?? ""), r);
+    if (ok && hasRec) ok = ok && recurrenceMatches(tx, r, ctx.history);
+    if (!ok) continue;
+    // Score: more matched dimensions = more specific = wins.
+    const dims = (hasDesc?1:0) + (hasAmount?1:0) + (hasCp?1:0) + (hasRec?1:0);
+    const score = dims * 10 + r.confidence - (r.priority ?? 100) / 1000;
+    if (score > bestRuleScore) { bestRule = r; bestRuleScore = score; }
+    void kind;
   }
   if (bestRule) {
     let cat: Category | null = null;
     if (bestRule.category_id) cat = catsById.get(bestRule.category_id) ?? null;
     if (!cat && bestRule.category_hint) cat = catsByName.get(normalize(bestRule.category_hint)) ?? null;
     if (cat && cat.type !== tx.type) cat = null;
+    const reasonBits: string[] = [];
+    if (bestRule.match_text) reasonBits.push(`descritivo "${bestRule.match_text}"`);
+    if (bestRule.amount_operator) reasonBits.push(`valor ${bestRule.amount_operator} ${bestRule.amount_value}`);
+    if (bestRule.counterparty_match) reasonBits.push(`pessoa "${bestRule.counterparty_match}"`);
+    if (bestRule.recurrence_min_count) reasonBits.push(`recorrência ≥${bestRule.recurrence_min_count}/${bestRule.recurrence_window_days}d`);
     return {
       transaction_id: tx.id,
       category_id: cat?.id ?? null,
       category_name: cat?.name ?? bestRule.category_hint ?? null,
       importance: bestRule.importance_level,
       confidence: bestRule.confidence,
-      reason: `Palavra-chave "${bestRule.match_text}" sugere ${cat?.name ?? bestRule.category_hint ?? "categoria"} (${labelImp(bestRule.importance_level)}).`,
+      reason: `Regra (${reasonBits.join(" + ") || "match"}) → ${cat?.name ?? bestRule.category_hint ?? "categoria"} (${labelImp(bestRule.importance_level)}).`,
       source: "rule",
     };
   }
