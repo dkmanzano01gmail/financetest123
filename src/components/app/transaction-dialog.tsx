@@ -13,8 +13,15 @@ import { toast } from "sonner";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { L } from "@/lib/labels";
 import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
+import { parseLocaleAmount } from "@/lib/format";
 
-export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function TransactionDialog({
+  open, onOpenChange, transaction,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  transaction?: any | null;
+}) {
   const { workspace } = useCurrentWorkspace();
   const qc = useQueryClient();
   const [type, setType] = useState<"income" | "expense">("expense");
@@ -29,12 +36,14 @@ export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpe
 
   const wsId = workspace?.id;
   const t = workspace ? L(workspace.type) : L("personal");
+  const editing = !!transaction?.id;
 
   const { data: categories } = useQuery({
     queryKey: ["categories", wsId],
     enabled: !!wsId,
     queryFn: async () => {
-      const { data } = await supabase.from("categories").select("id,name,type,color,importance_level" as any).eq("workspace_id", wsId!).eq("is_active", true).order("name");
+      const { data, error } = await supabase.from("categories").select("id,name,type,color,importance_level" as any).eq("workspace_id", wsId!).eq("is_active", true).order("name");
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -42,7 +51,8 @@ export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpe
     queryKey: ["accounts", wsId],
     enabled: !!wsId,
     queryFn: async () => {
-      const { data } = await supabase.from("accounts").select("*").eq("workspace_id", wsId!).eq("is_active", true);
+      const { data, error } = await supabase.from("accounts").select("*").eq("workspace_id", wsId!).eq("is_active", true);
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -50,12 +60,35 @@ export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpe
     queryKey: ["cards", wsId],
     enabled: !!wsId,
     queryFn: async () => {
-      const { data } = await supabase.from("credit_cards").select("*").eq("workspace_id", wsId!).eq("is_active", true);
+      const { data, error } = await supabase.from("credit_cards").select("*").eq("workspace_id", wsId!).eq("is_active", true);
+      if (error) throw error;
       return data ?? [];
     },
   });
 
-  useEffect(() => { if (open) setCategoryId(""); }, [open, type]);
+  // Load transaction fields into form when editing / reset when creating.
+  useEffect(() => {
+    if (!open) return;
+    if (transaction) {
+      setType((transaction.type ?? "expense") as any);
+      setDate(transaction.date ?? new Date().toISOString().slice(0, 10));
+      setAmount(transaction.amount != null ? String(transaction.amount).replace(".", ",") : "");
+      setDescription(transaction.description ?? "");
+      setCategoryId(transaction.category_id ?? "");
+      setAccountId(transaction.account_id ?? "");
+      setCardId(transaction.credit_card_id ?? "");
+      setCounterparty(transaction.counterparty ?? "");
+      setNotes(transaction.notes ?? "");
+    } else {
+      setType("expense");
+      setDate(new Date().toISOString().slice(0, 10));
+      setAmount(""); setDescription(""); setCategoryId("");
+      setAccountId(""); setCardId(""); setCounterparty(""); setNotes("");
+    }
+  }, [open, transaction]);
+
+  // Reset category when switching type on a fresh entry only (keeps edit intact).
+  useEffect(() => { if (open && !transaction) setCategoryId(""); }, [type, open, transaction]);
 
   const selectedCategory = (categories ?? []).find((c: any) => c.id === categoryId) as any | undefined;
   const inheritedImportance: Importance = (selectedCategory?.importance_level ?? "flexible") as Importance;
@@ -63,37 +96,60 @@ export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpe
   const mutation = useMutation({
     mutationFn: async () => {
       if (!wsId) throw new Error("Workspace ausente");
-      const amt = Number(amount.replace(",", "."));
-      if (!amt || amt <= 0) throw new Error("Valor inválido");
-      const { error } = await supabase.from("transactions").insert({
-        workspace_id: wsId,
-        date,
-        type,
-        amount: amt,
-        description,
-        category_id: categoryId || null,
-        account_id: accountId || null,
-        credit_card_id: cardId || null,
-        counterparty: counterparty || null,
-        notes: notes || null,
-        source: "manual",
-        status: "confirmed",
-        month: Number(date.slice(5,7)),
-        year: Number(date.slice(0,4)),
-        importance_level: selectedCategory ? inheritedImportance : null,
-        suggested_importance_level: selectedCategory ? inheritedImportance : null,
-        importance_status: selectedCategory ? "suggested" : null,
-        importance_confidence: selectedCategory ? 0.5 : null,
-        importance_suggestion_reason: selectedCategory ? "Importância padrão da categoria" : null,
-      });
-      if (error) throw error;
+      const desc = description.trim();
+      if (!desc) throw new Error("Informe a descrição.");
+      if (!date || Number.isNaN(new Date(`${date}T00:00:00`).getTime())) throw new Error("Data inválida.");
+      const amt = parseLocaleAmount(amount);
+      if (!Number.isFinite(amt) || amt <= 0) throw new Error("Valor inválido.");
+      if (accountId && cardId) throw new Error("Escolha conta OU cartão, não os dois.");
+      const monthN = Number(date.slice(5, 7));
+      const yearN = Number(date.slice(0, 4));
+
+      if (editing) {
+        // Preserve manual overrides: don't rewrite importance fields on edit.
+        const patch: Record<string, any> = {
+          date, month: monthN, year: yearN, type, amount: amt,
+          description: desc,
+          category_id: categoryId || null,
+          account_id: accountId || null,
+          credit_card_id: cardId || null,
+          counterparty: counterparty || null,
+          notes: notes || null,
+        };
+        const { error } = await supabase.from("transactions")
+          .update(patch)
+          .eq("id", transaction.id)
+          .eq("workspace_id", wsId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("transactions").insert({
+          workspace_id: wsId,
+          date, month: monthN, year: yearN, type, amount: amt,
+          description: desc,
+          category_id: categoryId || null,
+          account_id: accountId || null,
+          credit_card_id: cardId || null,
+          counterparty: counterparty || null,
+          notes: notes || null,
+          source: "manual",
+          status: "confirmed",
+          importance_level: selectedCategory ? inheritedImportance : null,
+          suggested_importance_level: selectedCategory ? inheritedImportance : null,
+          importance_status: selectedCategory ? "suggested" : null,
+          importance_confidence: selectedCategory ? 0.5 : null,
+          importance_suggestion_reason: selectedCategory ? "Importância padrão da categoria" : null,
+        });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
-      toast.success("Transação salva");
+      toast.success(editing ? "Transação atualizada" : "Transação salva");
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["transactions-year"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["reconciliation"] });
+      qc.invalidateQueries({ queryKey: ["ba-txs"] });
       onOpenChange(false);
-      setAmount(""); setDescription(""); setCounterparty(""); setNotes("");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -103,7 +159,7 @@ export function TransactionDialog({ open, onOpenChange }: { open: boolean; onOpe
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>Nova transação</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{editing ? "Editar transação" : "Nova transação"}</DialogTitle></DialogHeader>
         <Tabs value={type} onValueChange={(v) => setType(v as any)}>
           <TabsList className="grid grid-cols-2 w-full">
             <TabsTrigger value="expense">{t.expenseSingular}</TabsTrigger>
