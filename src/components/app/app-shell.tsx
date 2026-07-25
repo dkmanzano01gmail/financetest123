@@ -70,11 +70,11 @@ export function AppShell() {
     <div className="min-h-screen flex bg-background">
       {/* Sidebar */}
       <aside className="hidden md:flex w-64 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-        <div className="px-5 py-5 flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center font-display font-bold">O</div>
+        <div className="px-5 py-5 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center font-display font-bold text-lg">S</div>
           <div>
-            <div className="font-display font-semibold leading-tight">Orna</div>
-            <div className="text-xs text-sidebar-foreground/60">Financeiro</div>
+            <div className="font-display font-bold leading-tight text-base">Selá</div>
+            <div className="text-xs text-sidebar-foreground/60">{workspace?.type === "business" ? "Cerâmica" : "Financeiro"}</div>
           </div>
         </div>
 
@@ -152,8 +152,8 @@ export function AppShell() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center font-display font-bold text-sm shrink-0">O</div>
-                  <span className="font-display font-semibold truncate">{workspace?.name ?? "Orna"}</span>
+                  <div className="w-8 h-8 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center font-display font-bold text-sm shrink-0">S</div>
+                  <span className="font-display font-semibold truncate">{workspace?.name ?? "Selá"}</span>
                   <ChevronDown className="w-4 h-4 opacity-60 shrink-0" />
                 </button>
               </DropdownMenuTrigger>
