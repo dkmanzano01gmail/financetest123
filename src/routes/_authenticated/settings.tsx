@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { toast } from "sonner";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Palette } from "lucide-react";
 import { setCurrentWorkspaceId } from "@/lib/workspace-storage";
 
 export const Route = createFileRoute("/_authenticated/settings")({ component: SettingsPage });
@@ -50,6 +50,21 @@ function SettingsPage() {
       if (error) throw error;
     },
     onSuccess: () => { setCurrentWorkspaceId(null); qc.invalidateQueries({ queryKey: ["workspaces"] }); toast.success("Workspace removido"); navigate({ to: "/onboarding" }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const seedMut = useMutation({
+    mutationFn: async () => {
+      if (!workspace) return;
+      const { error } = await (supabase as any).rpc("seed_sela_defaults", { _workspace_id: workspace.id });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categories"] });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["cards-full"] });
+      toast.success("Padrões Selá aplicados (nada foi duplicado).");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -98,6 +113,18 @@ function SettingsPage() {
             <Button variant="secondary" onClick={() => navigate({ to: "/customizations" })}>Abrir Personalizações</Button>
           </CardContent>
         </Card>
+
+        {workspace.type === "business" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Palette className="w-4 h-4 text-primary" />Padrões Selá Cerâmica</CardTitle>
+              <CardDescription>Cria categorias, contas e cartão padrão do ateliê. É idempotente: nada existente é duplicado ou sobrescrito.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="secondary" onClick={() => seedMut.mutate()} disabled={seedMut.isPending}>Aplicar padrões Selá</Button>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="border-destructive/30">
           <CardHeader><CardTitle className="text-destructive">Zona de risco</CardTitle></CardHeader>
