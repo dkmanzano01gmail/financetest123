@@ -13,6 +13,10 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { toast } from "sonner";
 import { Sparkles, Palette } from "lucide-react";
 import { setCurrentWorkspaceId } from "@/lib/workspace-storage";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/_authenticated/settings")({ component: SettingsPage });
 
@@ -25,6 +29,8 @@ function SettingsPage() {
   const [currency, setCurrency] = useState("BRL");
   const [country, setCountry] = useState("BR");
   const [privacy, setPrivacy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
 
   useEffect(() => {
     if (workspace) {
@@ -36,7 +42,11 @@ function SettingsPage() {
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!workspace) return;
-      const { error } = await supabase.from("workspaces").update({ name, type, currency, country, privacy_mode: privacy }).eq("id", workspace.id);
+      if (!name.trim()) throw new Error("Informe um nome.");
+      const { error } = await supabase.from("workspaces")
+        .update({ name: name.trim(), type, currency, country, privacy_mode: privacy })
+        .eq("id", workspace.id)
+        .eq("owner_id", workspace.owner_id);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["workspaces"] }); toast.success("Configurações salvas"); },
@@ -46,10 +56,20 @@ function SettingsPage() {
   const deleteMut = useMutation({
     mutationFn: async () => {
       if (!workspace) return;
-      const { error } = await supabase.from("workspaces").delete().eq("id", workspace.id);
+      const { error } = await supabase.from("workspaces")
+        .delete()
+        .eq("id", workspace.id)
+        .eq("owner_id", workspace.owner_id);
       if (error) throw error;
     },
-    onSuccess: () => { setCurrentWorkspaceId(null); qc.invalidateQueries({ queryKey: ["workspaces"] }); toast.success("Workspace removido"); navigate({ to: "/onboarding" }); },
+    onSuccess: () => {
+      setCurrentWorkspaceId(null);
+      qc.invalidateQueries({ queryKey: ["workspaces"] });
+      toast.success("Workspace removido");
+      setDeleteOpen(false);
+      setConfirmText("");
+      navigate({ to: "/onboarding" });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -129,12 +149,36 @@ function SettingsPage() {
         <Card className="border-destructive/30">
           <CardHeader><CardTitle className="text-destructive">Zona de risco</CardTitle></CardHeader>
           <CardContent>
-            <Button variant="destructive" onClick={() => { if (confirm("Remover este workspace e todos seus dados?")) deleteMut.mutate(); }}>
+            <Button variant="destructive" onClick={() => { setConfirmText(""); setDeleteOpen(true); }}>
               Excluir workspace
             </Button>
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={deleteOpen} onOpenChange={(o) => { setDeleteOpen(o); if (!o) setConfirmText(""); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir workspace?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso removerá permanentemente todos os dados do workspace <strong>{workspace.name}</strong>
+              {" "}(transações, categorias, contas, cartões e personalizações). Esta ação não pode ser desfeita.
+              <br /><br />
+              Digite <code className="px-1 rounded bg-muted">{workspace.name}</code> para confirmar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder={workspace.name} />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMut.mutate()}
+              disabled={deleteMut.isPending || confirmText.trim() !== workspace.name}
+            >
+              Excluir permanentemente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageContainer>
   );
 }
