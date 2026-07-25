@@ -15,6 +15,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { Sparkles, Wand2, Trash2, Loader2, RefreshCw } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/format";
 
@@ -48,18 +52,24 @@ function CustomizationsPage() {
 
   const [text, setText] = useState("");
   const [exampleIdx, setExampleIdx] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setExampleIdx((i) => (i + 1) % EXAMPLES.length), 3500);
     return () => clearInterval(id);
   }, []);
 
-  // Ensure current credits row exists
+  // Ensure current credits row exists (surface errors instead of swallowing).
   useEffect(() => {
     if (!wsId) return;
-    (supabase as any).rpc("ensure_current_credits", { _workspace_id: wsId }).then(() => {
-      qc.invalidateQueries({ queryKey: ["credits", wsId] });
-    });
+    let cancelled = false;
+    (async () => {
+      const { error } = await (supabase as any).rpc("ensure_current_credits", { _workspace_id: wsId });
+      if (cancelled) return;
+      if (error) toast.error(`Não foi possível carregar créditos: ${error.message}`);
+      else qc.invalidateQueries({ queryKey: ["credits", wsId] });
+    })();
+    return () => { cancelled = true; };
   }, [wsId, qc]);
 
   const { data: credits } = useQuery({
@@ -114,6 +124,7 @@ function CustomizationsPage() {
       qc.invalidateQueries({ queryKey: ["active-test", wsId] });
       qc.invalidateQueries({ queryKey: ["categories", wsId] });
       qc.invalidateQueries({ queryKey: ["transactions", wsId] });
+      qc.invalidateQueries({ queryKey: ["label-overrides", wsId] });
       if (res?.autoApplied) {
         const affected = Number(res?.affected_transactions ?? 0);
         if (affected > 0) {
@@ -124,7 +135,6 @@ function CustomizationsPage() {
       } else {
         toast.success("Pedido enviado para aprovação do admin.");
       }
-      setTimeout(() => window.location.reload(), 600);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -136,7 +146,9 @@ function CustomizationsPage() {
     },
     onSuccess: (res: any) => {
       toast.success(`${res?.processed ?? 0} pedido(s) reprocessado(s).`);
-      setTimeout(() => window.location.reload(), 500);
+      qc.invalidateQueries({ queryKey: ["customization-requests", wsId] });
+      qc.invalidateQueries({ queryKey: ["customizations", wsId] });
+      qc.invalidateQueries({ queryKey: ["label-overrides", wsId] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -147,33 +159,45 @@ function CustomizationsPage() {
 
   const toggleMut = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      if (!wsId) throw new Error("Sem workspace");
       const { error } = await (supabase as any)
         .from("customizations")
         .update({ is_active })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("workspace_id", wsId);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customizations", wsId] });
-      window.location.reload();
+      qc.invalidateQueries({ queryKey: ["label-overrides", wsId] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const removeMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase as any).from("customizations").delete().eq("id", id);
+      if (!wsId) throw new Error("Sem workspace");
+      const { error } = await (supabase as any)
+        .from("customizations")
+        .delete()
+        .eq("id", id)
+        .eq("workspace_id", wsId);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customizations", wsId] });
+      qc.invalidateQueries({ queryKey: ["label-overrides", wsId] });
       toast.success("Personalização removida");
-      setTimeout(() => window.location.reload(), 400);
+      setConfirmDelete(null);
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   if (!workspace) return null;
+
+  const safeRequests = Array.isArray(requests) ? requests : [];
+  const safeActive = Array.isArray(cust?.active) ? cust.active : [];
+  const safeAll = Array.isArray(cust?.customizations) ? cust.customizations : [];
 
   return (
     <PageContainer>
@@ -238,7 +262,7 @@ function CustomizationsPage() {
             <Tabs defaultValue="history">
               <TabsList className="mb-3">
                 <TabsTrigger value="history">Histórico</TabsTrigger>
-                <TabsTrigger value="active">Ativas ({cust.active.length})</TabsTrigger>
+              <TabsTrigger value="active">Ativas ({safeActive.length})</TabsTrigger>
               </TabsList>
 
               <TabsContent value="history" className="space-y-2 max-h-[500px] overflow-auto">
@@ -256,19 +280,19 @@ function CustomizationsPage() {
                     Reprocessar pedidos pendentes
                   </Button>
                 )}
-                {(requests ?? []).length === 0 && (
+                {safeRequests.length === 0 && (
                   <div className="text-sm text-muted-foreground py-4 text-center">Nenhum pedido ainda.</div>
                 )}
-                {(requests ?? []).map((r: any) => (
+                {safeRequests.map((r: any) => (
                   <RequestRow key={r.id} req={r} />
                 ))}
               </TabsContent>
 
               <TabsContent value="active" className="space-y-2 max-h-[500px] overflow-auto">
-                {cust.active.length === 0 && (
+                {safeActive.length === 0 && (
                   <div className="text-sm text-muted-foreground py-4 text-center">Nenhuma personalização ativa.</div>
                 )}
-                {cust.customizations.map((c) => (
+                {safeAll.map((c) => (
                   <div key={c.id} className="flex items-start gap-3 rounded-lg border p-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -281,7 +305,7 @@ function CustomizationsPage() {
                       checked={c.is_active}
                       onCheckedChange={(v) => toggleMut.mutate({ id: c.id, is_active: v })}
                     />
-                    <Button size="icon" variant="ghost" onClick={() => removeMut.mutate(c.id)}>
+                    <Button size="icon" variant="ghost" onClick={() => setConfirmDelete(c.id)}>
                       <Trash2 className="w-4 h-4 text-destructive" />
                     </Button>
                   </div>
@@ -291,6 +315,26 @@ function CustomizationsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover personalização?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta personalização será excluída permanentemente e o app voltará ao comportamento padrão.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmDelete && removeMut.mutate(confirmDelete)}
+              disabled={removeMut.isPending}
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageContainer>
   );
 }

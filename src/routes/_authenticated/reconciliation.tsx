@@ -92,7 +92,8 @@ function ReconciliationPage() {
           current_manual_balance: repBal as any,
           current_manual_balance_date: (repBal != null ? reportedDate : null) as any,
         } as any)
-        .eq("id", editing.id);
+        .eq("id", editing.id)
+        .eq("workspace_id", editing.workspace_id);
       if (error) throw error;
     },
     onSuccess: () => {

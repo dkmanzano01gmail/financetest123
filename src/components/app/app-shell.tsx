@@ -67,7 +67,8 @@ export function AppShell() {
     const { error } = await supabase
       .from("workspaces")
       .update({ privacy_mode: !workspace.privacy_mode })
-      .eq("id", workspace.id);
+      .eq("id", workspace.id)
+      .eq("owner_id", workspace.owner_id);
     if (error) return toast.error(error.message);
     qc.invalidateQueries({ queryKey: ["workspaces"] });
   }
