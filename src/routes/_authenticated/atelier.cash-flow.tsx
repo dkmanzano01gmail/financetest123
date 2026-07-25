@@ -292,6 +292,8 @@ function CashFlowPage() {
                   <th className="p-3">Descrição</th>
                   <th className="p-3">Tipo</th>
                   <th className="p-3">Recorrência</th>
+                  <th className="p-3">Dia</th>
+                  <th className="p-3">Ativo</th>
                   <th className="p-3">Status</th>
                   <th className="p-3 text-right">Valor</th>
                   <th className="p-3"></th>
@@ -304,6 +306,8 @@ function CashFlowPage() {
                     <td className="p-3">{e.description}</td>
                     <td className="p-3">{e.type === "income" ? "Entrada" : "Saída"}</td>
                     <td className="p-3 text-xs">{e.recurrence}</td>
+                    <td className="p-3 text-xs">{e.day_of_month ?? "—"}</td>
+                    <td className="p-3 text-xs">{e.is_active === false ? "Não" : "Sim"}</td>
                     <td className="p-3 text-xs">{e.status}</td>
                     <td
                       className={`p-3 text-right font-mono ${e.type === "income" ? "text-income" : "text-expense"}`}
