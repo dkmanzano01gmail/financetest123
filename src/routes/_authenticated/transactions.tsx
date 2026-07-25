@@ -17,8 +17,12 @@ import { Badge } from "@/components/ui/badge";
 import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
 import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
-import { Plus, Receipt, Trash2, Sparkles } from "lucide-react";
+import { Plus, Receipt, Trash2, Sparkles, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/_authenticated/transactions")({
   component: TransactionsPage,
@@ -34,6 +38,8 @@ function TransactionsPage() {
   const [type, setType] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
+  const [editingTx, setEditingTx] = useState<any | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const wsId = workspace?.id;
   const { savedFilters } = useCustomizedUI(wsId);
@@ -41,7 +47,7 @@ function TransactionsPage() {
   const currency = workspace?.currency ?? "BRL";
   const privacy = workspace?.privacy_mode ?? false;
 
-  const { data: txs } = useQuery({
+  const { data: txs, error: txsError, isLoading: txsLoading } = useQuery({
     queryKey: ["transactions", wsId, year, month],
     enabled: !!wsId,
     queryFn: async () => {
@@ -61,7 +67,11 @@ function TransactionsPage() {
   const { data: categories } = useQuery({
     queryKey: ["categories", wsId],
     enabled: !!wsId,
-    queryFn: async () => (await supabase.from("categories").select("*").eq("workspace_id", wsId!).order("name")).data ?? [],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("categories").select("*").eq("workspace_id", wsId!).order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
   });
 
   const filtered = useMemo(() => {
@@ -74,18 +84,32 @@ function TransactionsPage() {
 
   const removeMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("transactions").delete().eq("id", id);
+      const { error } = await supabase.from("transactions").delete().eq("id", id).eq("workspace_id", wsId!);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["transactions"] }); toast.success("Removida"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["reconciliation"] });
+      qc.invalidateQueries({ queryKey: ["ba-txs"] });
+      toast.success("Removida");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const updateCat = useMutation({
     mutationFn: async ({ id, category_id }: { id: string; category_id: string | null }) => {
-      const { error } = await supabase.from("transactions").update({ category_id }).eq("id", id);
+      const { error } = await supabase.from("transactions")
+        .update({ category_id } as any)
+        .eq("id", id)
+        .eq("workspace_id", wsId!);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["transactions"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return (
@@ -98,7 +122,7 @@ function TransactionsPage() {
             <Button variant="outline" onClick={() => setSuggestOpen(true)} disabled={!filtered.length}>
               <Sparkles className="w-4 h-4 mr-1" />Sugerir categorias
             </Button>
-            <Button onClick={() => setOpen(true)}><Plus className="w-4 h-4 mr-1" />Nova transação</Button>
+            <Button onClick={() => { setEditingTx(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Nova transação</Button>
           </div>
         }
       />
@@ -155,13 +179,17 @@ function TransactionsPage() {
 
       <Card>
         <CardContent className="p-0">
-          {filtered.length === 0 ? (
+          {txsError ? (
+            <div className="p-6 text-sm text-destructive">Erro ao carregar transações: {(txsError as any).message}</div>
+          ) : txsLoading ? (
+            <div className="p-6 text-sm text-muted-foreground">Carregando…</div>
+          ) : filtered.length === 0 ? (
             <div className="p-6">
               <EmptyState
                 icon={Receipt}
                 title="Você ainda não cadastrou transações"
                 description="Crie uma transação manualmente para começar."
-                action={<Button onClick={() => setOpen(true)}><Plus className="w-4 h-4 mr-1" />Nova transação</Button>}
+                action={<Button onClick={() => { setEditingTx(null); setOpen(true); }}><Plus className="w-4 h-4 mr-1" />Nova transação</Button>}
               />
             </div>
           ) : (
@@ -209,9 +237,14 @@ function TransactionsPage() {
                       {tx.type === "income" ? "+" : "-"}{formatCurrency(Number(tx.amount), currency, privacy)}
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => removeMut.mutate(tx.id)}>
-                        <Trash2 className="w-4 h-4 text-muted-foreground" />
-                      </Button>
+                      <div className="flex items-center gap-1 justify-end">
+                        <Button variant="ghost" size="icon" title="Editar" onClick={() => { setEditingTx(tx); setOpen(true); }}>
+                          <Pencil className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" title="Remover" onClick={() => setDeleteId(tx.id)}>
+                          <Trash2 className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -221,7 +254,19 @@ function TransactionsPage() {
         </CardContent>
       </Card>
 
-      <TransactionDialog open={open} onOpenChange={setOpen} />
+      <TransactionDialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditingTx(null); }} transaction={editingTx} />
+      <AlertDialog open={!!deleteId} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover transação?</AlertDialogTitle>
+            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { if (deleteId) removeMut.mutate(deleteId); setDeleteId(null); }}>Remover</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {wsId && workspace && (
         <SuggestReviewDialog
           open={suggestOpen}
@@ -236,6 +281,7 @@ function TransactionsPage() {
             amount: Number(tx.amount),
             category_id: tx.category_id,
             importance_level: tx.importance_level,
+            importance_confirmed_by_user: tx.importance_confirmed_by_user,
             current_category_name: tx.categories?.name ?? null,
           })) as any}
         />
