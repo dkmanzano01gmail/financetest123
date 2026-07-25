@@ -80,8 +80,6 @@ export function parseCsv(text: string): { headers: string[]; rows: CsvRow[]; del
 }
 
 export function parseAmount(raw: string): number | null {
-  // Delegate to the shared locale-safe parser.
-  const { parseLocaleAmount } = require("./format") as typeof import("./format");
   const n = parseLocaleAmount(raw);
   return Number.isFinite(n) ? n : null;
 }
