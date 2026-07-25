@@ -47,48 +47,75 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Cantarell", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Cantarell", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Cutive Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-accent: "Caveat Brush", cursive;
+  --color-sela-plum: var(--sela-plum);
+  --color-sela-wine: var(--sela-wine);
+  --color-sela-ivory: var(--sela-ivory);
+  --color-sela-sand: var(--sela-sand);
+  --color-sela-gold: var(--sela-gold);
+  --color-sela-sage: var(--sela-sage);
+  --color-sela-beige: var(--sela-beige);
+  --color-sela-terracotta: var(--sela-terracotta);
+  --color-sela-ochre: var(--sela-ochre);
+  --color-sela-brown: var(--sela-brown);
+  --color-sela-dark-brown: var(--sela-dark-brown);
 }
 
 :root {
   --radius: 0.75rem;
-  --background: oklch(0.975 0.012 85);
-  --foreground: oklch(0.24 0.02 60);
-  --card: oklch(0.995 0.006 85);
-  --card-foreground: oklch(0.24 0.02 60);
-  --popover: oklch(0.995 0.006 85);
-  --popover-foreground: oklch(0.24 0.02 60);
-  --primary: oklch(0.58 0.15 42);
-  --primary-foreground: oklch(0.985 0.01 85);
-  --secondary: oklch(0.93 0.018 80);
-  --secondary-foreground: oklch(0.28 0.02 60);
-  --muted: oklch(0.93 0.014 82);
-  --muted-foreground: oklch(0.48 0.018 65);
-  --accent: oklch(0.9 0.03 60);
-  --accent-foreground: oklch(0.28 0.02 60);
-  --destructive: oklch(0.55 0.21 27);
-  --destructive-foreground: oklch(0.985 0.01 85);
-  --success: oklch(0.6 0.16 148);
-  --success-foreground: oklch(0.985 0.01 85);
-  --income: oklch(0.55 0.15 148);
-  --expense: oklch(0.58 0.18 32);
-  --border: oklch(0.88 0.015 75);
-  --input: oklch(0.88 0.015 75);
-  --ring: oklch(0.58 0.15 42);
-  --chart-1: oklch(0.58 0.15 42);
-  --chart-2: oklch(0.6 0.16 148);
-  --chart-3: oklch(0.65 0.13 80);
-  --chart-4: oklch(0.5 0.1 230);
-  --chart-5: oklch(0.6 0.14 320);
-  --sidebar: oklch(0.24 0.015 70);
-  --sidebar-foreground: oklch(0.9 0.01 80);
-  --sidebar-primary: oklch(0.62 0.16 42);
-  --sidebar-primary-foreground: oklch(0.985 0.01 85);
-  --sidebar-accent: oklch(0.3 0.018 70);
-  --sidebar-accent-foreground: oklch(0.97 0.01 80);
-  --sidebar-border: oklch(0.32 0.015 70);
-  --sidebar-ring: oklch(0.58 0.15 42);
+  /* Selá palette (raw) */
+  --sela-plum: #331F24;
+  --sela-wine: #751424;
+  --sela-ivory: #FEFCEB;
+  --sela-sand: #D8CB9F;
+  --sela-gold: #D29538;
+  --sela-sage: #B9BCB0;
+  --sela-beige: #E7D1A9;
+  --sela-terracotta: #D89F58;
+  --sela-ochre: #734411;
+  --sela-brown: #5A422E;
+  --sela-dark-brown: #3C150E;
+
+  /* Semantic tokens */
+  --background: #FEFCEB;                 /* Ivory */
+  --foreground: #331F24;                 /* Plum */
+  --card: #FFFFFF;
+  --card-foreground: #331F24;
+  --popover: #FEFCEB;
+  --popover-foreground: #331F24;
+  --primary: #751424;                    /* Wine */
+  --primary-foreground: #FEFCEB;
+  --secondary: #E7D1A9;                  /* Beige */
+  --secondary-foreground: #3C150E;
+  --muted: #F1E9D2;                      /* Sand tint */
+  --muted-foreground: #5A422E;           /* Brown */
+  --accent: #D29538;                     /* Gold */
+  --accent-foreground: #331F24;
+  --destructive: #751424;
+  --destructive-foreground: #FEFCEB;
+  --success: #6E7A57;                    /* Sage-derived */
+  --success-foreground: #FEFCEB;
+  --income: #6E7A57;
+  --expense: #A03A2A;
+  --border: #E1D3AF;                     /* Sand light */
+  --input: #E1D3AF;
+  --ring: #D29538;
+  --chart-1: #751424;
+  --chart-2: #D29538;
+  --chart-3: #734411;
+  --chart-4: #B9BCB0;
+  --chart-5: #D89F58;
+  --sidebar: #331F24;                    /* Plum */
+  --sidebar-foreground: #FEFCEB;
+  --sidebar-primary: #D29538;            /* Gold */
+  --sidebar-primary-foreground: #331F24;
+  --sidebar-accent: #3C150E;             /* Dark brown */
+  --sidebar-accent-foreground: #FEFCEB;
+  --sidebar-border: #4a2f34;
+  --sidebar-ring: #D29538;
 }
 
 @layer base {
@@ -97,7 +124,8 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    font-feature-settings: "ss01", "cv11";
   }
-  h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.01em; }
+  h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.01em; font-weight: 700; }
+  .font-accent { font-family: var(--font-accent); letter-spacing: 0; }
+  .tabular-nums, .font-mono { font-family: var(--font-mono); font-feature-settings: "tnum"; }
 }

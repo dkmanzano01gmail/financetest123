@@ -1,131 +1,137 @@
+# Selá Cerâmica — Transformação do app
 
-# Plano — Motor de Personalização Genérico
+Preserva 100% de: auth, workspaces, transações, contas, cartões, categorias, orçamento, conciliação, personalizações (testing/approval), CSV import, privacidade. Nada é substituído por mock.
 
-## Verdade de fundo (importante ler antes)
+## Ordem de execução (por prioridade declarada)
 
-Um app já publicado **não pode reescrever o próprio código-fonte em produção** como o Lovable faz — Lovable tem acesso ao repositório e ao build. Então "fazer qualquer coisa" na prática significa **uma de duas coisas**:
+1. Rebrand visual + design system Selá
+2. Dashboard financeiro refinado
+3. Fluxo de caixa
+4. Precificação de peças
+5. Matéria-prima
+6. Lista de presença
+7. Material Aulas Regulares
+8. Reforma do Ateliê
+9. Precificação de workshops
+10. Precificação de queimas
+11. Seed defaults Selá (workspaces business, idempotente)
+12. Import Nubank + Auto-classificar (melhorias sobre o existente)
 
-1. **Cobrir ~85% dos pedidos com um motor de runtime poderoso** — um conjunto rico de "primitivas" (renomear, esconder, reordenar, recolorir, criar regra de categoria, criar filtro salvo, mudar comportamento de listagem, etc.) que a IA combina como JSON e o app aplica em tempo de execução, sem precisar de deploy. Isso é o que vamos construir.
-2. **Mandar o resto pro admin** (eu) implementar como mudança de código — exatamente o que o Lovable faz quando você pede algo fora do escopo do gerador.
+Se o orçamento de uma passagem não cobrir tudo, entrego o máximo em sequência e reporto o pendente ao final.
 
-Não existe caminho honesto onde 100% dos pedidos são executados automaticamente sem nenhum trabalho de desenvolvedor. O que existe é deixar a fronteira do "automático" o mais larga possível.
+## 1. Rebrand + Design System
 
-## Arquitetura proposta
+- `src/styles.css`: substituo paleta atual pelos tokens Selá (Plum, Wine, Ivory, Sand, Gold, Sage, Beige, Terracotta, Ochre, Brown, Dark brown) em oklch, mantendo nomes semânticos shadcn (`--primary`=Wine, `--background`=Ivory, `--sidebar`=Plum, `--accent`=Gold etc.).
+- Fontes carregadas via `<link>` no `__root.tsx` (Google Fonts: Cantarell, Cutive Mono, Caveat Brush). `@theme` mapeia `--font-sans: Cantarell`, `--font-mono: "Cutive Mono"`, `--font-display: "Caveat Brush"`.
+- Utilitário `.font-mono` já usado para valores; adiciono `.font-accent` (Caveat Brush) e restrinjo uso.
+- `app-shell.tsx`: marca "Selá" + subtítulo alterna "Cerâmica" (business) / "Financeiro" (personal). Mobile idem. Preserva `useCustomizedUI` + `useLabelOverrides`.
+- `auth.tsx` e `onboarding.tsx`: novo branding.
 
-```text
-Pedido do usuário (NL)
-       │
-       ▼
-┌──────────────────┐   conhece todas as
-│  AI Interpreter  │◄──surfaces e operações
-│  (Gemini Flash)  │   suportadas (Capability
-└──────┬───────────┘   Registry)
-       │ emite JSON tipado
-       ▼
-┌──────────────────────────────┐
-│  Validador + Classificador   │
-│  - "executável agora"  ──► aplica, vai p/ teste, depois ativo
-│  - "precisa admin"     ──► fila de aprovação (admin pode codar)
-│  - "ambíguo"           ──► pede esclarecimento ao usuário
-└──────────────────────────────┘
-       │
-       ▼ (executável)
-┌──────────────────────────────┐
-│  Customization Store         │
-│  (tabela customizations já   │
-│  existe — extender schema)   │
-└──────┬───────────────────────┘
-       │ lido por hooks
-       ▼
-┌──────────────────────────────┐
-│  Runtime Appliers            │
-│  useCustomizedNav            │
-│  useCustomizedCards          │
-│  useCustomizedTheme          │
-│  useCategorizationRules      │
-│  useCustomFilters            │
-│  useDashboardLayout          │
-└──────────────────────────────┘
+## 2. Dashboard
+
+Reescreve `dashboard.tsx` mantendo queries Supabase atuais, adiciona:
+- filtros mês/ano no topo (com "todos")
+- 4 stat cards: Receitas, Despesas, Resultado, Saldo em contas (respeita `hiddenCards` + `dashboard_widget_order`)
+- gráfico Entradas × Saídas por mês (Recharts BarChart)
+- breakdown despesas por categoria (PieChart)
+- breakdown receitas por categoria (PieChart)
+- transações recentes (10 últimas)
+- empty states claros, privacidade via `workspace.privacy_mode`
+
+## 3. Modelo de dados novo (uma única migração)
+
+Todas as tabelas seguem o padrão: `workspace_id` + GRANT authenticated/service_role + RLS via `is_workspace_member`. Sem duplicar `is_workspace_member`. Todas com `created_at/updated_at` + trigger.
+
+- `cash_flow_entries` (date, type income/expense, description, category_id, amount, recurrence none/weekly/monthly/yearly, status projected/realized, notes)
+- `cash_flow_settings` (workspace_id PK, starting_balance, starting_balance_date)
+- `raw_materials` (name, material_type, supplier, unit, quantity_purchased, quantity_available, unit_cost, purchase_date, min_stock, notes)
+- `class_materials_usage` (student_name, material, grams, amount_charged, payment_status pending/paid, payment_date, comments)
+- `attendance_records` (session_date, weekday int, session_time, student_name, status present/absent/justified, confirmed_at, comments)
+- `renovation_items` (title, category, supplier, budget_amount, actual_amount, due_date, payment_date, payment_status pending/partial/paid, status planned/in_progress/done, notes)
+- `piece_pricing` (name, height_cm, length_cm, depth_cm, clay_grams, clay_cost, glaze_grams, glaze_cost, biscuit_cost, glaze_firing_cost, labor_cost, packaging_cost, other_cost, margin_percent, suggested_price, notes)
+- `piece_pricing_defaults` (workspace_id PK; clay_kg_price, glaze_gram_price, biscuit_coeff 0.0045, glaze_coeff 0.007, default_labor, default_packaging, default_margin)
+- `workshop_pricing` (name, event_date, attendees, price_per_person, clay_cost, glaze_cost, firing_cost, food_cost, labor_cost, other_cost, total_revenue, total_cost, profit, margin)
+- `firing_pricing` (reference default 'Yby 10Z2', firing_date, firing_type biscuit/glaze, total_internal_cost, total_charges, profit, notes)
+- `firing_pieces` (firing_id, customer_name, piece_name, height_cm, length_cm, depth_cm, quantity, internal_cost, charge_customer bool, charge_amount)
+
+Trigger `update_updated_at_column` já existe — reutilizo.
+
+## 4. Rotas novas (todas em `_authenticated/`)
+
+- `atelier/cash-flow.tsx`
+- `atelier/raw-materials.tsx`
+- `atelier/class-materials.tsx`
+- `atelier/attendance.tsx`
+- `atelier/renovation.tsx`
+- `atelier/piece-pricing.tsx`
+- `atelier/workshop-pricing.tsx`
+- `atelier/firing-pricing.tsx`
+
+Cada rota: `ssr: false`, filtros, tabela editável, dialog de criar/editar, delete confirm. Uso `useCurrentWorkspace().workspace.id` como escopo. Consultas via `supabase` client no browser (RLS aplica).
+
+Sidebar (`app-shell.tsx`): adiciono seção agrupada "Ateliê" com esses 8 itens, cada um com `key` estável (`nav.atelier.cashflow`, `nav.atelier.materials` etc.) para o motor de personalização hidratar/renomear/ocultar/reordenar.
+
+## 5. Cálculos (Precificação)
+
+Editáveis em `piece_pricing_defaults`. Fórmulas expostas no UI:
+- biscuit = coeff × h × l × d (default 0.0045)
+- glaze_firing = coeff × h × l × d (default 0.007)
+- clay_cost = grams × (kg_price/1000) — default 77/10000 = 0.0077
+- glaze_cost = grams × glaze_gram_price (default 1)
+- total_cost = clay + glaze + biscuit + glaze_firing + labor + packaging + other
+- suggested_price = total_cost × (1 + margin_percent/100)
+
+## 6. Seed Selá (workspaces business)
+
+Botão em `settings.tsx` "Aplicar defaults Selá Cerâmica" — server function ou RPC que:
+- insere categorias listadas apenas se não existir (name + type + workspace_id)
+- insere contas: Nubank Selá (checking), Cartão Nubank Selá (via cartão), Lançamento manual (cash) — só se não existir
+Não roda automático; é opt-in para evitar mudar dados existentes.
+
+## 7. Import Nubank + Auto-classificar
+
+O `import.tsx` atual já cobre CSV com preview + dedupe hash + sugestões. Aplico ajustes pontuais:
+- presets de mapeamento "Nubank Conta" e "Nubank Cartão"
+- botão "Auto-classificar" em `transactions.tsx` que roda `suggestRulesFor` no conjunto **filtrado visível** e aplica em lote.
+- campo `importance_comment` já existe em `categories`; adiciono campo textarea no editor de categorias (`categories.tsx`) e uso como contexto extra no ranking.
+
+## 8. Detalhes técnicos
+
+- Todas as novas queries via `supabase` (browser client) com RLS — sem `service_role`.
+- Migration única para não fragmentar; policies uniformes `USING (public.is_workspace_member(workspace_id, auth.uid()))`.
+- GRANT SELECT/INSERT/UPDATE/DELETE TO authenticated + GRANT ALL TO service_role.
+- `updated_at` via trigger.
+- Fórmulas em `src/lib/pricing.ts` puras + testes manuais no dialog.
+- Mobile: chips scroll horizontal já existente comporta os novos itens; mantido.
+- Sem quebrar rotas existentes (`/dashboard`, `/transactions`, `/accounts`, `/cards`, `/categories`, `/budget-analysis`, `/reconciliation`, `/import`, `/customizations`, `/settings`, `/super-admin/customizations`).
+
+## Diagrama do sidebar final
+
+```
+Financeiro
+  Dashboard
+  Transações
+  Contas
+  Cartões
+  Análise de Orçamento
+  Conciliação
+  Categorias
+  Importar
+Ateliê
+  Fluxo de caixa
+  Matéria-prima
+  Material Aulas
+  Lista de presença
+  Reforma
+  Precificação de Peças
+  Workshops
+  Queimas
+Sistema
+  Personalizações
+  Configurações
+  (Aprovações admin, se super-admin)
 ```
 
-## Capability Registry — primitivas que vamos suportar de cara
+## Entrega
 
-Cada surface tem **chaves estáveis** e um set de operações. Tudo isso vira input do prompt da IA, então ela só pode emitir coisas válidas.
-
-| Categoria | Operações | Exemplos de pedido |
-|---|---|---|
-| **Label/Text** | `rename(menu_key, new_label)` | "Chamar Contas de Contas Pessoais" ✅ já funciona |
-| **Visibility** | `hide(surface_key)` / `show(surface_key)` | "Esconder card de Investimentos", "Tirar a aba Cartões" |
-| **Ordering** | `reorder(surface_group, [keys...])` | "Colocar Transações antes de Contas no menu" |
-| **Theme** | `set_color(token, value)` / `set_density(level)` | "Deixar o app mais escuro", "Cor primária verde" |
-| **Categorization Rule** | `add_rule({when, then})` com operadores: `descriptor_contains`, `descriptor_equals`, `amount_equals`, `amount_multiple_of`, `amount_between`, `counterparty_matches`, `recurring_same_descriptor`, `recurring_same_counterparty` → ação: `set_category(name)`, `set_importance(level)` | "Recebimentos repetidos do mesmo nome todo mês = Aulas regulares"; "Valores de 290 ou múltiplo = Workshops" |
-| **Filtros salvos** | `save_filter(page, name, criteria)` | "Salvar filtro 'Despesas essenciais deste ano' em Transações" |
-| **Dashboard Layout** | `toggle_widget(key)` / `reorder_widgets([keys])` | "Tirar gráfico de pizza do dashboard" |
-| **Default sort/grouping** | `set_default_sort(page, field, dir)` / `set_grouping(page, field)` | "Ordenar transações por valor decrescente por padrão" |
-| **Validação de formulários** | `require_field(form, field)` / `make_optional(form, field)` | "Exigir descrição em toda transação" |
-
-Tudo o que **não cair** numa dessas primitivas → fila do admin (`needs_admin_review`), com a interpretação da IA salva, e eu implemento código real depois (igual fluxo Lovable).
-
-## Especificamente o seu exemplo das aulas/workshops
-
-O pedido "transações positivas recorrentes com mesmo descritivo/pessoa = Aulas regulares" e "valor 290 ou múltiplo = Workshops" é **um caso de Categorization Rule** — entra como `add_rule` no motor acima. O sistema então:
-
-1. Cria 2 registros em `importance_rules` (tabela já existe; vamos estender o schema):
-   - Regra 1: `type=income AND counterparty_recurring_monthly=true → category="Aulas regulares"`
-   - Regra 2: `type=income AND (amount=290 OR amount%290=0) → category="Workshops"`
-2. Aplica retroativamente a todas as transações existentes que casam.
-3. Aplica automaticamente em novas transações/importações.
-4. Mostra no banner de teste: "X transações foram recategorizadas — manter?"
-
-## Fases de entrega
-
-### Fase 1 — Fundação (essencial pro motor funcionar)
-- Estender tabela `customizations` com `operation_type` + `operation_payload` tipados
-- Estender tabela `importance_rules` com novos operadores (`amount_multiple_of`, `recurring_same_descriptor`, `recurring_same_counterparty`)
-- Criar **Capability Registry** em `src/lib/customization-registry.ts` — fonte única da verdade do que existe
-- Reescrever prompt da IA pra conhecer o registry inteiro e emitir JSON validado por Zod
-- Validador local que rejeita ops desconhecidas → admin queue
-
-### Fase 2 — Appliers de UI (5 primitivas)
-- `useCustomizedNav` (rename ✅, hide, reorder)
-- `useCustomizedCards` (hide, reorder) — dashboard e páginas
-- `useCustomizedTheme` (cor primária, modo denso/espaçado)
-- Atualizar todos os componentes-chave (sidebar, dashboard, transactions, accounts) pra ler dos appliers em vez de hard-coded
-
-### Fase 3 — Engine de regras (o seu caso de uso)
-- Extender `src/lib/suggestions.ts` com novos operadores
-- UI de gestão de regras em `/customizations` (listar, editar, deletar regras criadas via NL)
-- Reprocessamento retroativo: quando uma regra nova é aprovada, rodar contra histórico
-- Banner de teste mostra "N transações afetadas — aprovar?"
-
-### Fase 4 — Filtros salvos + Dashboard layout
-- Sistema de filtros salvos por página
-- Reordenação/toggle de widgets do dashboard
-
-### Fase 5 — Fila do admin com contexto
-- Pedidos `needs_admin_review` mostram pra mim: interpretação da IA + por que não foi automatizado + sugestão de qual primitiva nova adicionaria a capacidade
-- Eu (ou outro dev) implemento e a próxima vez aquele tipo de pedido vira automático
-
-## O que isso resolve vs não resolve
-
-**Resolve automaticamente:** renomear, esconder/mostrar, reordenar, recolorir, criar regras de categorização (incluindo seu caso), salvar filtros, mudar ordenação padrão, toggle de widgets.
-
-**Continua precisando de admin:** criar uma página nova do zero, integrar com API externa nova, mudar fundamentalmente como uma feature funciona (ex: "trocar transações por entradas de diário"), criar gráficos com tipos novos de visualização, lógicas de negócio muito específicas.
-
-## Detalhes técnicos resumidos
-
-- Stack: TanStack Start, Supabase. AI via Lovable AI Gateway com `google/gemini-3-flash-preview`, structured output (Zod schema espelhando o registry).
-- Migrações: `customizations.operation_type`/`operation_payload`; `importance_rules` ganha colunas `operator`, `amount_operator`, `recurrence_window_days`, `counterparty_match`.
-- Hooks novos em `src/hooks/`, leem `customizations` + `importance_rules` ativos via React Query com `staleTime` curto.
-- Registry exportado pra ser injetado no prompt — quando adicionarmos primitiva nova, prompt atualiza sozinho.
-- Fluxo de teste (`testing` → `approved`/`rejected` via banner) já existe e continua sendo usado pra toda mudança.
-
-## Estimativa de esforço
-
-- Fase 1: ~3 turnos
-- Fase 2: ~2 turnos
-- Fase 3 (seu caso): ~2 turnos
-- Fase 4: ~2 turnos
-- Fase 5: ~1 turno
-
-Posso começar pela **Fase 1 + Fase 3** se você quer ver o seu exemplo de aulas/workshops funcionando antes do resto — é o caminho mais curto pra valor concreto. Ou posso seguir 1→2→3→4→5 sequencial. Me diz.
+Vou executar em uma sequência de passagens. Ao final de cada bloco crítico (rebrand, dashboard, migração, módulos ateliê, import/auto-class), reporto progresso. Se algum módulo ficar pendente por limite de contexto, listo explicitamente o que falta e como retomar.

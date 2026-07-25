@@ -25,6 +25,14 @@ import { Route as AuthenticatedCardsRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedBudgetAnalysisRouteImport } from './routes/_authenticated/budget-analysis'
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 import { Route as AuthenticatedSuperAdminCustomizationsRouteImport } from './routes/_authenticated/super-admin.customizations'
+import { Route as AuthenticatedAtelierWorkshopPricingRouteImport } from './routes/_authenticated/atelier.workshop-pricing'
+import { Route as AuthenticatedAtelierRenovationRouteImport } from './routes/_authenticated/atelier.renovation'
+import { Route as AuthenticatedAtelierRawMaterialsRouteImport } from './routes/_authenticated/atelier.raw-materials'
+import { Route as AuthenticatedAtelierPiecePricingRouteImport } from './routes/_authenticated/atelier.piece-pricing'
+import { Route as AuthenticatedAtelierFiringPricingRouteImport } from './routes/_authenticated/atelier.firing-pricing'
+import { Route as AuthenticatedAtelierClassMaterialsRouteImport } from './routes/_authenticated/atelier.class-materials'
+import { Route as AuthenticatedAtelierCashFlowRouteImport } from './routes/_authenticated/atelier.cash-flow'
+import { Route as AuthenticatedAtelierAttendanceRouteImport } from './routes/_authenticated/atelier.attendance'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -110,6 +118,54 @@ const AuthenticatedSuperAdminCustomizationsRoute =
     path: '/super-admin/customizations',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAtelierWorkshopPricingRoute =
+  AuthenticatedAtelierWorkshopPricingRouteImport.update({
+    id: '/atelier/workshop-pricing',
+    path: '/atelier/workshop-pricing',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAtelierRenovationRoute =
+  AuthenticatedAtelierRenovationRouteImport.update({
+    id: '/atelier/renovation',
+    path: '/atelier/renovation',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAtelierRawMaterialsRoute =
+  AuthenticatedAtelierRawMaterialsRouteImport.update({
+    id: '/atelier/raw-materials',
+    path: '/atelier/raw-materials',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAtelierPiecePricingRoute =
+  AuthenticatedAtelierPiecePricingRouteImport.update({
+    id: '/atelier/piece-pricing',
+    path: '/atelier/piece-pricing',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAtelierFiringPricingRoute =
+  AuthenticatedAtelierFiringPricingRouteImport.update({
+    id: '/atelier/firing-pricing',
+    path: '/atelier/firing-pricing',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAtelierClassMaterialsRoute =
+  AuthenticatedAtelierClassMaterialsRouteImport.update({
+    id: '/atelier/class-materials',
+    path: '/atelier/class-materials',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAtelierCashFlowRoute =
+  AuthenticatedAtelierCashFlowRouteImport.update({
+    id: '/atelier/cash-flow',
+    path: '/atelier/cash-flow',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAtelierAttendanceRoute =
+  AuthenticatedAtelierAttendanceRouteImport.update({
+    id: '/atelier/attendance',
+    path: '/atelier/attendance',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -126,6 +182,14 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRoute
   '/transactions': typeof AuthenticatedTransactionsRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/atelier/attendance': typeof AuthenticatedAtelierAttendanceRoute
+  '/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
+  '/atelier/class-materials': typeof AuthenticatedAtelierClassMaterialsRoute
+  '/atelier/firing-pricing': typeof AuthenticatedAtelierFiringPricingRoute
+  '/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
+  '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
+  '/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
+  '/atelier/workshop-pricing': typeof AuthenticatedAtelierWorkshopPricingRoute
   '/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
 export interface FileRoutesByTo {
@@ -143,6 +207,14 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/transactions': typeof AuthenticatedTransactionsRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/atelier/attendance': typeof AuthenticatedAtelierAttendanceRoute
+  '/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
+  '/atelier/class-materials': typeof AuthenticatedAtelierClassMaterialsRoute
+  '/atelier/firing-pricing': typeof AuthenticatedAtelierFiringPricingRoute
+  '/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
+  '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
+  '/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
+  '/atelier/workshop-pricing': typeof AuthenticatedAtelierWorkshopPricingRoute
   '/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
 export interface FileRoutesById {
@@ -162,6 +234,14 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/transactions': typeof AuthenticatedTransactionsRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/_authenticated/atelier/attendance': typeof AuthenticatedAtelierAttendanceRoute
+  '/_authenticated/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
+  '/_authenticated/atelier/class-materials': typeof AuthenticatedAtelierClassMaterialsRoute
+  '/_authenticated/atelier/firing-pricing': typeof AuthenticatedAtelierFiringPricingRoute
+  '/_authenticated/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
+  '/_authenticated/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
+  '/_authenticated/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
+  '/_authenticated/atelier/workshop-pricing': typeof AuthenticatedAtelierWorkshopPricingRoute
   '/_authenticated/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
 export interface FileRouteTypes {
@@ -181,6 +261,14 @@ export interface FileRouteTypes {
     | '/settings'
     | '/transactions'
     | '/auth/callback'
+    | '/atelier/attendance'
+    | '/atelier/cash-flow'
+    | '/atelier/class-materials'
+    | '/atelier/firing-pricing'
+    | '/atelier/piece-pricing'
+    | '/atelier/raw-materials'
+    | '/atelier/renovation'
+    | '/atelier/workshop-pricing'
     | '/super-admin/customizations'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -198,6 +286,14 @@ export interface FileRouteTypes {
     | '/settings'
     | '/transactions'
     | '/auth/callback'
+    | '/atelier/attendance'
+    | '/atelier/cash-flow'
+    | '/atelier/class-materials'
+    | '/atelier/firing-pricing'
+    | '/atelier/piece-pricing'
+    | '/atelier/raw-materials'
+    | '/atelier/renovation'
+    | '/atelier/workshop-pricing'
     | '/super-admin/customizations'
   id:
     | '__root__'
@@ -216,6 +312,14 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/transactions'
     | '/auth/callback'
+    | '/_authenticated/atelier/attendance'
+    | '/_authenticated/atelier/cash-flow'
+    | '/_authenticated/atelier/class-materials'
+    | '/_authenticated/atelier/firing-pricing'
+    | '/_authenticated/atelier/piece-pricing'
+    | '/_authenticated/atelier/raw-materials'
+    | '/_authenticated/atelier/renovation'
+    | '/_authenticated/atelier/workshop-pricing'
     | '/_authenticated/super-admin/customizations'
   fileRoutesById: FileRoutesById
 }
@@ -339,6 +443,62 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSuperAdminCustomizationsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/atelier/workshop-pricing': {
+      id: '/_authenticated/atelier/workshop-pricing'
+      path: '/atelier/workshop-pricing'
+      fullPath: '/atelier/workshop-pricing'
+      preLoaderRoute: typeof AuthenticatedAtelierWorkshopPricingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/atelier/renovation': {
+      id: '/_authenticated/atelier/renovation'
+      path: '/atelier/renovation'
+      fullPath: '/atelier/renovation'
+      preLoaderRoute: typeof AuthenticatedAtelierRenovationRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/atelier/raw-materials': {
+      id: '/_authenticated/atelier/raw-materials'
+      path: '/atelier/raw-materials'
+      fullPath: '/atelier/raw-materials'
+      preLoaderRoute: typeof AuthenticatedAtelierRawMaterialsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/atelier/piece-pricing': {
+      id: '/_authenticated/atelier/piece-pricing'
+      path: '/atelier/piece-pricing'
+      fullPath: '/atelier/piece-pricing'
+      preLoaderRoute: typeof AuthenticatedAtelierPiecePricingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/atelier/firing-pricing': {
+      id: '/_authenticated/atelier/firing-pricing'
+      path: '/atelier/firing-pricing'
+      fullPath: '/atelier/firing-pricing'
+      preLoaderRoute: typeof AuthenticatedAtelierFiringPricingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/atelier/class-materials': {
+      id: '/_authenticated/atelier/class-materials'
+      path: '/atelier/class-materials'
+      fullPath: '/atelier/class-materials'
+      preLoaderRoute: typeof AuthenticatedAtelierClassMaterialsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/atelier/cash-flow': {
+      id: '/_authenticated/atelier/cash-flow'
+      path: '/atelier/cash-flow'
+      fullPath: '/atelier/cash-flow'
+      preLoaderRoute: typeof AuthenticatedAtelierCashFlowRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/atelier/attendance': {
+      id: '/_authenticated/atelier/attendance'
+      path: '/atelier/attendance'
+      fullPath: '/atelier/attendance'
+      preLoaderRoute: typeof AuthenticatedAtelierAttendanceRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -354,6 +514,14 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReconciliationRoute: typeof AuthenticatedReconciliationRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTransactionsRoute: typeof AuthenticatedTransactionsRoute
+  AuthenticatedAtelierAttendanceRoute: typeof AuthenticatedAtelierAttendanceRoute
+  AuthenticatedAtelierCashFlowRoute: typeof AuthenticatedAtelierCashFlowRoute
+  AuthenticatedAtelierClassMaterialsRoute: typeof AuthenticatedAtelierClassMaterialsRoute
+  AuthenticatedAtelierFiringPricingRoute: typeof AuthenticatedAtelierFiringPricingRoute
+  AuthenticatedAtelierPiecePricingRoute: typeof AuthenticatedAtelierPiecePricingRoute
+  AuthenticatedAtelierRawMaterialsRoute: typeof AuthenticatedAtelierRawMaterialsRoute
+  AuthenticatedAtelierRenovationRoute: typeof AuthenticatedAtelierRenovationRoute
+  AuthenticatedAtelierWorkshopPricingRoute: typeof AuthenticatedAtelierWorkshopPricingRoute
   AuthenticatedSuperAdminCustomizationsRoute: typeof AuthenticatedSuperAdminCustomizationsRoute
 }
 
@@ -369,6 +537,17 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReconciliationRoute: AuthenticatedReconciliationRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTransactionsRoute: AuthenticatedTransactionsRoute,
+  AuthenticatedAtelierAttendanceRoute: AuthenticatedAtelierAttendanceRoute,
+  AuthenticatedAtelierCashFlowRoute: AuthenticatedAtelierCashFlowRoute,
+  AuthenticatedAtelierClassMaterialsRoute:
+    AuthenticatedAtelierClassMaterialsRoute,
+  AuthenticatedAtelierFiringPricingRoute:
+    AuthenticatedAtelierFiringPricingRoute,
+  AuthenticatedAtelierPiecePricingRoute: AuthenticatedAtelierPiecePricingRoute,
+  AuthenticatedAtelierRawMaterialsRoute: AuthenticatedAtelierRawMaterialsRoute,
+  AuthenticatedAtelierRenovationRoute: AuthenticatedAtelierRenovationRoute,
+  AuthenticatedAtelierWorkshopPricingRoute:
+    AuthenticatedAtelierWorkshopPricingRoute,
   AuthenticatedSuperAdminCustomizationsRoute:
     AuthenticatedSuperAdminCustomizationsRoute,
 }
@@ -394,13 +573,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
