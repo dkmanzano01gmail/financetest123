@@ -132,7 +132,11 @@ function CategoriesPage() {
       const msg = String(e?.message ?? e);
       const isFk = /foreign key|violates|referenc/i.test(msg);
       if (isFk && confirm) {
-        setInactivateFallback({ id: confirm.id, name: confirm.name });
+        // Close the first confirm dialog before opening the fallback so
+        // they don't stack (Radix locks scroll on nested modals).
+        const c = confirm;
+        setConfirm(null);
+        setInactivateFallback({ id: c.id, name: c.name });
       } else {
         toast.error(msg);
       }
