@@ -182,6 +182,8 @@ function Page() {
                   <th className="p-3">Dia</th>
                   <th className="p-3">Horário</th>
                   <th className="p-3">Aluno</th>
+                  <th className="p-3">Turma</th>
+                  <th className="p-3">Tipo</th>
                   <th className="p-3">Status</th>
                   <th className="p-3">Confirmação</th>
                   <th className="p-3"></th>
@@ -194,6 +196,8 @@ function Page() {
                     <td className="p-3">{r.weekday != null ? weekdays[r.weekday] : "—"}</td>
                     <td className="p-3">{r.session_time ?? "—"}</td>
                     <td className="p-3">{r.student_name}</td>
+                    <td className="p-3">{r.class_name ?? "—"}</td>
+                    <td className="p-3 text-xs">{r.record_type ?? "class"}</td>
                     <td className="p-3">
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${r.status === "present" ? "bg-income/10 text-income" : r.status === "absent" ? "bg-destructive/10 text-destructive" : "bg-muted"}`}
