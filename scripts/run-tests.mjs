@@ -1,7 +1,7 @@
 // Lightweight test runner. Usage: bun scripts/run-tests.mjs
 import { parseLocaleAmount } from "../src/lib/format.ts";
 import { parseCsv, parseDateBR, sha256Hex } from "../src/lib/csv.ts";
-import { normalizeDescriptor } from "../src/lib/suggestions.ts";
+import { normalize as normalizeDescriptor } from "../src/lib/suggestions.ts";
 
 let passed = 0, failed = 0;
 function t(name, fn) {
