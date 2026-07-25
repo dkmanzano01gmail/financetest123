@@ -124,3 +124,28 @@ export function guessColumn(headers: string[], candidates: string[]): string | "
   }
   return "";
 }
+
+/**
+ * Build the deterministic string used as an import fingerprint.
+ * When an external identifier exists (e.g. Nubank "Identificador"), it is the
+ * sole content signal so re-imports of the same rows are recognized even when
+ * their descriptions or amounts drift (refunds, reversals). Otherwise the
+ * combination of date + absolute amount + normalized description is used.
+ */
+export function buildImportHashSource(input: {
+  workspaceId: string;
+  target: "account" | "card";
+  targetId: string;
+  externalId?: string | null;
+  date?: string | null;
+  amount?: number | null;
+  description?: string | null;
+}): string {
+  const { workspaceId, target, targetId, externalId, date, amount, description } = input;
+  if (externalId && externalId.trim()) {
+    return `${workspaceId}|${target}|${targetId}|ext:${externalId.trim()}`;
+  }
+  const absAmount = amount == null ? "" : String(Math.abs(amount));
+  const desc = (description ?? "").trim().toLowerCase();
+  return `${workspaceId}|${target}|${targetId}|${date ?? ""}|${absAmount}|${desc}`;
+}
