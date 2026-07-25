@@ -65,13 +65,13 @@ function Page() {
   const saveFiring = useMutation({
     mutationFn: async () => {
       const p: any = { workspace_id: wsId, reference: ff.reference, firing_date: ff.firing_date || null, firing_type: ff.firing_type, notes: ff.notes || null };
-      const { error } = firingEdit ? await sb.from("firing_pricing").update(p).eq("id", firingEdit) : await sb.from("firing_pricing").insert(p);
+      const { error } = firingEdit ? await sb.from("firing_pricing").update(p).eq("id", firingEdit).eq("workspace_id", wsId) : await sb.from("firing_pricing").insert(p);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["firings"] }); setFiringOpen(false); setFiringEdit(null); setFf(emptyFiring); toast.success("Salvo"); },
     onError: (e: Error) => toast.error(e.message),
   });
-  const delFiring = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("firing_pricing").delete().eq("id", id); if (error) throw error; }, onSuccess: () => { qc.invalidateQueries({ queryKey: ["firings"] }); setActiveFiring(null); } });
+  const delFiring = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("firing_pricing").delete().eq("id", id).eq("workspace_id", wsId); if (error) throw error; }, onSuccess: () => { qc.invalidateQueries({ queryKey: ["firings"] }); setActiveFiring(null); } });
 
   const savePiece = useMutation({
     mutationFn: async () => {
@@ -81,18 +81,18 @@ function Page() {
         quantity: Math.max(1, Math.round(num(pf.quantity))),
         internal_cost: pieceCost, charge_customer: pf.charge_customer, charge_amount: pf.charge_customer ? num(pf.charge_amount) : 0,
       };
-      const { error } = pieceEdit ? await sb.from("firing_pieces").update(p).eq("id", pieceEdit) : await sb.from("firing_pieces").insert(p);
+      const { error } = pieceEdit ? await sb.from("firing_pieces").update(p).eq("id", pieceEdit).eq("workspace_id", wsId) : await sb.from("firing_pieces").insert(p);
       if (error) throw error;
       // recompute totals on firing row
       const { data: allPieces } = await sb.from("firing_pieces").select("internal_cost,charge_amount").eq("firing_id", activeFiring);
       const tot = (allPieces ?? []).reduce((a: any, x: any) => ({ i: a.i + Number(x.internal_cost), c: a.c + Number(x.charge_amount) }), { i: 0, c: 0 });
-      await sb.from("firing_pricing").update({ total_internal_cost: tot.i, total_charges: tot.c, profit: tot.c - tot.i }).eq("id", activeFiring);
+      await sb.from("firing_pricing").update({ total_internal_cost: tot.i, total_charges: tot.c, profit: tot.c - tot.i }).eq("id", activeFiring).eq("workspace_id", wsId);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["firing_pieces"] }); qc.invalidateQueries({ queryKey: ["firings"] }); setPieceOpen(false); setPieceEdit(null); setPf(emptyPiece); toast.success("Salvo"); },
     onError: (e: Error) => toast.error(e.message),
   });
   const delPiece = useMutation({
-    mutationFn: async (id: string) => { const { error } = await sb.from("firing_pieces").delete().eq("id", id); if (error) throw error; },
+    mutationFn: async (id: string) => { const { error } = await sb.from("firing_pieces").delete().eq("id", id).eq("workspace_id", wsId); if (error) throw error; },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["firing_pieces"] }); qc.invalidateQueries({ queryKey: ["firings"] }); },
   });
 

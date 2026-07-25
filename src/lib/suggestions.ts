@@ -61,7 +61,7 @@ type HistoryEntry = {
   amount?: number | null;
 };
 
-function normalize(s: string): string {
+export function normalize(s: string): string {
   return (s || "")
     .toLowerCase()
     .normalize("NFD")
@@ -69,7 +69,7 @@ function normalize(s: string): string {
     // Common Nubank/bank prefixes that add no signal.
     .replace(/\b(compra no debito|compra no débito|pagamento efetuado|pix\s+(enviado|recebido)|transferencia\s+(enviada|recebida)|debito automatico|débito automático)\b/g, " ")
     // Masked card suffixes / transaction IDs / trailing UUID-ish tokens.
-    .replace(/\b(final\s+\d{2,4}|xxxx\d{2,4}|\*{2,}\d{2,4})\b/g, " ")
+    .replace(/(\bfinal\s+\d{2,4}\b|\bxxxx\d{2,4}\b|\*{2,}\d{2,4})/gi, " ")
     .replace(/\b[a-f0-9]{16,}\b/g, " ")
     // Punctuation → spaces so tokens split cleanly.
     .replace(/[^\p{L}\p{N}\s]/gu, " ")

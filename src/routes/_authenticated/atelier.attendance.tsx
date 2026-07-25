@@ -39,15 +39,15 @@ function Page() {
     mutationFn: async () => {
       const wd = new Date(f.session_date + "T00:00:00").getDay();
       const p: any = { workspace_id: wsId, session_date: f.session_date, weekday: wd, session_time: f.session_time || null, student_name: f.student_name, status: f.status, confirmed_at: f.status === "present" ? new Date().toISOString() : null, comments: f.comments || null };
-      const { error } = editId ? await sb.from("attendance_records").update(p).eq("id", editId) : await sb.from("attendance_records").insert(p);
+      const { error } = editId ? await sb.from("attendance_records").update(p).eq("id", editId).eq("workspace_id", wsId) : await sb.from("attendance_records").insert(p);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["attendance"] }); setOpen(false); setEditId(null); setF(empty); toast.success("Salvo"); },
     onError: (e: Error) => toast.error(e.message),
   });
-  const del = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("attendance_records").delete().eq("id", id); if (error) throw error; }, onSuccess: () => qc.invalidateQueries({ queryKey: ["attendance"] }) });
+  const del = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("attendance_records").delete().eq("id", id).eq("workspace_id", wsId); if (error) throw error; }, onSuccess: () => qc.invalidateQueries({ queryKey: ["attendance"] }) });
   const confirm = useMutation({
-    mutationFn: async (id: string) => { const { error } = await sb.from("attendance_records").update({ status: "present", confirmed_at: new Date().toISOString() }).eq("id", id); if (error) throw error; },
+    mutationFn: async (id: string) => { const { error } = await sb.from("attendance_records").update({ status: "present", confirmed_at: new Date().toISOString() }).eq("id", id).eq("workspace_id", wsId); if (error) throw error; },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["attendance"] }),
   });
   function edit(r: any) { setEditId(r.id); setF({ session_date: r.session_date, session_time: r.session_time ?? "", student_name: r.student_name, status: r.status, comments: r.comments ?? "" }); setOpen(true); }

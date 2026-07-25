@@ -69,13 +69,13 @@ function Page() {
         total_cost: breakdown.total, margin_percent: num(f.margin_percent), suggested_price: breakdown.suggested,
         notes: f.notes || null,
       };
-      const { error } = editId ? await sb.from("piece_pricing").update(p).eq("id", editId) : await sb.from("piece_pricing").insert(p);
+      const { error } = editId ? await sb.from("piece_pricing").update(p).eq("id", editId).eq("workspace_id", wsId) : await sb.from("piece_pricing").insert(p);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["piece_pricing"] }); setOpen(false); setEditId(null); setF(emptyF); toast.success("Salvo"); },
     onError: (e: Error) => toast.error(e.message),
   });
-  const del = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("piece_pricing").delete().eq("id", id); if (error) throw error; }, onSuccess: () => qc.invalidateQueries({ queryKey: ["piece_pricing"] }) });
+  const del = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("piece_pricing").delete().eq("id", id).eq("workspace_id", wsId); if (error) throw error; }, onSuccess: () => qc.invalidateQueries({ queryKey: ["piece_pricing"] }) });
 
   const saveDefaults = useMutation({
     mutationFn: async () => {

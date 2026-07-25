@@ -16,6 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { parseLocaleAmount } from "@/lib/format";
 import { Plus, Wallet, Pencil, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useLabelOverrides, applyLabel } from "@/hooks/use-label-overrides";
@@ -85,17 +86,20 @@ function AccountsPage() {
     mutationFn: async () => {
       if (!form.name.trim()) throw new Error("Informe o nome da conta.");
       if (!form.initial_balance_date) throw new Error("Informe a data de referência do saldo inicial.");
+      const rawBal = form.initial_balance.trim();
+      const parsedBal = rawBal ? parseLocaleAmount(rawBal) : 0;
+      if (rawBal && !Number.isFinite(parsedBal)) throw new Error("Saldo inicial inválido.");
       const payload = {
         name: form.name.trim(),
         institution: form.institution.trim() || null,
         type: form.type as any,
-        initial_balance: Number(form.initial_balance.replace(",", ".") || 0),
+        initial_balance: parsedBal,
         initial_balance_date: form.initial_balance_date,
         is_active: form.is_active,
         notes: form.notes.trim() || null,
       };
       if (editingId) {
-        const { error } = await supabase.from("accounts").update(payload as any).eq("id", editingId);
+        const { error } = await supabase.from("accounts").update(payload as any).eq("id", editingId).eq("workspace_id", wsId!);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("accounts").insert({ workspace_id: wsId!, ...payload } as any);
@@ -115,7 +119,7 @@ function AccountsPage() {
   const deleteMut = useMutation({
     mutationFn: async () => {
       if (!editingId) return;
-      const { error } = await supabase.from("accounts").delete().eq("id", editingId);
+      const { error } = await supabase.from("accounts").delete().eq("id", editingId).eq("workspace_id", wsId!);
       if (error) throw error;
     },
     onSuccess: () => {

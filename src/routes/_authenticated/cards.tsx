@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, parseLocaleAmount } from "@/lib/format";
 import { Plus, CreditCard, Power } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,11 +33,17 @@ function CardsPage() {
 
   const createMut = useMutation({
     mutationFn: async () => {
+      if (!form.name.trim()) throw new Error("Informe o nome do cartão.");
+      const limit = form.limit_amount.trim() ? parseLocaleAmount(form.limit_amount) : 0;
+      if (form.limit_amount.trim() && !Number.isFinite(limit)) throw new Error("Limite inválido.");
+      const cd = Number(form.closing_day), dd = Number(form.due_day);
+      if (!Number.isInteger(cd) || cd < 1 || cd > 31) throw new Error("Dia de fechamento inválido.");
+      if (!Number.isInteger(dd) || dd < 1 || dd > 31) throw new Error("Dia de vencimento inválido.");
       const { error } = await supabase.from("credit_cards").insert({
         workspace_id: wsId!,
-        name: form.name, institution: form.institution || null, brand: form.brand || null,
-        limit_amount: Number(form.limit_amount.replace(",", ".") || 0),
-        closing_day: Number(form.closing_day), due_day: Number(form.due_day),
+        name: form.name.trim(), institution: form.institution.trim() || null, brand: form.brand.trim() || null,
+        limit_amount: limit,
+        closing_day: cd, due_day: dd,
       });
       if (error) throw error;
     },
@@ -47,10 +53,11 @@ function CardsPage() {
 
   const toggleMut = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from("credit_cards").update({ is_active }).eq("id", id);
+      const { error } = await supabase.from("credit_cards").update({ is_active }).eq("id", id).eq("workspace_id", wsId!);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cards-full"] }),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return (
