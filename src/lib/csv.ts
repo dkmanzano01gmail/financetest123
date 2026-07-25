@@ -134,7 +134,7 @@ export function guessColumn(headers: string[], candidates: string[]): string | "
  */
 export function buildImportHashSource(input: {
   workspaceId: string;
-  target: "account" | "card";
+  target: string;
   targetId: string;
   externalId?: string | null;
   date?: string | null;
