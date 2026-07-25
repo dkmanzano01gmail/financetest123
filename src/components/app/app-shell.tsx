@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, ArrowLeftRight, Wallet, CreditCard, Tags, Settings, Eye, EyeOff, LogOut, ChevronDown, Plus, Sparkles, Upload, PieChart, Scale, Wand2, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, ArrowLeftRight, Wallet, CreditCard, Tags, Settings, Eye, EyeOff, LogOut, ChevronDown, Plus, Sparkles, Upload, PieChart, Scale, Wand2, ShieldCheck, TrendingUp, Package, Users, CalendarCheck, Hammer, Palette, GraduationCap, Flame } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,14 @@ const baseNavDef = [
   { to: "/reconciliation", icon: Scale, key: "nav.reconciliation", label: "Conciliação" },
   { to: "/categories", icon: Tags, key: "nav.categories", label: "Categorias" },
   { to: "/import", icon: Upload, key: "nav.import", label: "Importar" },
+  { to: "/atelier/cash-flow", icon: TrendingUp, key: "nav.atelier.cash_flow", label: "Fluxo de Caixa" },
+  { to: "/atelier/raw-materials", icon: Package, key: "nav.atelier.raw_materials", label: "Matéria-prima" },
+  { to: "/atelier/class-materials", icon: Users, key: "nav.atelier.class_materials", label: "Material Aulas" },
+  { to: "/atelier/attendance", icon: CalendarCheck, key: "nav.atelier.attendance", label: "Presença" },
+  { to: "/atelier/renovation", icon: Hammer, key: "nav.atelier.renovation", label: "Reforma" },
+  { to: "/atelier/piece-pricing", icon: Palette, key: "nav.atelier.pieces", label: "Preço de Peças" },
+  { to: "/atelier/workshop-pricing", icon: GraduationCap, key: "nav.atelier.workshops", label: "Workshops" },
+  { to: "/atelier/firing-pricing", icon: Flame, key: "nav.atelier.firings", label: "Queimas" },
   { to: "/customizations", icon: Wand2, key: "nav.customizations", label: "Personalizações" },
   { to: "/settings", icon: Settings, key: "nav.settings", label: "Configurações" },
 ];
