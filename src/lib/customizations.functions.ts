@@ -8,7 +8,7 @@ const InterpretInput = z.object({
   request_text: z.string().min(3).max(2000),
 });
 
-const SYSTEM_PROMPT = `Você é o motor de personalizações do app financeiro Orna.
+const SYSTEM_PROMPT = `Você é o motor de personalizações do app financeiro Selá.
 O usuário escreve em linguagem natural um pedido de mudança.
 Responda APENAS com JSON válido (sem markdown).
 
