@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { parseCsv, parseAmount, parseDateBR, sha256Hex, guessColumn, decodeCsvBuffer, type CsvRow } from "@/lib/csv";
+import { parseCsv, parseAmount, parseDateBR, sha256Hex, guessColumn, decodeCsvBuffer, buildImportHashSource, type CsvRow } from "@/lib/csv";
 import { formatCurrency } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/import")({
@@ -136,9 +136,9 @@ function ImportPage() {
       }
       const absAmount = amount === null ? null : Math.abs(amount);
       // Prefer external identifier (e.g. Nubank "Identificador") when present — stable across re-imports.
-      const hashSrc = externalId
-        ? `${wsId}|${target}|${targetId}|ext:${externalId}`
-        : `${wsId}|${target}|${targetId}|${date ?? ""}|${absAmount ?? ""}|${description.trim().toLowerCase()}`;
+      const hashSrc = buildImportHashSource({
+        workspaceId: wsId!, target, targetId, externalId, date, amount: absAmount, description,
+      });
       const hash = await sha256Hex(hashSrc);
       const duplicateInBatch = seen.has(hash);
       seen.add(hash);
