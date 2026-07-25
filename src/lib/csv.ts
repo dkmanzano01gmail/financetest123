@@ -1,16 +1,48 @@
 export type CsvRow = Record<string, string>;
+import { parseLocaleAmount } from "./format";
+
+/**
+ * Decode an ArrayBuffer as UTF-8 (strict). Falls back to Windows-1252 when
+ * invalid UTF-8 sequences are found, which is Nubank's common export encoding.
+ */
+export function decodeCsvBuffer(buf: ArrayBuffer): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+  } catch {
+    try { return new TextDecoder("windows-1252").decode(buf); }
+    catch { return new TextDecoder("latin1").decode(buf); }
+  }
+}
+
+/** Count occurrences of a character outside double-quoted fields. */
+function unquotedCount(line: string, ch: string): number {
+  let n = 0, inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQ && line[i + 1] === '"') { i++; continue; }
+      inQ = !inQ;
+    } else if (!inQ && c === ch) n++;
+  }
+  return n;
+}
 
 export function parseCsv(text: string): { headers: string[]; rows: CsvRow[]; delimiter: string } {
   // Strip BOM
   text = text.replace(/^\uFEFF/, "");
-  // Detect delimiter from first non-empty line
-  const firstLine = text.split(/\r?\n/).find((l) => l.trim().length > 0) ?? "";
+  // Detect delimiter using several sample lines, counting unquoted occurrences.
+  const sample = text.split(/\r?\n/).filter((l) => l.trim().length > 0).slice(0, 5);
   const candidates = [",", ";", "\t", "|"];
   let delimiter = ",";
-  let best = -1;
+  let bestScore = -1;
   for (const d of candidates) {
-    const c = firstLine.split(d).length;
-    if (c > best) { best = c; delimiter = d; }
+    const counts = sample.map((l) => unquotedCount(l, d));
+    if (counts.length === 0) continue;
+    const min = Math.min(...counts);
+    const sum = counts.reduce((a, b) => a + b, 0);
+    // Prefer delimiters that appear on every line and total the most.
+    const score = min > 0 ? sum + min * 10 : sum;
+    if (score > bestScore) { bestScore = score; delimiter = d; }
   }
 
   const records: string[][] = [];
@@ -48,41 +80,33 @@ export function parseCsv(text: string): { headers: string[]; rows: CsvRow[]; del
 }
 
 export function parseAmount(raw: string): number | null {
-  if (!raw) return null;
-  let s = raw.replace(/\s/g, "").replace(/[R$€$£]/g, "");
-  const neg = /^-/.test(s) || /\(.*\)/.test(s);
-  s = s.replace(/[()-]/g, "");
-  // If both . and , present, last one is the decimal separator
-  const lastComma = s.lastIndexOf(",");
-  const lastDot = s.lastIndexOf(".");
-  if (lastComma > -1 && lastDot > -1) {
-    if (lastComma > lastDot) { s = s.replace(/\./g, "").replace(",", "."); }
-    else { s = s.replace(/,/g, ""); }
-  } else if (lastComma > -1) {
-    // Treat comma as decimal if 2 digits after
-    if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, "").replace(",", ".");
-    else s = s.replace(/,/g, "");
-  }
-  const n = Number(s);
-  if (!isFinite(n)) return null;
-  return neg ? -Math.abs(n) : n;
+  const n = parseLocaleAmount(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function parseDateBR(raw: string): string | null {
   if (!raw) return null;
   const s = raw.trim();
+  const validate = (y: number, mo: number, d: number): string | null => {
+    if (y < 1900 || y > 2999 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+    return `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  };
   // ISO yyyy-mm-dd
   let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  // dd/mm/yyyy or dd-mm-yyyy
-  m = s.match(/^(\d{2})[\/\-.](\d{2})[\/\-.](\d{2,4})/);
+  if (m) return validate(+m[1], +m[2], +m[3]);
+  // dd/mm/yyyy or dd-mm-yyyy or dd.mm.yyyy
+  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
   if (m) {
     let y = m[3];
     if (y.length === 2) y = (Number(y) > 50 ? "19" : "20") + y;
-    return `${y}-${m[2]}-${m[1]}`;
+    return validate(+y, +m[2], +m[1]);
   }
   const d = new Date(s);
-  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  if (!isNaN(d.getTime())) {
+    return validate(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+  }
   return null;
 }
 

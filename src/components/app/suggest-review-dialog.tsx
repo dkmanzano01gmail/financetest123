@@ -35,6 +35,7 @@ export function SuggestReviewDialog({
 }) {
   const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string; type: string }[]>([]);
 
@@ -42,24 +43,33 @@ export function SuggestReviewDialog({
     if (!open) return;
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     (async () => {
-      const ctx = await loadSuggestionContext(workspaceId, workspaceType);
-      if (cancelled) return;
-      setCategories(ctx.categories);
-      const built: Row[] = transactions.map((tx) => {
-        const s = suggestForTransaction(tx, ctx);
-        return {
-          tx,
-          suggestion: s,
-          applyCategory: !tx.category_id && !!s.category_id,
-          applyImportance: true,
-          overrideImportance: s.importance,
-          overrideCategoryId: s.category_id,
-          selected: true,
-        };
-      });
-      setRows(built);
-      setLoading(false);
+      try {
+        const ctx = await loadSuggestionContext(workspaceId, workspaceType);
+        if (cancelled) return;
+        setCategories(ctx.categories);
+        const built: Row[] = transactions.map((tx) => {
+          const s = suggestForTransaction(tx, ctx);
+          // Preserve manual overrides — never propose changing them by default.
+          const applyCategory = !tx.category_id && !!s.category_id;
+          const applyImportance = !tx.importance_confirmed_by_user && !tx.importance_level;
+          return {
+            tx,
+            suggestion: s,
+            applyCategory,
+            applyImportance,
+            overrideImportance: s.importance,
+            overrideCategoryId: s.category_id,
+            selected: applyCategory || applyImportance,
+          };
+        });
+        setRows(built);
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e?.message ?? String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [open, workspaceId, workspaceType, transactions]);
@@ -76,33 +86,52 @@ export function SuggestReviewDialog({
   const applyMut = useMutation({
     mutationFn: async () => {
       const toApply = rows.filter((r) => r.selected && (r.applyCategory || r.applyImportance));
+      if (toApply.length === 0) return 0;
       const now = new Date().toISOString();
-      for (const r of toApply) {
-        const patch: Record<string, any> = {
-          suggested_category_id: r.suggestion.category_id,
-          suggested_importance_level: r.suggestion.importance,
-          importance_confidence: r.suggestion.confidence,
-          importance_suggestion_reason: r.suggestion.reason,
-          importance_status: "suggested",
-        };
-        if (r.applyCategory && r.overrideCategoryId) {
-          patch.category_id = r.overrideCategoryId;
-        }
-        if (r.applyImportance) {
-          patch.importance_level = r.overrideImportance;
-          patch.importance_confirmed_by_user = true;
-          patch.importance_confirmed_at = now;
-          patch.importance_status = "confirmed";
-        }
-        const { error } = await supabase.from("transactions" as any).update(patch).eq("id", r.tx.id);
-        if (error) throw error;
+      const results = await Promise.allSettled(
+        toApply.map((r) => {
+          const patch: Record<string, any> = {
+            suggested_category_id: r.suggestion.category_id,
+            suggested_importance_level: r.suggestion.importance,
+            importance_confidence: r.suggestion.confidence,
+            importance_suggestion_reason: r.suggestion.reason,
+            importance_status: "suggested",
+          };
+          if (r.applyCategory && r.overrideCategoryId) {
+            patch.category_id = r.overrideCategoryId;
+          }
+          if (r.applyImportance) {
+            patch.importance_level = r.overrideImportance;
+            patch.importance_confirmed_by_user = true;
+            patch.importance_confirmed_at = now;
+            patch.importance_status = "confirmed";
+          }
+          return supabase.from("transactions" as any)
+            .update(patch)
+            .eq("id", r.tx.id)
+            .eq("workspace_id", workspaceId);
+        })
+      );
+      const failed = results
+        .map((res, i) => ({ res, id: toApply[i].tx.id }))
+        .filter((r) => r.res.status === "rejected" || (r.res as any).value?.error);
+      if (failed.length) {
+        const first = failed[0].res.status === "rejected"
+          ? (failed[0].res as PromiseRejectedResult).reason
+          : (failed[0].res as any).value.error;
+        throw new Error(
+          `${toApply.length - failed.length}/${toApply.length} atualizadas — falhou: ${first?.message ?? first}`
+        );
       }
       return toApply.length;
     },
     onSuccess: (n) => {
+      if (n === 0) { toast("Nada a aplicar"); return; }
       toast.success(`${n} transações atualizadas`);
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["ba-txs"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["reconciliation"] });
       onOpenChange(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -120,6 +149,8 @@ export function SuggestReviewDialog({
 
         {loading ? (
           <div className="py-16 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline mr-2" /> Calculando sugestões…</div>
+        ) : loadError ? (
+          <div className="py-10 text-center text-destructive text-sm">Erro ao carregar sugestões: {loadError}</div>
         ) : rows.length === 0 ? (
           <div className="py-10 text-center text-muted-foreground">Nenhuma transação na seleção atual.</div>
         ) : (

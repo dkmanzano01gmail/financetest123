@@ -10,6 +10,7 @@ export type SuggestionInput = {
   amount: number;
   category_id?: string | null;
   importance_level?: Importance | null;
+  importance_confirmed_by_user?: boolean | null;
 };
 
 export type Suggestion = {
@@ -65,6 +66,13 @@ function normalize(s: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    // Common Nubank/bank prefixes that add no signal.
+    .replace(/\b(compra no debito|compra no débito|pagamento efetuado|pix\s+(enviado|recebido)|transferencia\s+(enviada|recebida)|debito automatico|débito automático)\b/g, " ")
+    // Masked card suffixes / transaction IDs / trailing UUID-ish tokens.
+    .replace(/\b(final\s+\d{2,4}|xxxx\d{2,4}|\*{2,}\d{2,4})\b/g, " ")
+    .replace(/\b[a-f0-9]{16,}\b/g, " ")
+    // Punctuation → spaces so tokens split cleanly.
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -155,19 +163,27 @@ function similarHistory(text: string, history: HistoryEntry[]): HistoryEntry | n
 }
 
 export async function loadSuggestionContext(workspaceId: string, workspaceType: "personal" | "business") {
-  const [{ data: cats }, { data: rules }, { data: hist }] = await Promise.all([
-    supabase.from("categories").select("id,name,type,importance_level,importance_comment" as any).eq("workspace_id", workspaceId).eq("is_active", true),
+  const [catsRes, rulesRes, histRes] = await Promise.all([
+    supabase.from("categories")
+      .select("id,name,type,importance_level,importance_comment" as any)
+      .eq("workspace_id", workspaceId).eq("is_active", true),
     (supabase as any).from("importance_rules")
       .select("rule_kind,match_text,match_mode,category_hint,category_id,importance_level,transaction_type,workspace_type,confidence,source_type,amount_operator,amount_value,amount_value_2,counterparty_match,counterparty_match_mode,recurrence_min_count,recurrence_window_days,priority")
       .eq("is_active", true)
       .or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
       .order("priority", { ascending: true }),
-    supabase.from("transactions").select("description,counterparty,date,amount,category_id,importance_level" as any).eq("workspace_id", workspaceId).order("date", { ascending: false }).limit(800),
+    supabase.from("transactions")
+      .select("description,counterparty,date,amount,category_id,importance_level" as any)
+      .eq("workspace_id", workspaceId)
+      .order("date", { ascending: false }).limit(800),
   ]);
+  if (catsRes.error) throw catsRes.error;
+  if (rulesRes.error) throw rulesRes.error;
+  if (histRes.error) throw histRes.error;
   return {
-    categories: ((cats as any[]) ?? []) as Category[],
-    rules: (((rules as any[]) ?? []) as Rule[]).filter((r) => !r.workspace_type || r.workspace_type === workspaceType),
-    history: ((hist as any[]) ?? []) as HistoryEntry[],
+    categories: ((catsRes.data as any[]) ?? []) as Category[],
+    rules: (((rulesRes.data as any[]) ?? []) as Rule[]).filter((r) => !r.workspace_type || r.workspace_type === workspaceType),
+    history: ((histRes.data as any[]) ?? []) as HistoryEntry[],
   };
 }
 
@@ -257,7 +273,34 @@ export function suggestForTransaction(
     }
   }
 
-  // 4) Fallback
+  // 4) Category comment / name token match (same transaction type only).
+  const txTokens = new Set(text.split(" ").filter((tk) => tk.length >= 3));
+  let bestCat: { cat: Category; score: number; matched: string[] } | null = null;
+  for (const cat of ctx.categories) {
+    if (cat.type !== tx.type) continue;
+    const hintText = [cat.name, cat.importance_comment].filter(Boolean).join(" ");
+    const hintTokens = new Set(
+      normalize(hintText).split(" ").filter((tk) => tk.length >= 3)
+    );
+    if (hintTokens.size === 0) continue;
+    const matched: string[] = [];
+    for (const tk of txTokens) if (hintTokens.has(tk)) matched.push(tk);
+    if (matched.length === 0) continue;
+    if (!bestCat || matched.length > bestCat.score) bestCat = { cat, score: matched.length, matched };
+  }
+  if (bestCat) {
+    return {
+      transaction_id: tx.id,
+      category_id: bestCat.cat.id,
+      category_name: bestCat.cat.name,
+      importance: bestCat.cat.importance_level,
+      confidence: Math.min(0.65, 0.35 + bestCat.score * 0.1),
+      reason: `Palavras-chave da categoria "${bestCat.cat.name}" (${bestCat.matched.join(", ")}) casam com a descrição.`,
+      source: "category",
+    };
+  }
+
+  // 5) Fallback
   return {
     transaction_id: tx.id,
     category_id: null,

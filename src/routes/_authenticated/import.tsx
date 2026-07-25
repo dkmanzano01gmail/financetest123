@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { parseCsv, parseAmount, parseDateBR, sha256Hex, guessColumn, type CsvRow } from "@/lib/csv";
+import { parseCsv, parseAmount, parseDateBR, sha256Hex, guessColumn, decodeCsvBuffer, type CsvRow } from "@/lib/csv";
 import { formatCurrency } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/import")({
@@ -37,6 +37,8 @@ type PreparedRow = {
   valid: boolean;
   selected: boolean;
   raw: CsvRow;
+  invalidReasons: string[];
+  externalId: string | null;
 };
 
 function ImportPage() {
@@ -50,9 +52,10 @@ function ImportPage() {
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<CsvRow[]>([]);
   const [fileName, setFileName] = useState("");
-  const [mapping, setMapping] = useState({ date: "", description: "", amount: "", type: "" });
+  const [mapping, setMapping] = useState({ date: "", description: "", amount: "", type: "", external_id: "" });
   const [prepared, setPrepared] = useState<PreparedRow[]>([]);
   const [importing, setImporting] = useState(false);
+  const [lastSummary, setLastSummary] = useState<null | { imported: number; skipped: number; invalid: number; duplicates: number }>(null);
 
   const { data: accounts } = useQuery({
     queryKey: ["accounts", wsId],
@@ -71,8 +74,18 @@ function ImportPage() {
     const f = e.target.files?.[0];
     if (!f) return;
     setFileName(f.name);
-    const text = await f.text();
-    const parsed = parseCsv(text);
+    setPrepared([]);
+    setLastSummary(null);
+    let parsed: ReturnType<typeof parseCsv>;
+    try {
+      const buf = await f.arrayBuffer();
+      const text = decodeCsvBuffer(buf);
+      parsed = parseCsv(text);
+    } catch (err: any) {
+      toast.error(`Falha ao ler o arquivo: ${err?.message ?? err}`);
+      setHeaders([]); setRows([]);
+      return;
+    }
     setHeaders(parsed.headers);
     setRows(parsed.rows);
     // Nubank CSVs: conta = "Data,Valor,Identificador,Descrição"; cartão = "date,title,amount"
@@ -91,8 +104,8 @@ function ImportPage() {
       description: guessColumn(parsed.headers, ["descricao", "descrição", "description", "historico", "histórico", "memo", "title"]),
       amount: guessColumn(parsed.headers, ["valor", "amount", "value", "montante"]),
       type: guessColumn(parsed.headers, ["tipo", "type"]),
+      external_id: guessColumn(parsed.headers, ["identificador", "id", "external_id"]),
     });
-    setPrepared([]);
   }
 
   const canPreview = wsId && targetId && rows.length > 0 && mapping.date && mapping.description && mapping.amount;
@@ -103,9 +116,16 @@ function ImportPage() {
     const items: PreparedRow[] = [];
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const date = parseDateBR(r[mapping.date] ?? "");
-      const amount = parseAmount(r[mapping.amount] ?? "");
-      const description = (r[mapping.description] ?? "").slice(0, 200);
+      const rawDate = r[mapping.date] ?? "";
+      const rawAmt = r[mapping.amount] ?? "";
+      const date = parseDateBR(rawDate);
+      const amount = parseAmount(rawAmt);
+      const description = (r[mapping.description] ?? "").trim().slice(0, 200);
+      const externalId = mapping.external_id ? (r[mapping.external_id] ?? "").trim() || null : null;
+      const reasons: string[] = [];
+      if (!date) reasons.push(`data inválida (${rawDate || "vazia"})`);
+      if (amount === null) reasons.push(`valor inválido (${rawAmt || "vazio"})`);
+      if (!description) reasons.push("descrição vazia");
       let type: "income" | "expense" = "expense";
       if (mapping.type && r[mapping.type]) {
         const v = r[mapping.type].toLowerCase();
@@ -115,14 +135,18 @@ function ImportPage() {
         type = amount >= 0 ? "income" : "expense";
       }
       const absAmount = amount === null ? null : Math.abs(amount);
-      const hashSrc = `${wsId}|${target}|${targetId}|${date ?? ""}|${absAmount ?? ""}|${description.trim().toLowerCase()}`;
+      // Prefer external identifier (e.g. Nubank "Identificador") when present — stable across re-imports.
+      const hashSrc = externalId
+        ? `${wsId}|${target}|${targetId}|ext:${externalId}`
+        : `${wsId}|${target}|${targetId}|${date ?? ""}|${absAmount ?? ""}|${description.trim().toLowerCase()}`;
       const hash = await sha256Hex(hashSrc);
       const duplicateInBatch = seen.has(hash);
       seen.add(hash);
-      const valid = !!(date && absAmount !== null && description);
+      const valid = reasons.length === 0;
       items.push({
         index: i, date, description, amount: absAmount, type, hash,
         duplicate: false, duplicateInBatch, valid, selected: valid && !duplicateInBatch, raw: r,
+        invalidReasons: reasons, externalId,
       });
     }
 
@@ -174,16 +198,43 @@ function ImportPage() {
         import_hash: p.hash,
         created_by,
       }));
+      // Use ON CONFLICT to gracefully skip duplicates against the unique
+      // partial index on (workspace_id, import_hash). Falls back to plain
+      // insert per-row if a chunk fails, so a single bad row doesn't abort.
       const chunk = 500;
+      let imported = 0;
+      let skipped = 0;
       for (let i = 0; i < payload.length; i += chunk) {
-        const { error } = await supabase.from("transactions").insert(payload.slice(i, i + chunk));
-        if (error) throw error;
+        const slice = payload.slice(i, i + chunk);
+        const { data, error } = await supabase
+          .from("transactions")
+          .upsert(slice as any, { onConflict: "workspace_id,import_hash", ignoreDuplicates: true })
+          .select("id");
+        if (error) {
+          // Fall back to row-by-row so partial success is preserved.
+          for (const one of slice) {
+            const { data: d1, error: e1 } = await supabase
+              .from("transactions")
+              .upsert(one as any, { onConflict: "workspace_id,import_hash", ignoreDuplicates: true })
+              .select("id");
+            if (e1) { skipped++; continue; }
+            if (d1 && d1.length > 0) imported++; else skipped++;
+          }
+          continue;
+        }
+        imported += data?.length ?? 0;
+        skipped += slice.length - (data?.length ?? 0);
       }
-      return selected.length;
+      return { imported, skipped };
     },
-    onSuccess: (n) => {
-      toast.success(`${n} transações importadas`);
+    onSuccess: ({ imported, skipped }) => {
+      const invalid = prepared.filter((p) => !p.valid).length;
+      const duplicates = prepared.filter((p) => p.duplicate || p.duplicateInBatch).length;
+      setLastSummary({ imported, skipped, invalid, duplicates });
+      toast.success(`${imported} importadas · ${skipped} duplicadas puladas · ${invalid} inválidas`);
       qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["reconciliation"] });
       setPrepared([]); setRows([]); setHeaders([]); setFileName("");
     },
     onError: (e: any) => toast.error(e.message),
@@ -230,16 +281,16 @@ function ImportPage() {
           </div>
 
           {headers.length > 0 && (
-            <div className="grid md:grid-cols-4 gap-3 pt-2 border-t">
-              {(["date","description","amount","type"] as const).map((k) => (
+            <div className="grid md:grid-cols-5 gap-3 pt-2 border-t">
+              {(["date","description","amount","type","external_id"] as const).map((k) => (
                 <div key={k}>
                   <Label className="mb-2 block capitalize">
-                    {k === "date" ? "Data" : k === "description" ? "Descrição" : k === "amount" ? "Valor" : "Tipo (opcional)"}
+                    {k === "date" ? "Data" : k === "description" ? "Descrição" : k === "amount" ? "Valor" : k === "type" ? "Tipo (opcional)" : "ID externo (opcional)"}
                   </Label>
                   <Select value={mapping[k]} onValueChange={(v) => setMapping((m) => ({ ...m, [k]: v === "__none" ? "" : v }))}>
                     <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
                     <SelectContent>
-                      {k === "type" && <SelectItem value="__none">— Nenhum —</SelectItem>}
+                      {(k === "type" || k === "external_id") && <SelectItem value="__none">— Nenhum —</SelectItem>}
                       {headers.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -257,6 +308,17 @@ function ImportPage() {
           )}
         </CardContent>
       </Card>
+
+      {lastSummary && (
+        <Card className="mb-4">
+          <CardContent className="p-4 flex flex-wrap items-center gap-3">
+            <Badge className="bg-[var(--income)]/10 text-[var(--income)]">{lastSummary.imported} importadas</Badge>
+            <Badge className="bg-amber-500/15 text-amber-700">{lastSummary.skipped} duplicadas puladas</Badge>
+            <Badge variant="destructive">{lastSummary.invalid} inválidas</Badge>
+            <Badge variant="outline">{lastSummary.duplicates} duplicidades detectadas</Badge>
+          </CardContent>
+        </Card>
+      )}
 
       {prepared.length === 0 ? (
         <Card>
@@ -320,7 +382,11 @@ function ImportPage() {
                       <TableCell>
                         {p.duplicate ? <Badge className="bg-amber-500/15 text-amber-700 hover:bg-amber-500/15">Já existe</Badge>
                           : p.duplicateInBatch ? <Badge className="bg-amber-500/15 text-amber-700 hover:bg-amber-500/15">Repetida no arquivo</Badge>
-                          : !p.valid ? <Badge variant="destructive">Inválida</Badge>
+                          : !p.valid ? (
+                            <Badge variant="destructive" title={p.invalidReasons.join("; ")}>
+                              Inválida: {p.invalidReasons.join(", ")}
+                            </Badge>
+                          )
                           : <Badge variant="secondary">Nova</Badge>}
                       </TableCell>
                     </TableRow>
