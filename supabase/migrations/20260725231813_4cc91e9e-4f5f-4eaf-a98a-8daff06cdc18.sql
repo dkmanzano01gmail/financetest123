@@ -1,0 +1,1 @@
+DELETE FROM public.transactions WHERE description LIKE '__dedupe_test\_%' ESCAPE '\';
