@@ -190,6 +190,56 @@ export type Database = {
           },
         ]
       }
+      attendance_records: {
+        Row: {
+          comments: string | null
+          confirmed_at: string | null
+          created_at: string
+          id: string
+          session_date: string
+          session_time: string | null
+          status: string
+          student_name: string
+          updated_at: string
+          weekday: number | null
+          workspace_id: string
+        }
+        Insert: {
+          comments?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          id?: string
+          session_date: string
+          session_time?: string | null
+          status?: string
+          student_name: string
+          updated_at?: string
+          weekday?: number | null
+          workspace_id: string
+        }
+        Update: {
+          comments?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          id?: string
+          session_date?: string
+          session_time?: string | null
+          status?: string
+          student_name?: string
+          updated_at?: string
+          weekday?: number | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_records_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       budgets: {
         Row: {
           category_id: string
@@ -241,6 +291,101 @@ export type Database = {
           },
         ]
       }
+      cash_flow_entries: {
+        Row: {
+          amount: number
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string
+          entry_date: string
+          id: string
+          notes: string | null
+          recurrence: string
+          status: string
+          type: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          amount: number
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description: string
+          entry_date: string
+          id?: string
+          notes?: string | null
+          recurrence?: string
+          status?: string
+          type: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          amount?: number
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          entry_date?: string
+          id?: string
+          notes?: string | null
+          recurrence?: string
+          status?: string
+          type?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_flow_entries_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_flow_entries_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_flow_settings: {
+        Row: {
+          notes: string | null
+          starting_balance: number
+          starting_balance_date: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          notes?: string | null
+          starting_balance?: number
+          starting_balance_date?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          notes?: string | null
+          starting_balance?: number
+          starting_balance_date?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_flow_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           color: string
@@ -287,6 +432,59 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "categories_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_materials_usage: {
+        Row: {
+          amount_charged: number
+          comments: string | null
+          created_at: string
+          grams: number
+          id: string
+          material: string
+          payment_date: string | null
+          payment_status: string
+          student_name: string
+          updated_at: string
+          usage_date: string
+          workspace_id: string
+        }
+        Insert: {
+          amount_charged?: number
+          comments?: string | null
+          created_at?: string
+          grams?: number
+          id?: string
+          material: string
+          payment_date?: string | null
+          payment_status?: string
+          student_name: string
+          updated_at?: string
+          usage_date?: string
+          workspace_id: string
+        }
+        Update: {
+          amount_charged?: number
+          comments?: string | null
+          created_at?: string
+          grams?: number
+          id?: string
+          material?: string
+          payment_date?: string | null
+          payment_status?: string
+          student_name?: string
+          updated_at?: string
+          usage_date?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_materials_usage_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -576,6 +774,125 @@ export type Database = {
           },
         ]
       }
+      firing_pieces: {
+        Row: {
+          charge_amount: number
+          charge_customer: boolean
+          created_at: string
+          customer_name: string | null
+          depth_cm: number
+          firing_id: string
+          height_cm: number
+          id: string
+          internal_cost: number
+          length_cm: number
+          notes: string | null
+          piece_name: string
+          quantity: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          charge_amount?: number
+          charge_customer?: boolean
+          created_at?: string
+          customer_name?: string | null
+          depth_cm?: number
+          firing_id: string
+          height_cm?: number
+          id?: string
+          internal_cost?: number
+          length_cm?: number
+          notes?: string | null
+          piece_name: string
+          quantity?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          charge_amount?: number
+          charge_customer?: boolean
+          created_at?: string
+          customer_name?: string | null
+          depth_cm?: number
+          firing_id?: string
+          height_cm?: number
+          id?: string
+          internal_cost?: number
+          length_cm?: number
+          notes?: string | null
+          piece_name?: string
+          quantity?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "firing_pieces_firing_id_fkey"
+            columns: ["firing_id"]
+            isOneToOne: false
+            referencedRelation: "firing_pricing"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "firing_pieces_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      firing_pricing: {
+        Row: {
+          created_at: string
+          firing_date: string | null
+          firing_type: string
+          id: string
+          notes: string | null
+          profit: number
+          reference: string
+          total_charges: number
+          total_internal_cost: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          firing_date?: string | null
+          firing_type?: string
+          id?: string
+          notes?: string | null
+          profit?: number
+          reference?: string
+          total_charges?: number
+          total_internal_cost?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          firing_date?: string | null
+          firing_type?: string
+          id?: string
+          notes?: string | null
+          profit?: number
+          reference?: string
+          total_charges?: number
+          total_internal_cost?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "firing_pricing_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       importance_rules: {
         Row: {
           amount_operator: string | null
@@ -678,6 +995,130 @@ export type Database = {
           },
         ]
       }
+      piece_pricing: {
+        Row: {
+          biscuit_cost: number
+          clay_cost: number
+          clay_grams: number
+          created_at: string
+          depth_cm: number
+          glaze_cost: number
+          glaze_firing_cost: number
+          glaze_grams: number
+          height_cm: number
+          id: string
+          labor_cost: number
+          length_cm: number
+          margin_percent: number
+          name: string
+          notes: string | null
+          other_cost: number
+          packaging_cost: number
+          suggested_price: number
+          total_cost: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          biscuit_cost?: number
+          clay_cost?: number
+          clay_grams?: number
+          created_at?: string
+          depth_cm?: number
+          glaze_cost?: number
+          glaze_firing_cost?: number
+          glaze_grams?: number
+          height_cm?: number
+          id?: string
+          labor_cost?: number
+          length_cm?: number
+          margin_percent?: number
+          name: string
+          notes?: string | null
+          other_cost?: number
+          packaging_cost?: number
+          suggested_price?: number
+          total_cost?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          biscuit_cost?: number
+          clay_cost?: number
+          clay_grams?: number
+          created_at?: string
+          depth_cm?: number
+          glaze_cost?: number
+          glaze_firing_cost?: number
+          glaze_grams?: number
+          height_cm?: number
+          id?: string
+          labor_cost?: number
+          length_cm?: number
+          margin_percent?: number
+          name?: string
+          notes?: string | null
+          other_cost?: number
+          packaging_cost?: number
+          suggested_price?: number
+          total_cost?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "piece_pricing_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      piece_pricing_defaults: {
+        Row: {
+          biscuit_coeff: number
+          clay_kg_price: number
+          default_labor: number
+          default_margin_percent: number
+          default_packaging: number
+          glaze_firing_coeff: number
+          glaze_gram_price: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          biscuit_coeff?: number
+          clay_kg_price?: number
+          default_labor?: number
+          default_margin_percent?: number
+          default_packaging?: number
+          glaze_firing_coeff?: number
+          glaze_gram_price?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          biscuit_coeff?: number
+          clay_kg_price?: number
+          default_labor?: number
+          default_margin_percent?: number
+          default_packaging?: number
+          glaze_firing_coeff?: number
+          glaze_gram_price?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "piece_pricing_defaults_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -701,6 +1142,124 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      raw_materials: {
+        Row: {
+          created_at: string
+          id: string
+          material_type: string | null
+          min_stock: number
+          name: string
+          notes: string | null
+          purchase_date: string | null
+          quantity_available: number
+          quantity_purchased: number
+          supplier: string | null
+          unit: string
+          unit_cost: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          material_type?: string | null
+          min_stock?: number
+          name: string
+          notes?: string | null
+          purchase_date?: string | null
+          quantity_available?: number
+          quantity_purchased?: number
+          supplier?: string | null
+          unit?: string
+          unit_cost?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          material_type?: string | null
+          min_stock?: number
+          name?: string
+          notes?: string | null
+          purchase_date?: string | null
+          quantity_available?: number
+          quantity_purchased?: number
+          supplier?: string | null
+          unit?: string
+          unit_cost?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "raw_materials_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      renovation_items: {
+        Row: {
+          actual_amount: number
+          budget_amount: number
+          category: string | null
+          created_at: string
+          due_date: string | null
+          id: string
+          notes: string | null
+          payment_date: string | null
+          payment_status: string
+          status: string
+          supplier: string | null
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          actual_amount?: number
+          budget_amount?: number
+          category?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string | null
+          payment_status?: string
+          status?: string
+          supplier?: string | null
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          actual_amount?: number
+          budget_amount?: number
+          category?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string | null
+          payment_status?: string
+          status?: string
+          supplier?: string | null
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renovation_items_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       super_admins: {
         Row: {
@@ -857,6 +1416,80 @@ export type Database = {
           },
           {
             foreignKeyName: "transactions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workshop_pricing: {
+        Row: {
+          attendees: number
+          clay_cost: number
+          created_at: string
+          event_date: string | null
+          firing_cost: number
+          food_cost: number
+          glaze_cost: number
+          id: string
+          labor_cost: number
+          margin_percent: number
+          name: string
+          notes: string | null
+          other_cost: number
+          price_per_person: number
+          profit: number
+          total_cost: number
+          total_revenue: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          attendees?: number
+          clay_cost?: number
+          created_at?: string
+          event_date?: string | null
+          firing_cost?: number
+          food_cost?: number
+          glaze_cost?: number
+          id?: string
+          labor_cost?: number
+          margin_percent?: number
+          name: string
+          notes?: string | null
+          other_cost?: number
+          price_per_person?: number
+          profit?: number
+          total_cost?: number
+          total_revenue?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          attendees?: number
+          clay_cost?: number
+          created_at?: string
+          event_date?: string | null
+          firing_cost?: number
+          food_cost?: number
+          glaze_cost?: number
+          id?: string
+          labor_cost?: number
+          margin_percent?: number
+          name?: string
+          notes?: string | null
+          other_cost?: number
+          price_per_person?: number
+          profit?: number
+          total_cost?: number
+          total_revenue?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workshop_pricing_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -1035,6 +1668,7 @@ export type Database = {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
       }
+      seed_sela_defaults: { Args: { _workspace_id: string }; Returns: Json }
       user_approve_test: {
         Args: { _request_id: string }
         Returns: {
