@@ -75,6 +75,17 @@ function ImportPage() {
     const parsed = parseCsv(text);
     setHeaders(parsed.headers);
     setRows(parsed.rows);
+    // Nubank CSVs: conta = "Data,Valor,Identificador,Descrição"; cartão = "date,title,amount"
+    const norm = parsed.headers.map((h) => h.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+    const isNubankAccount = norm.includes("identificador") && norm.includes("valor") && norm.includes("descricao");
+    const isNubankCard = norm.includes("date") && norm.includes("title") && norm.includes("amount") && !norm.includes("valor");
+    if (isNubankAccount) {
+      toast.success("Nubank (conta) detectado — mapeamento automático aplicado.");
+      setTarget("account");
+    } else if (isNubankCard) {
+      toast.success("Nubank (cartão) detectado — mapeamento automático aplicado.");
+      setTarget("credit_card");
+    }
     setMapping({
       date: guessColumn(parsed.headers, ["data", "date"]),
       description: guessColumn(parsed.headers, ["descricao", "descrição", "description", "historico", "histórico", "memo", "title"]),
