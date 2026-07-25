@@ -117,7 +117,7 @@ export function TransactionDialog({
           notes: notes || null,
         };
         const { error } = await supabase.from("transactions")
-          .update(patch)
+          .update(patch as any)
           .eq("id", transaction.id)
           .eq("workspace_id", wsId);
         if (error) throw error;
