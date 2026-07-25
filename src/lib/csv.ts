@@ -1,4 +1,5 @@
 export type CsvRow = Record<string, string>;
+import { parseLocaleAmount } from "./format";
 
 /**
  * Decode an ArrayBuffer as UTF-8 (strict). Falls back to Windows-1252 when
