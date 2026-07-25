@@ -10,6 +10,7 @@ export type SuggestionInput = {
   amount: number;
   category_id?: string | null;
   importance_level?: Importance | null;
+  importance_confirmed_by_user?: boolean | null;
 };
 
 export type Suggestion = {
