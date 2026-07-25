@@ -198,12 +198,17 @@ function ImportPage() {
         import_hash: p.hash,
         created_by,
       }));
-      // Use ON CONFLICT to gracefully skip duplicates against the unique
-      // partial index on (workspace_id, import_hash). Falls back to plain
-      // insert per-row if a chunk fails, so a single bad row doesn't abort.
+      // Upsert with `ignoreDuplicates` against the unique index on
+      // (workspace_id, import_hash). Under Postgres, ON CONFLICT DO NOTHING
+      // returns only the truly inserted rows, so `data.length` = inserted
+      // and `slice.length - data.length` = conflict-skipped duplicates.
+      // Real errors (validation, RLS, etc.) are surfaced — not silently
+      // counted as duplicates. Errors are collected per-chunk to preserve
+      // partial success across large imports.
       const chunk = 500;
       let imported = 0;
-      let skipped = 0;
+      let conflictSkipped = 0;
+      const errors: string[] = [];
       for (let i = 0; i < payload.length; i += chunk) {
         const slice = payload.slice(i, i + chunk);
         const { data, error } = await supabase
@@ -211,27 +216,25 @@ function ImportPage() {
           .upsert(slice as any, { onConflict: "workspace_id,import_hash", ignoreDuplicates: true })
           .select("id");
         if (error) {
-          // Fall back to row-by-row so partial success is preserved.
-          for (const one of slice) {
-            const { data: d1, error: e1 } = await supabase
-              .from("transactions")
-              .upsert(one as any, { onConflict: "workspace_id,import_hash", ignoreDuplicates: true })
-              .select("id");
-            if (e1) { skipped++; continue; }
-            if (d1 && d1.length > 0) imported++; else skipped++;
-          }
+          errors.push(`Linhas ${i + 1}–${i + slice.length}: ${error.message}`);
           continue;
         }
-        imported += data?.length ?? 0;
-        skipped += slice.length - (data?.length ?? 0);
+        const inserted = data?.length ?? 0;
+        imported += inserted;
+        conflictSkipped += slice.length - inserted;
       }
-      return { imported, skipped };
+      return { imported, conflictSkipped, errors };
     },
-    onSuccess: ({ imported, skipped }) => {
+    onSuccess: ({ imported, conflictSkipped, errors }) => {
       const invalid = prepared.filter((p) => !p.valid).length;
       const duplicates = prepared.filter((p) => p.duplicate || p.duplicateInBatch).length;
-      setLastSummary({ imported, skipped, invalid, duplicates });
-      toast.success(`${imported} importadas · ${skipped} duplicadas puladas · ${invalid} inválidas`);
+      setLastSummary({ imported, skipped: conflictSkipped, invalid, duplicates });
+      if (errors.length > 0) {
+        toast.error(`${imported} importadas · ${conflictSkipped} duplicadas · ${errors.length} erros de inserção`);
+        for (const msg of errors.slice(0, 3)) toast.error(msg);
+      } else {
+        toast.success(`${imported} importadas · ${conflictSkipped} duplicadas puladas · ${invalid} inválidas`);
+      }
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["reconciliation"] });
