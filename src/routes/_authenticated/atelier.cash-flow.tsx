@@ -403,6 +403,24 @@ function CashFlowPage() {
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
             </div>
+            {form.recurrence === "monthly" && (
+              <div className="space-y-1.5">
+                <Label>Dia do mês (1–31)</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="ex: 10"
+                  value={form.day_of_month}
+                  onChange={(e) => setForm({ ...form, day_of_month: e.target.value })}
+                />
+              </div>
+            )}
+            <div className="space-y-1.5 col-span-2 flex items-center gap-3">
+              <Switch
+                checked={form.is_active}
+                onCheckedChange={(v) => setForm({ ...form, is_active: v })}
+              />
+              <Label>Ativo (recorrência considerada nas projeções)</Label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
