@@ -53,13 +53,13 @@ function Page() {
         total_revenue: calc.revenue, total_cost: calc.cost, profit: calc.profit, margin_percent: calc.margin,
         notes: f.notes || null,
       };
-      const { error } = editId ? await sb.from("workshop_pricing").update(p).eq("id", editId) : await sb.from("workshop_pricing").insert(p);
+      const { error } = editId ? await sb.from("workshop_pricing").update(p).eq("id", editId).eq("workspace_id", wsId) : await sb.from("workshop_pricing").insert(p);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["workshop_pricing"] }); setOpen(false); setEditId(null); setF(empty); toast.success("Salvo"); },
     onError: (e: Error) => toast.error(e.message),
   });
-  const del = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("workshop_pricing").delete().eq("id", id); if (error) throw error; }, onSuccess: () => qc.invalidateQueries({ queryKey: ["workshop_pricing"] }) });
+  const del = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("workshop_pricing").delete().eq("id", id).eq("workspace_id", wsId); if (error) throw error; }, onSuccess: () => qc.invalidateQueries({ queryKey: ["workshop_pricing"] }) });
 
   function edit(r: any) { setEditId(r.id); setF({ name: r.name, event_date: r.event_date ?? "", attendees: String(r.attendees), price_per_person: String(r.price_per_person), clay_cost: String(r.clay_cost), glaze_cost: String(r.glaze_cost), firing_cost: String(r.firing_cost), food_cost: String(r.food_cost), labor_cost: String(r.labor_cost), other_cost: String(r.other_cost), notes: r.notes ?? "" }); setOpen(true); }
 

@@ -49,7 +49,7 @@ function CashFlowPage() {
         amount: Number(form.amount.replace(",", ".") || 0), recurrence: form.recurrence, status: form.status, notes: form.notes || null,
       };
       const { error } = editId
-        ? await sb.from("cash_flow_entries").update(payload).eq("id", editId)
+        ? await sb.from("cash_flow_entries").update(payload).eq("id", editId).eq("workspace_id", wsId)
         : await sb.from("cash_flow_entries").insert(payload);
       if (error) throw error;
     },
@@ -58,7 +58,7 @@ function CashFlowPage() {
   });
 
   const delMut = useMutation({
-    mutationFn: async (id: string) => { const { error } = await sb.from("cash_flow_entries").delete().eq("id", id); if (error) throw error; },
+    mutationFn: async (id: string) => { const { error } = await sb.from("cash_flow_entries").delete().eq("id", id).eq("workspace_id", wsId); if (error) throw error; },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cash_flow_entries"] }),
   });
 

@@ -42,13 +42,13 @@ function RawMaterialsPage() {
         unit_cost: Number(f.unit_cost.replace(",", ".") || 0),
         purchase_date: f.purchase_date || null, min_stock: Number(f.min_stock.replace(",", ".") || 0), notes: f.notes || null,
       };
-      const { error } = editId ? await sb.from("raw_materials").update(p).eq("id", editId) : await sb.from("raw_materials").insert(p);
+      const { error } = editId ? await sb.from("raw_materials").update(p).eq("id", editId).eq("workspace_id", wsId) : await sb.from("raw_materials").insert(p);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["raw_materials"] }); setOpen(false); setEditId(null); setF(empty); toast.success("Salvo"); },
     onError: (e: Error) => toast.error(e.message),
   });
-  const del = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("raw_materials").delete().eq("id", id); if (error) throw error; }, onSuccess: () => qc.invalidateQueries({ queryKey: ["raw_materials"] }) });
+  const del = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("raw_materials").delete().eq("id", id).eq("workspace_id", wsId); if (error) throw error; }, onSuccess: () => qc.invalidateQueries({ queryKey: ["raw_materials"] }) });
 
   function edit(i: any) { setEditId(i.id); setF({ name: i.name, material_type: i.material_type ?? "", supplier: i.supplier ?? "", unit: i.unit, quantity_purchased: String(i.quantity_purchased), quantity_available: String(i.quantity_available), unit_cost: String(i.unit_cost), purchase_date: i.purchase_date ?? "", min_stock: String(i.min_stock), notes: i.notes ?? "" }); setOpen(true); }
 

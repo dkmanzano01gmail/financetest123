@@ -44,13 +44,13 @@ function Page() {
       const p: any = { workspace_id: wsId, title: f.title, category: f.category || null, supplier: f.supplier || null,
         budget_amount: Number(f.budget_amount.replace(",", ".") || 0), actual_amount: Number(f.actual_amount.replace(",", ".") || 0),
         due_date: f.due_date || null, payment_date: f.payment_date || null, payment_status: f.payment_status, status: f.status, notes: f.notes || null };
-      const { error } = editId ? await sb.from("renovation_items").update(p).eq("id", editId) : await sb.from("renovation_items").insert(p);
+      const { error } = editId ? await sb.from("renovation_items").update(p).eq("id", editId).eq("workspace_id", wsId) : await sb.from("renovation_items").insert(p);
       if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["renovation"] }); setOpen(false); setEditId(null); setF(empty); toast.success("Salvo"); },
     onError: (e: Error) => toast.error(e.message),
   });
-  const del = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("renovation_items").delete().eq("id", id); if (error) throw error; }, onSuccess: () => qc.invalidateQueries({ queryKey: ["renovation"] }) });
+  const del = useMutation({ mutationFn: async (id: string) => { const { error } = await sb.from("renovation_items").delete().eq("id", id).eq("workspace_id", wsId); if (error) throw error; }, onSuccess: () => qc.invalidateQueries({ queryKey: ["renovation"] }) });
   function edit(r: any) { setEditId(r.id); setF({ title: r.title, category: r.category ?? "", supplier: r.supplier ?? "", budget_amount: String(r.budget_amount), actual_amount: String(r.actual_amount), due_date: r.due_date ?? "", payment_date: r.payment_date ?? "", payment_status: r.payment_status, status: r.status, notes: r.notes ?? "" }); setOpen(true); }
 
   return (
