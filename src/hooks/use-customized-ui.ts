@@ -75,23 +75,27 @@ export function useCustomizedUI(workspaceId?: string) {
     return Array.isArray(o) ? o.filter((k: any) => typeof k === "string") : [];
   }, [rows]);
 
-  const savedFilters = useMemo(
-    () => rows.filter((r) => r.type === "saved_filter"),
-    [rows],
-  );
+  const savedFilters = useMemo(() => rows.filter((r) => r.type === "saved_filter"), [rows]);
 
   return { ...q, hiddenNav, navOrder, hiddenCards, cardOrder, savedFilters };
 }
 
 /** Apply hidden + order to a list of nav items keyed by `.key`. */
-export function arrangeNav<T extends { key: string }>(items: T[], order: string[], hidden: Set<string>): T[] {
+export function arrangeNav<T extends { key: string }>(
+  items: T[],
+  order: string[],
+  hidden: Set<string>,
+): T[] {
   const filtered = items.filter((i) => !hidden.has(i.key));
   if (order.length === 0) return filtered;
   const map = new Map(filtered.map((i) => [i.key, i] as const));
   const ordered: T[] = [];
   for (const k of order) {
     const it = map.get(k);
-    if (it) { ordered.push(it); map.delete(k); }
+    if (it) {
+      ordered.push(it);
+      map.delete(k);
+    }
   }
   // append any unspecified items at the end (stable)
   for (const it of filtered) if (map.has(it.key)) ordered.push(it);

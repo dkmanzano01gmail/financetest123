@@ -8,24 +8,51 @@
  */
 
 export type NavKey =
-  | "nav.dashboard" | "nav.transactions" | "nav.accounts" | "nav.cards"
-  | "nav.budget" | "nav.reconciliation" | "nav.categories" | "nav.import"
-  | "nav.customizations" | "nav.settings" | "nav.admin";
+  | "nav.dashboard"
+  | "nav.transactions"
+  | "nav.accounts"
+  | "nav.cards"
+  | "nav.budget"
+  | "nav.reconciliation"
+  | "nav.categories"
+  | "nav.import"
+  | "nav.customizations"
+  | "nav.settings"
+  | "nav.admin";
 
 export const NAV_KEYS: NavKey[] = [
-  "nav.dashboard","nav.transactions","nav.accounts","nav.cards",
-  "nav.budget","nav.reconciliation","nav.categories","nav.import",
-  "nav.customizations","nav.settings","nav.admin",
+  "nav.dashboard",
+  "nav.transactions",
+  "nav.accounts",
+  "nav.cards",
+  "nav.budget",
+  "nav.reconciliation",
+  "nav.categories",
+  "nav.import",
+  "nav.customizations",
+  "nav.settings",
+  "nav.admin",
 ];
 
 export type CardKey =
-  | "income" | "expense" | "balance"
-  | "accounts_balance" | "top_category" | "recent_transactions"
-  | "budget_overview" | "reconciliation_status";
+  | "income"
+  | "expense"
+  | "balance"
+  | "accounts_balance"
+  | "top_category"
+  | "recent_transactions"
+  | "budget_overview"
+  | "reconciliation_status";
 
 export const CARD_KEYS: CardKey[] = [
-  "income","expense","balance","accounts_balance","top_category",
-  "recent_transactions","budget_overview","reconciliation_status",
+  "income",
+  "expense",
+  "balance",
+  "accounts_balance",
+  "top_category",
+  "recent_transactions",
+  "budget_overview",
+  "reconciliation_status",
 ];
 
 /** Operation envelope persisted in customizations.operation_payload. */
@@ -35,7 +62,13 @@ export type Operation =
   | { kind: "nav_visibility"; menu_key: NavKey; visible: boolean }
   | { kind: "nav_reorder"; order: NavKey[] }
   | { kind: "dashboard_widget_order"; order: CardKey[] }
-  | { kind: "new_category"; name: string; type: "income"|"expense"; color?: string; importance_level?: "essential"|"important"|"flexible"|"superfluous" }
+  | {
+      kind: "new_category";
+      name: string;
+      type: "income" | "expense";
+      color?: string;
+      importance_level?: "essential" | "important" | "flexible" | "superfluous";
+    }
   | { kind: "saved_filter"; name: string; filters: Record<string, unknown> }
   | { kind: "category_rule"; rule: CategoryRule };
 
@@ -48,7 +81,7 @@ export type Operation =
 export type CategoryRule = {
   category_name: string;
   transaction_type?: "income" | "expense";
-  importance_level?: "essential"|"important"|"flexible"|"superfluous";
+  importance_level?: "essential" | "important" | "flexible" | "superfluous";
   conditions: RuleCondition[];
   /** lower = applied first. default 100. */
   priority?: number;
@@ -56,10 +89,24 @@ export type CategoryRule = {
 };
 
 export type RuleCondition =
-  | { kind: "descriptor"; match_text: string; match_mode?: "contains"|"equals"|"starts_with"|"regex" }
-  | { kind: "counterparty"; match_text: string; match_mode?: "contains"|"equals"|"starts_with" }
-  | { kind: "amount"; operator: "equals"|"multiple_of"|"between"|"greater_than"|"less_than"; value: number; value2?: number }
-  | { kind: "recurrence"; basis: "descriptor"|"counterparty"; min_count: number; window_days: number };
+  | {
+      kind: "descriptor";
+      match_text: string;
+      match_mode?: "contains" | "equals" | "starts_with" | "regex";
+    }
+  | { kind: "counterparty"; match_text: string; match_mode?: "contains" | "equals" | "starts_with" }
+  | {
+      kind: "amount";
+      operator: "equals" | "multiple_of" | "between" | "greater_than" | "less_than";
+      value: number;
+      value2?: number;
+    }
+  | {
+      kind: "recurrence";
+      basis: "descriptor" | "counterparty";
+      min_count: number;
+      window_days: number;
+    };
 
 /** Human prompt fragment listing every primitive — fed into the AI system message. */
 export function registryAsPromptFragment(): string {

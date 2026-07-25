@@ -1,17 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  loadSuggestionContext, suggestForTransaction, labelImp, importanceBadgeClass,
-  type Importance, type Suggestion, type SuggestionInput,
+  loadSuggestionContext,
+  suggestForTransaction,
+  labelImp,
+  importanceBadgeClass,
+  type Importance,
+  type Suggestion,
+  type SuggestionInput,
 } from "@/lib/suggestions";
 
 type Row = {
@@ -25,7 +50,11 @@ type Row = {
 };
 
 export function SuggestReviewDialog({
-  open, onOpenChange, workspaceId, workspaceType, transactions,
+  open,
+  onOpenChange,
+  workspaceId,
+  workspaceType,
+  transactions,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -71,7 +100,9 @@ export function SuggestReviewDialog({
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, workspaceId, workspaceType, transactions]);
 
   const summary = useMemo(() => {
@@ -106,27 +137,32 @@ export function SuggestReviewDialog({
             patch.importance_confirmed_at = now;
             patch.importance_status = "confirmed";
           }
-          return supabase.from("transactions" as any)
+          return supabase
+            .from("transactions" as any)
             .update(patch)
             .eq("id", r.tx.id)
             .eq("workspace_id", workspaceId);
-        })
+        }),
       );
       const failed = results
         .map((res, i) => ({ res, id: toApply[i].tx.id }))
         .filter((r) => r.res.status === "rejected" || (r.res as any).value?.error);
       if (failed.length) {
-        const first = failed[0].res.status === "rejected"
-          ? (failed[0].res as PromiseRejectedResult).reason
-          : (failed[0].res as any).value.error;
+        const first =
+          failed[0].res.status === "rejected"
+            ? (failed[0].res as PromiseRejectedResult).reason
+            : (failed[0].res as any).value.error;
         throw new Error(
-          `${toApply.length - failed.length}/${toApply.length} atualizadas — falhou: ${first?.message ?? first}`
+          `${toApply.length - failed.length}/${toApply.length} atualizadas — falhou: ${first?.message ?? first}`,
         );
       }
       return toApply.length;
     },
     onSuccess: (n) => {
-      if (n === 0) { toast("Nada a aplicar"); return; }
+      if (n === 0) {
+        toast("Nada a aplicar");
+        return;
+      }
       toast.success(`${n} transações atualizadas`);
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["ba-txs"] });
@@ -141,18 +177,27 @@ export function SuggestReviewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /> Revisar sugestões</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" /> Revisar sugestões
+          </DialogTitle>
           <DialogDescription>
-            Sugestões de categoria e importância financeira. Revise antes de aplicar — nada é alterado sem sua confirmação.
+            Sugestões de categoria e importância financeira. Revise antes de aplicar — nada é
+            alterado sem sua confirmação.
           </DialogDescription>
         </DialogHeader>
 
         {loading ? (
-          <div className="py-16 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline mr-2" /> Calculando sugestões…</div>
+          <div className="py-16 text-center text-muted-foreground">
+            <Loader2 className="w-5 h-5 animate-spin inline mr-2" /> Calculando sugestões…
+          </div>
         ) : loadError ? (
-          <div className="py-10 text-center text-destructive text-sm">Erro ao carregar sugestões: {loadError}</div>
+          <div className="py-10 text-center text-destructive text-sm">
+            Erro ao carregar sugestões: {loadError}
+          </div>
         ) : rows.length === 0 ? (
-          <div className="py-10 text-center text-muted-foreground">Nenhuma transação na seleção atual.</div>
+          <div className="py-10 text-center text-muted-foreground">
+            Nenhuma transação na seleção atual.
+          </div>
         ) : (
           <div className="max-h-[60vh] overflow-auto -mx-6 px-6">
             <Table>
@@ -172,31 +217,98 @@ export function SuggestReviewDialog({
                   return (
                     <TableRow key={r.tx.id}>
                       <TableCell>
-                        <Checkbox checked={r.selected} onCheckedChange={(v) => setRows((p) => p.map((x, i) => i === idx ? { ...x, selected: !!v } : x))} />
+                        <Checkbox
+                          checked={r.selected}
+                          onCheckedChange={(v) =>
+                            setRows((p) =>
+                              p.map((x, i) => (i === idx ? { ...x, selected: !!v } : x)),
+                            )
+                          }
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="font-medium text-sm">{r.tx.description}</div>
                         <div className="text-xs text-muted-foreground">
                           Atual: {r.tx.current_category_name ?? "Sem categoria"}
-                          {r.tx.importance_level && <> · <Badge variant="secondary" className={importanceBadgeClass(r.tx.importance_level)}>{labelImp(r.tx.importance_level)}</Badge></>}
+                          {r.tx.importance_level && (
+                            <>
+                              {" "}
+                              ·{" "}
+                              <Badge
+                                variant="secondary"
+                                className={importanceBadgeClass(r.tx.importance_level)}
+                              >
+                                {labelImp(r.tx.importance_level)}
+                              </Badge>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Checkbox checked={r.applyCategory} disabled={!r.overrideCategoryId} onCheckedChange={(v) => setRows((p) => p.map((x, i) => i === idx ? { ...x, applyCategory: !!v } : x))} />
-                          <Select value={r.overrideCategoryId ?? ""} onValueChange={(v) => setRows((p) => p.map((x, i) => i === idx ? { ...x, overrideCategoryId: v || null, applyCategory: true } : x))}>
-                            <SelectTrigger className="h-8 w-40"><SelectValue placeholder={r.suggestion.category_name ?? "—"} /></SelectTrigger>
+                          <Checkbox
+                            checked={r.applyCategory}
+                            disabled={!r.overrideCategoryId}
+                            onCheckedChange={(v) =>
+                              setRows((p) =>
+                                p.map((x, i) => (i === idx ? { ...x, applyCategory: !!v } : x)),
+                              )
+                            }
+                          />
+                          <Select
+                            value={r.overrideCategoryId ?? ""}
+                            onValueChange={(v) =>
+                              setRows((p) =>
+                                p.map((x, i) =>
+                                  i === idx
+                                    ? { ...x, overrideCategoryId: v || null, applyCategory: true }
+                                    : x,
+                                ),
+                              )
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-40">
+                              <SelectValue placeholder={r.suggestion.category_name ?? "—"} />
+                            </SelectTrigger>
                             <SelectContent>
-                              {filteredCats.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                              {filteredCats.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  {c.name}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Checkbox checked={r.applyImportance} onCheckedChange={(v) => setRows((p) => p.map((x, i) => i === idx ? { ...x, applyImportance: !!v } : x))} />
-                          <Select value={r.overrideImportance} onValueChange={(v) => setRows((p) => p.map((x, i) => i === idx ? { ...x, overrideImportance: v as Importance, applyImportance: true } : x))}>
-                            <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
+                          <Checkbox
+                            checked={r.applyImportance}
+                            onCheckedChange={(v) =>
+                              setRows((p) =>
+                                p.map((x, i) => (i === idx ? { ...x, applyImportance: !!v } : x)),
+                              )
+                            }
+                          />
+                          <Select
+                            value={r.overrideImportance}
+                            onValueChange={(v) =>
+                              setRows((p) =>
+                                p.map((x, i) =>
+                                  i === idx
+                                    ? {
+                                        ...x,
+                                        overrideImportance: v as Importance,
+                                        applyImportance: true,
+                                      }
+                                    : x,
+                                ),
+                              )
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-32">
+                              <SelectValue />
+                            </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="essential">Essencial</SelectItem>
                               <SelectItem value="important">Importante</SelectItem>
@@ -207,9 +319,13 @@ export function SuggestReviewDialog({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{Math.round(r.suggestion.confidence * 100)}%</Badge>
+                        <Badge variant="outline">
+                          {Math.round(r.suggestion.confidence * 100)}%
+                        </Badge>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-xs">{r.suggestion.reason}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-xs">
+                        {r.suggestion.reason}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -223,8 +339,13 @@ export function SuggestReviewDialog({
             {summary.selected} selecionadas · {summary.changes} com mudanças
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button onClick={() => applyMut.mutate()} disabled={applyMut.isPending || summary.changes === 0}>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => applyMut.mutate()}
+              disabled={applyMut.isPending || summary.changes === 0}
+            >
               {applyMut.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Aplicar sugestões
             </Button>

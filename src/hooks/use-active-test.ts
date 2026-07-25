@@ -19,7 +19,9 @@ export function useActiveTest(workspaceId: string | undefined) {
     queryFn: async (): Promise<ActiveTest> => {
       const { data, error } = await (supabase as any)
         .from("customization_requests")
-        .select("id, workspace_id, request_text, ai_interpretation, auto_applied, complexity, tested_at")
+        .select(
+          "id, workspace_id, request_text, ai_interpretation, auto_applied, complexity, tested_at",
+        )
         .eq("workspace_id", workspaceId!)
         .eq("status", "testing")
         .order("tested_at", { ascending: false })

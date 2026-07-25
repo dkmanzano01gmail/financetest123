@@ -30,7 +30,9 @@ function AuthCallbackPage() {
         }
 
         // Poll briefly for the session to be available
-        let session = null as Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"];
+        let session = null as Awaited<
+          ReturnType<typeof supabase.auth.getSession>
+        >["data"]["session"];
         for (let i = 0; i < 20; i++) {
           const { data } = await supabase.auth.getSession();
           if (data.session) {
@@ -67,7 +69,12 @@ function AuthCallbackPage() {
           <p className="text-sm text-muted-foreground break-words">{error}</p>
           <p className="text-xs text-muted-foreground">
             Verifique se as URLs de redirecionamento estão configuradas no provedor (incluindo
-            <code className="mx-1">{typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : "/auth/callback"}</code>).
+            <code className="mx-1">
+              {typeof window !== "undefined"
+                ? `${window.location.origin}/auth/callback`
+                : "/auth/callback"}
+            </code>
+            ).
           </p>
           <div className="flex gap-2 justify-center">
             <Button onClick={() => window.location.reload()}>Tentar novamente</Button>

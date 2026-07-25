@@ -77,7 +77,11 @@ function SuperAdminCustomizationsPage() {
       </div>
       <div className="space-y-3">
         {(queue ?? []).length === 0 && !isLoading && (
-          <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">Nenhum pedido para revisar.</CardContent></Card>
+          <Card>
+            <CardContent className="p-8 text-center text-sm text-muted-foreground">
+              Nenhum pedido para revisar.
+            </CardContent>
+          </Card>
         )}
         {(queue ?? []).map((r: any) => (
           <AdminRow
@@ -115,7 +119,9 @@ function AdminRow({
       <CardContent className="p-5 space-y-3">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <div className="text-xs text-muted-foreground">{req.workspaces?.name ?? "Workspace"}</div>
+            <div className="text-xs text-muted-foreground">
+              {req.workspaces?.name ?? "Workspace"}
+            </div>
             <div className="font-medium">{req.request_text}</div>
           </div>
           <div className="flex items-center gap-2">
@@ -152,17 +158,28 @@ function AdminRow({
               rows={2}
             />
             <div className="flex gap-2">
-              <Button size="sm" variant="destructive" onClick={() => onReject(reason)} disabled={rejecting || !reason.trim()}>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => onReject(reason)}
+                disabled={rejecting || !reason.trim()}
+              >
                 {rejecting && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
                 Confirmar recusa
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowReject(false)}>Cancelar</Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowReject(false)}>
+                Cancelar
+              </Button>
             </div>
           </div>
         ) : (
           <div className="flex gap-2">
             <Button size="sm" onClick={onApprove} disabled={approving}>
-              {approving ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1" />}
+              {approving ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+              ) : (
+                <Check className="w-3.5 h-3.5 mr-1" />
+              )}
               Aprovar e enviar para teste
             </Button>
             <Button size="sm" variant="outline" onClick={() => setShowReject(true)}>

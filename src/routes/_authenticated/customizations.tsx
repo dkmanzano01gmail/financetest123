@@ -5,7 +5,10 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { useCustomizations } from "@/hooks/use-customizations";
-import { submitCustomizationRequest, reprocessPendingRequests } from "@/lib/customizations.functions";
+import {
+  submitCustomizationRequest,
+  reprocessPendingRequests,
+} from "@/lib/customizations.functions";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,8 +19,14 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { Sparkles, Wand2, Trash2, Loader2, RefreshCw } from "lucide-react";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/format";
@@ -64,12 +73,16 @@ function CustomizationsPage() {
     if (!wsId) return;
     let cancelled = false;
     (async () => {
-      const { error } = await (supabase as any).rpc("ensure_current_credits", { _workspace_id: wsId });
+      const { error } = await (supabase as any).rpc("ensure_current_credits", {
+        _workspace_id: wsId,
+      });
       if (cancelled) return;
       if (error) toast.error(`Não foi possível carregar créditos: ${error.message}`);
       else qc.invalidateQueries({ queryKey: ["credits", wsId] });
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [wsId, qc]);
 
   const { data: credits } = useQuery({
@@ -107,9 +120,10 @@ function CustomizationsPage() {
   const cust = useCustomizations(wsId);
 
   const remaining = credits ? credits.credits_included - credits.credits_used : 0;
-  const pct = credits && credits.credits_included > 0
-    ? (credits.credits_used / credits.credits_included) * 100
-    : 0;
+  const pct =
+    credits && credits.credits_included > 0
+      ? (credits.credits_used / credits.credits_included) * 100
+      : 0;
 
   const submitMut = useMutation({
     mutationFn: async () => {
@@ -128,9 +142,13 @@ function CustomizationsPage() {
       if (res?.autoApplied) {
         const affected = Number(res?.affected_transactions ?? 0);
         if (affected > 0) {
-          toast.success(`Regra criada e aplicada — ${affected} transação(ões) recategorizada(s). Aprove pelo banner no topo para confirmar.`);
+          toast.success(
+            `Regra criada e aplicada — ${affected} transação(ões) recategorizada(s). Aprove pelo banner no topo para confirmar.`,
+          );
         } else {
-          toast.success("Personalização em teste. Aprove pelo banner no topo para tornar definitiva.");
+          toast.success(
+            "Personalização em teste. Aprove pelo banner no topo para tornar definitiva.",
+          );
         }
       } else {
         toast.success("Pedido enviado para aprovação do admin.");
@@ -213,16 +231,21 @@ function CustomizationsPage() {
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="w-4 h-4 text-primary" />
               <span className="text-sm font-medium">Créditos do mês</span>
-              <Badge variant="secondary">{PLAN_LABELS[workspace.plan ?? "personal"] ?? "Pessoal"}</Badge>
+              <Badge variant="secondary">
+                {PLAN_LABELS[workspace.plan ?? "personal"] ?? "Pessoal"}
+              </Badge>
             </div>
             <div className="flex items-baseline gap-2">
               <span className="font-display text-2xl tabular-nums">{remaining}</span>
-              <span className="text-sm text-muted-foreground">de {credits?.credits_included ?? 0} restantes</span>
+              <span className="text-sm text-muted-foreground">
+                de {credits?.credits_included ?? 0} restantes
+              </span>
             </div>
             <Progress value={pct} className="mt-2" />
           </div>
           <div className="text-xs text-muted-foreground md:text-right">
-            Usados: {credits?.credits_used ?? 0}<br />
+            Usados: {credits?.credits_used ?? 0}
+            <br />
             Reinicia no próximo mês
           </div>
         </CardContent>
@@ -251,7 +274,10 @@ function CustomizationsPage() {
                 {submitMut.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Enviar pedido
               </Button>
-              <span className="text-xs text-muted-foreground">Mudanças simples são aplicadas na hora em modo teste. Mudanças avançadas vão para análise do admin.</span>
+              <span className="text-xs text-muted-foreground">
+                Mudanças simples são aplicadas na hora em modo teste. Mudanças avançadas vão para
+                análise do admin.
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -262,7 +288,7 @@ function CustomizationsPage() {
             <Tabs defaultValue="history">
               <TabsList className="mb-3">
                 <TabsTrigger value="history">Histórico</TabsTrigger>
-              <TabsTrigger value="active">Ativas ({safeActive.length})</TabsTrigger>
+                <TabsTrigger value="active">Ativas ({safeActive.length})</TabsTrigger>
               </TabsList>
 
               <TabsContent value="history" className="space-y-2 max-h-[500px] overflow-auto">
@@ -274,14 +300,18 @@ function CustomizationsPage() {
                     onClick={() => reprocessMut.mutate()}
                     disabled={reprocessMut.isPending}
                   >
-                    {reprocessMut.isPending
-                      ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                      : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+                    {reprocessMut.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                    )}
                     Reprocessar pedidos pendentes
                   </Button>
                 )}
                 {safeRequests.length === 0 && (
-                  <div className="text-sm text-muted-foreground py-4 text-center">Nenhum pedido ainda.</div>
+                  <div className="text-sm text-muted-foreground py-4 text-center">
+                    Nenhum pedido ainda.
+                  </div>
                 )}
                 {safeRequests.map((r: any) => (
                   <RequestRow key={r.id} req={r} />
@@ -290,16 +320,22 @@ function CustomizationsPage() {
 
               <TabsContent value="active" className="space-y-2 max-h-[500px] overflow-auto">
                 {safeActive.length === 0 && (
-                  <div className="text-sm text-muted-foreground py-4 text-center">Nenhuma personalização ativa.</div>
+                  <div className="text-sm text-muted-foreground py-4 text-center">
+                    Nenhuma personalização ativa.
+                  </div>
                 )}
                 {safeAll.map((c) => (
                   <div key={c.id} className="flex items-start gap-3 rounded-lg border p-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-xs">{c.type}</Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {c.type}
+                        </Badge>
                         <span className="text-sm font-medium truncate">{c.name}</span>
                       </div>
-                      {c.description && <div className="text-xs text-muted-foreground mt-0.5">{c.description}</div>}
+                      {c.description && (
+                        <div className="text-xs text-muted-foreground mt-0.5">{c.description}</div>
+                      )}
                     </div>
                     <Switch
                       checked={c.is_active}
@@ -321,7 +357,8 @@ function CustomizationsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remover personalização?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta personalização será excluída permanentemente e o app voltará ao comportamento padrão.
+              Esta personalização será excluída permanentemente e o app voltará ao comportamento
+              padrão.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -361,9 +398,13 @@ function RequestRow({ req }: { req: any }) {
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           <div className="text-sm">{req.request_text}</div>
-          {interp.summary && <div className="text-xs text-muted-foreground mt-1">{interp.summary}</div>}
+          {interp.summary && (
+            <div className="text-xs text-muted-foreground mt-1">{interp.summary}</div>
+          )}
           {req.ai_classification_reason && (
-            <div className="text-xs text-muted-foreground/80 mt-1 italic">{req.ai_classification_reason}</div>
+            <div className="text-xs text-muted-foreground/80 mt-1 italic">
+              {req.ai_classification_reason}
+            </div>
           )}
           {req.rejection_reason && (
             <div className="text-xs text-rose-700 mt-1">Motivo: {req.rejection_reason}</div>
@@ -373,29 +414,39 @@ function RequestRow({ req }: { req: any }) {
       </div>
       <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
         <Badge variant="outline">{interp.type ?? req.request_type}</Badge>
-        <span>~{req.estimated_credits} crédito{req.estimated_credits === 1 ? "" : "s"}</span>
+        <span>
+          ~{req.estimated_credits} crédito{req.estimated_credits === 1 ? "" : "s"}
+        </span>
         <span>· {formatDate(req.created_at)}</span>
-        {req.auto_applied && <Badge variant="secondary" className="text-[10px]">auto</Badge>}
+        {req.auto_applied && (
+          <Badge variant="secondary" className="text-[10px]">
+            auto
+          </Badge>
+        )}
       </div>
     </div>
   );
 }
 
 function statusLabel(s: string) {
-  return ({
-    interpreting: "Interpretando",
-    needs_admin_review: "Em análise",
-    testing: "Em teste",
-    approved: "Aplicada",
-    rejected: "Rejeitada (revertida)",
-    rejected_by_admin: "Recusada pelo admin",
-    rejected_by_ai: "Descartada",
-    waiting_credits: "Aguardando créditos",
-    // legacy
-    analyzed: "Analisado",
-    applied: "Aplicado",
-    in_review: "Em análise",
-    discarded: "Descartado",
-    pending: "Pendente",
-  } as Record<string, string>)[s] ?? s;
+  return (
+    (
+      {
+        interpreting: "Interpretando",
+        needs_admin_review: "Em análise",
+        testing: "Em teste",
+        approved: "Aplicada",
+        rejected: "Rejeitada (revertida)",
+        rejected_by_admin: "Recusada pelo admin",
+        rejected_by_ai: "Descartada",
+        waiting_credits: "Aguardando créditos",
+        // legacy
+        analyzed: "Analisado",
+        applied: "Aplicado",
+        in_review: "Em análise",
+        discarded: "Descartado",
+        pending: "Pendente",
+      } as Record<string, string>
+    )[s] ?? s
+  );
 }

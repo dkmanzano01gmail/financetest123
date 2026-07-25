@@ -32,10 +32,7 @@ export function useCustomizations(workspaceId: string | undefined) {
     },
   });
 
-  const active = useMemo(
-    () => (query.data ?? []).filter((c) => c.is_active),
-    [query.data],
-  );
+  const active = useMemo(() => (query.data ?? []).filter((c) => c.is_active), [query.data]);
 
   const labelOverrides = useMemo<Partial<LabelMap>>(() => {
     const acc: Partial<LabelMap> = {};
@@ -58,15 +55,9 @@ export function useCustomizations(workspaceId: string | undefined) {
     return set;
   }, [active]);
 
-  const savedFilters = useMemo(
-    () => active.filter((c) => c.type === "saved_filter"),
-    [active],
-  );
+  const savedFilters = useMemo(() => active.filter((c) => c.type === "saved_filter"), [active]);
 
-  const categoryRules = useMemo(
-    () => active.filter((c) => c.type === "category_rule"),
-    [active],
-  );
+  const categoryRules = useMemo(() => active.filter((c) => c.type === "category_rule"), [active]);
 
   return {
     ...query,

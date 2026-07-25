@@ -1,11 +1,23 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +28,9 @@ import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestio
 import { parseLocaleAmount } from "@/lib/format";
 
 export function TransactionDialog({
-  open, onOpenChange, transaction,
+  open,
+  onOpenChange,
+  transaction,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -42,7 +56,12 @@ export function TransactionDialog({
     queryKey: ["categories", wsId],
     enabled: !!wsId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("categories").select("id,name,type,color,importance_level" as any).eq("workspace_id", wsId!).eq("is_active", true).order("name");
+      const { data, error } = await supabase
+        .from("categories")
+        .select("id,name,type,color,importance_level" as any)
+        .eq("workspace_id", wsId!)
+        .eq("is_active", true)
+        .order("name");
       if (error) throw error;
       return data ?? [];
     },
@@ -51,7 +70,11 @@ export function TransactionDialog({
     queryKey: ["accounts", wsId],
     enabled: !!wsId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("accounts").select("*").eq("workspace_id", wsId!).eq("is_active", true);
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("*")
+        .eq("workspace_id", wsId!)
+        .eq("is_active", true);
       if (error) throw error;
       return data ?? [];
     },
@@ -60,7 +83,11 @@ export function TransactionDialog({
     queryKey: ["cards", wsId],
     enabled: !!wsId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("credit_cards").select("*").eq("workspace_id", wsId!).eq("is_active", true);
+      const { data, error } = await supabase
+        .from("credit_cards")
+        .select("*")
+        .eq("workspace_id", wsId!)
+        .eq("is_active", true);
       if (error) throw error;
       return data ?? [];
     },
@@ -82,23 +109,34 @@ export function TransactionDialog({
     } else {
       setType("expense");
       setDate(new Date().toISOString().slice(0, 10));
-      setAmount(""); setDescription(""); setCategoryId("");
-      setAccountId(""); setCardId(""); setCounterparty(""); setNotes("");
+      setAmount("");
+      setDescription("");
+      setCategoryId("");
+      setAccountId("");
+      setCardId("");
+      setCounterparty("");
+      setNotes("");
     }
   }, [open, transaction]);
 
   // Reset category when switching type on a fresh entry only (keeps edit intact).
-  useEffect(() => { if (open && !transaction) setCategoryId(""); }, [type, open, transaction]);
+  useEffect(() => {
+    if (open && !transaction) setCategoryId("");
+  }, [type, open, transaction]);
 
-  const selectedCategory = (categories ?? []).find((c: any) => c.id === categoryId) as any | undefined;
-  const inheritedImportance: Importance = (selectedCategory?.importance_level ?? "flexible") as Importance;
+  const selectedCategory = (categories ?? []).find((c: any) => c.id === categoryId) as
+    | any
+    | undefined;
+  const inheritedImportance: Importance = (selectedCategory?.importance_level ??
+    "flexible") as Importance;
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!wsId) throw new Error("Workspace ausente");
       const desc = description.trim();
       if (!desc) throw new Error("Informe a descrição.");
-      if (!date || Number.isNaN(new Date(`${date}T00:00:00`).getTime())) throw new Error("Data inválida.");
+      if (!date || Number.isNaN(new Date(`${date}T00:00:00`).getTime()))
+        throw new Error("Data inválida.");
       const amt = parseLocaleAmount(amount);
       if (!Number.isFinite(amt) || amt <= 0) throw new Error("Valor inválido.");
       if (accountId && cardId) throw new Error("Escolha conta OU cartão, não os dois.");
@@ -108,7 +146,11 @@ export function TransactionDialog({
       if (editing) {
         // Preserve manual overrides: don't rewrite importance fields on edit.
         const patch: Record<string, any> = {
-          date, month: monthN, year: yearN, type, amount: amt,
+          date,
+          month: monthN,
+          year: yearN,
+          type,
+          amount: amt,
           description: desc,
           category_id: categoryId || null,
           account_id: accountId || null,
@@ -116,7 +158,8 @@ export function TransactionDialog({
           counterparty: counterparty || null,
           notes: notes || null,
         };
-        const { error } = await supabase.from("transactions")
+        const { error } = await supabase
+          .from("transactions")
           .update(patch as any)
           .eq("id", transaction.id)
           .eq("workspace_id", wsId);
@@ -124,7 +167,11 @@ export function TransactionDialog({
       } else {
         const { error } = await supabase.from("transactions").insert({
           workspace_id: wsId,
-          date, month: monthN, year: yearN, type, amount: amt,
+          date,
+          month: monthN,
+          year: yearN,
+          type,
+          amount: amt,
           description: desc,
           category_id: categoryId || null,
           account_id: accountId || null,
@@ -159,7 +206,9 @@ export function TransactionDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>{editing ? "Editar transação" : "Nova transação"}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{editing ? "Editar transação" : "Nova transação"}</DialogTitle>
+        </DialogHeader>
         <Tabs value={type} onValueChange={(v) => setType(v as any)}>
           <TabsList className="grid grid-cols-2 w-full">
             <TabsTrigger value="expense">{t.expenseSingular}</TabsTrigger>
@@ -168,44 +217,110 @@ export function TransactionDialog({
         </Tabs>
         <div className="space-y-3 mt-2">
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label>Data</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
-            <div className="space-y-1.5"><Label>Valor</Label><Input placeholder="0,00" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+            <div className="space-y-1.5">
+              <Label>Data</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Valor</Label>
+              <Input
+                placeholder="0,00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="space-y-1.5"><Label>Descrição</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Supermercado" /></div>
+          <div className="space-y-1.5">
+            <Label>Descrição</Label>
+            <Input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Ex.: Supermercado"
+            />
+          </div>
           <div className="space-y-1.5">
             <Label>Categoria</Label>
             <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
-              <SelectContent>{filteredCats.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecionar" />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredCats.map((c: any) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
             {selectedCategory && (
               <div className="text-xs text-muted-foreground flex items-center gap-2">
-                Importância sugerida: <Badge variant="secondary" className={importanceBadgeClass(inheritedImportance)}>{labelImp(inheritedImportance)}</Badge>
+                Importância sugerida:{" "}
+                <Badge variant="secondary" className={importanceBadgeClass(inheritedImportance)}>
+                  {labelImp(inheritedImportance)}
+                </Badge>
               </div>
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Conta</Label>
-              <Select value={accountId} onValueChange={(v) => { setAccountId(v); setCardId(""); }}>
-                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>{(accounts ?? []).map((a: any) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+              <Select
+                value={accountId}
+                onValueChange={(v) => {
+                  setAccountId(v);
+                  setCardId("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="—" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(accounts ?? []).map((a: any) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Cartão</Label>
-              <Select value={cardId} onValueChange={(v) => { setCardId(v); setAccountId(""); }}>
-                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>{(cards ?? []).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+              <Select
+                value={cardId}
+                onValueChange={(v) => {
+                  setCardId(v);
+                  setAccountId("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="—" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(cards ?? []).map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </div>
           </div>
-          <div className="space-y-1.5"><Label>Favorecido / Origem</Label><Input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} /></div>
-          <div className="space-y-1.5"><Label>Observações</Label><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+          <div className="space-y-1.5">
+            <Label>Favorecido / Origem</Label>
+            <Input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Observações</Label>
+            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>Salvar</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+            Salvar
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -30,13 +30,19 @@ function Onboarding() {
     setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user?.id;
-    if (!userId) { setLoading(false); return; }
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
 
     const { error } = await supabase
       .from("workspaces")
       .insert({ name, type, currency, country: "BR", owner_id: userId });
 
-    if (error) { setLoading(false); return toast.error(error.message); }
+    if (error) {
+      setLoading(false);
+      return toast.error(error.message);
+    }
 
     const { data: workspaces, error: listError } = await supabase
       .from("workspaces")
@@ -47,7 +53,12 @@ function Onboarding() {
       .limit(1);
 
     const ws = workspaces?.[0];
-    if (listError || !ws) { setLoading(false); return toast.error(listError?.message ?? "Workspace criado, mas não foi possível carregá-lo."); }
+    if (listError || !ws) {
+      setLoading(false);
+      return toast.error(
+        listError?.message ?? "Workspace criado, mas não foi possível carregá-lo.",
+      );
+    }
 
     if (accountName.trim()) {
       const bal = Number(initialBalance.replace(",", ".") || 0);
@@ -77,23 +88,43 @@ function Onboarding() {
           <form onSubmit={submit} className="space-y-5">
             <div className="space-y-1.5">
               <Label htmlFor="wname">Nome do workspace</Label>
-              <Input id="wname" required placeholder="Ex.: Daniel — Pessoal" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input
+                id="wname"
+                required
+                placeholder="Ex.: Daniel — Pessoal"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
             </div>
 
             <div className="space-y-2">
               <Label>Tipo</Label>
-              <RadioGroup value={type} onValueChange={(v) => setType(v as "personal" | "business")} className="grid grid-cols-2 gap-3">
-                <label className={`flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition ${type === "personal" ? "border-primary bg-primary/5" : "border-border"}`}>
+              <RadioGroup
+                value={type}
+                onValueChange={(v) => setType(v as "personal" | "business")}
+                className="grid grid-cols-2 gap-3"
+              >
+                <label
+                  className={`flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition ${type === "personal" ? "border-primary bg-primary/5" : "border-border"}`}
+                >
                   <RadioGroupItem value="personal" className="mt-0.5" />
                   <div>
-                    <div className="flex items-center gap-2 font-medium"><User className="w-4 h-4" />Pessoal</div>
+                    <div className="flex items-center gap-2 font-medium">
+                      <User className="w-4 h-4" />
+                      Pessoal
+                    </div>
                     <p className="text-xs text-muted-foreground mt-1">Entradas, Gastos, Saldo.</p>
                   </div>
                 </label>
-                <label className={`flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition ${type === "business" ? "border-primary bg-primary/5" : "border-border"}`}>
+                <label
+                  className={`flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition ${type === "business" ? "border-primary bg-primary/5" : "border-border"}`}
+                >
                   <RadioGroupItem value="business" className="mt-0.5" />
                   <div>
-                    <div className="flex items-center gap-2 font-medium"><Building2 className="w-4 h-4" />Negócio</div>
+                    <div className="flex items-center gap-2 font-medium">
+                      <Building2 className="w-4 h-4" />
+                      Negócio
+                    </div>
                     <p className="text-xs text-muted-foreground mt-1">Receitas, Despesas, Lucro.</p>
                   </div>
                 </label>
@@ -103,17 +134,32 @@ function Onboarding() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="curr">Moeda</Label>
-                <Input id="curr" value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} maxLength={3} />
+                <Input
+                  id="curr"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                  maxLength={3}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="bal">Saldo inicial (opcional)</Label>
-                <Input id="bal" placeholder="0,00" value={initialBalance} onChange={(e) => setInitialBalance(e.target.value)} />
+                <Input
+                  id="bal"
+                  placeholder="0,00"
+                  value={initialBalance}
+                  onChange={(e) => setInitialBalance(e.target.value)}
+                />
               </div>
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="acc">Conta principal (opcional)</Label>
-              <Input id="acc" placeholder="Ex.: Conta Nubank" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
+              <Input
+                id="acc"
+                placeholder="Ex.: Conta Nubank"
+                value={accountName}
+                onChange={(e) => setAccountName(e.target.value)}
+              />
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>

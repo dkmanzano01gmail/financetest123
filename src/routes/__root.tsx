@@ -80,16 +80,34 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Selá — Financeiro e Ateliê" },
-      { name: "description", content: "Selá é o app operacional e financeiro do ateliê de cerâmica: fluxo de caixa, precificação de peças e workshops, controle de queimas, presença e matéria-prima." },
+      {
+        name: "description",
+        content:
+          "Selá é o app operacional e financeiro do ateliê de cerâmica: fluxo de caixa, precificação de peças e workshops, controle de queimas, presença e matéria-prima.",
+      },
       { name: "author", content: "Selá Cerâmica" },
       { property: "og:title", content: "Selá — Financeiro e Ateliê" },
-      { property: "og:description", content: "App operacional e financeiro do ateliê Selá Cerâmica." },
+      {
+        property: "og:description",
+        content: "App operacional e financeiro do ateliê Selá Cerâmica.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "Selá — Financeiro e Ateliê" },
-      { name: "twitter:description", content: "App operacional e financeiro do ateliê Selá Cerâmica." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a8d34005-2e25-45dd-b4f4-46be2741da98/id-preview-164ae7ef--2252e04d-55b3-4ac5-8f44-f9cef6339f03.lovable.app-1782184533967.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a8d34005-2e25-45dd-b4f4-46be2741da98/id-preview-164ae7ef--2252e04d-55b3-4ac5-8f44-f9cef6339f03.lovable.app-1782184533967.png" },
+      {
+        name: "twitter:description",
+        content: "App operacional e financeiro do ateliê Selá Cerâmica.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a8d34005-2e25-45dd-b4f4-46be2741da98/id-preview-164ae7ef--2252e04d-55b3-4ac5-8f44-f9cef6339f03.lovable.app-1782184533967.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/a8d34005-2e25-45dd-b4f4-46be2741da98/id-preview-164ae7ef--2252e04d-55b3-4ac5-8f44-f9cef6339f03.lovable.app-1782184533967.png",
+      },
     ],
     links: [
       {
