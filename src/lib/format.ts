@@ -34,6 +34,7 @@ export function parseLocaleAmount(raw: string | number | null | undefined): numb
   if (!s) return NaN;
   const neg = /^\s*-/.test(s) || /\(.+\)/.test(s);
   s = s.replace(/[^\d.,-]/g, "").replace(/[()\s-]/g, "");
+  if (!s || !/\d/.test(s)) return NaN;
   const lastComma = s.lastIndexOf(",");
   const lastDot = s.lastIndexOf(".");
   if (lastComma > -1 && lastDot > -1) {
