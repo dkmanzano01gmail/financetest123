@@ -79,7 +79,7 @@ function Dashboard() {
 
   const accountsBalance = useMemo(() => {
     if (!accounts) return 0;
-    return accounts.reduce((s: number, a: any) => s + Number(a.initial_balance), 0);
+    return accounts.reduce((s: number, a: any) => s + Number(a.current_manual_balance ?? a.initial_balance ?? 0), 0);
   }, [accounts]);
 
   const monthlySeries = useMemo(() => {
@@ -92,20 +92,24 @@ function Dashboard() {
     return arr;
   }, [yearTxs]);
 
-  const byCategory = useMemo(() => {
-    const m = new Map<string, { name: string; color: string; value: number }>();
-    for (const tx of txs ?? []) {
-      if ((tx as any).type !== "expense") continue;
-      const cat = (tx as any).categories;
-      const name = cat?.name ?? "Sem categoria";
-      const color = cat?.color ?? "#94a3b8";
-      const v = Number((tx as any).amount);
-      const prev = m.get(name);
-      if (prev) prev.value += v;
-      else m.set(name, { name, color, value: v });
-    }
-    return Array.from(m.values()).sort((a, b) => b.value - a.value);
+  const { expenseByCategory, incomeByCategory } = useMemo(() => {
+    const build = (type: "income" | "expense") => {
+      const m = new Map<string, { name: string; color: string; value: number }>();
+      for (const tx of txs ?? []) {
+        if ((tx as any).type !== type) continue;
+        const cat = (tx as any).categories;
+        const name = cat?.name ?? "Sem categoria";
+        const color = cat?.color ?? (type === "income" ? "#6E7A57" : "#A03A2A");
+        const v = Number((tx as any).amount);
+        const prev = m.get(name);
+        if (prev) prev.value += v;
+        else m.set(name, { name, color, value: v });
+      }
+      return Array.from(m.values()).sort((a, b) => b.value - a.value);
+    };
+    return { expenseByCategory: build("expense"), incomeByCategory: build("income") };
   }, [txs]);
+  const byCategory = expenseByCategory;
 
   const topCategory = byCategory[0];
 
@@ -181,23 +185,16 @@ function Dashboard() {
         <Card>
           <CardHeader><CardTitle className="text-base">{t.expense} por categoria</CardTitle></CardHeader>
           <CardContent className="h-72">
-            {byCategory.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Sem dados no período.</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={45} outerRadius={80} paddingAngle={2}>
-                    {byCategory.map((c, i) => <Cell key={i} fill={c.color} />)}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => formatCurrency(v, currency, privacy)} contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
+            <CategoryPie data={expenseByCategory} currency={currency} privacy={privacy} />
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle className="text-base">{t.income} por categoria</CardTitle></CardHeader>
+          <CardContent className="h-64"><CategoryPie data={incomeByCategory} currency={currency} privacy={privacy} /></CardContent>
+        </Card>
         <Card>
           <CardHeader><CardTitle className="text-base">Maior categoria de {t.expense.toLowerCase()}</CardTitle></CardHeader>
           <CardContent>
@@ -208,24 +205,24 @@ function Dashboard() {
                   <div className="font-medium truncate">{topCategory.name}</div>
                   <div className="text-xs text-muted-foreground">{((topCategory.value/totals.expense)*100 || 0).toFixed(1)}% do total</div>
                 </div>
-                <div className="font-display text-xl">{formatCurrency(topCategory.value, currency, privacy)}</div>
+                <div className="font-mono text-xl">{formatCurrency(topCategory.value, currency, privacy)}</div>
               </div>
             ) : <div className="text-sm text-muted-foreground">Sem dados.</div>}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="md:col-span-2">
           <CardHeader><CardTitle className="text-base flex items-center gap-2"><Receipt className="w-4 h-4" />Últimas transações</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {(txs ?? []).slice(0,5).map((tx: any) => (
+            {(txs ?? []).slice(0,8).map((tx: any) => (
               <div key={tx.id} className="flex items-center gap-3 py-1">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === "income" ? "bg-[oklch(0.9_0.05_148)] text-[var(--income)]" : "bg-[oklch(0.92_0.04_30)] text-[var(--expense)]"}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === "income" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}>
                   {tx.type === "income" ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm truncate">{tx.description}</div>
                   <div className="text-xs text-muted-foreground">{tx.categories?.name ?? "—"}</div>
                 </div>
-                <div className={`font-medium tabular-nums ${tx.type === "income" ? "text-[var(--income)]" : "text-[var(--expense)]"}`}>
+                <div className={`font-mono ${tx.type === "income" ? "text-income" : "text-expense"}`}>
                   {tx.type === "income" ? "+" : "-"}{formatCurrency(Number(tx.amount), currency, privacy)}
                 </div>
               </div>
@@ -239,14 +236,14 @@ function Dashboard() {
 }
 
 function StatCard({ label, value, icon: Icon, tone }: { label: string; value: string; icon: any; tone?: "income" | "expense" }) {
-  const toneClass = tone === "income" ? "text-[var(--income)] bg-[oklch(0.92_0.04_148)]" : tone === "expense" ? "text-[var(--expense)] bg-[oklch(0.92_0.04_30)]" : "text-primary bg-primary/10";
+  const toneClass = tone === "income" ? "text-income bg-income/10" : tone === "expense" ? "text-expense bg-expense/10" : "text-primary bg-primary/10";
   return (
     <Card>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
-            <div className="font-display text-xl md:text-2xl font-semibold mt-1 tabular-nums">{value}</div>
+            <div className="font-mono text-xl md:text-2xl mt-1">{value}</div>
           </div>
           <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${toneClass}`}>
             <Icon className="w-4 h-4" />
@@ -254,5 +251,19 @@ function StatCard({ label, value, icon: Icon, tone }: { label: string; value: st
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function CategoryPie({ data, currency, privacy }: { data: Array<{ name: string; color: string; value: number }>; currency: string; privacy: boolean }) {
+  if (data.length === 0) return <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Sem dados no período.</div>;
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <PieChart>
+        <Pie data={data} dataKey="value" nameKey="name" innerRadius={40} outerRadius={75} paddingAngle={2}>
+          {data.map((c, i) => <Cell key={i} fill={c.color} />)}
+        </Pie>
+        <Tooltip formatter={(v: number) => formatCurrency(v, currency, privacy)} contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12 }} />
+      </PieChart>
+    </ResponsiveContainer>
   );
 }
