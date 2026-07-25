@@ -95,11 +95,23 @@ function AuthPage() {
                 <form onSubmit={signIn} className="space-y-3 mt-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="email">E-mail</Label>
-                    <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <Input
+                      id="email"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="password">Senha</Label>
-                    <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <Input
+                      id="password"
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
                   </div>
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Entrar
@@ -110,15 +122,33 @@ function AuthPage() {
                 <form onSubmit={signUp} className="space-y-3 mt-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="name">Nome</Label>
-                    <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} />
+                    <Input
+                      id="name"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="email2">E-mail</Label>
-                    <Input id="email2" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <Input
+                      id="email2"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="password2">Senha</Label>
-                    <Input id="password2" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <Input
+                      id="password2"
+                      type="password"
+                      required
+                      minLength={6}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
                   </div>
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Criar conta
@@ -127,12 +157,20 @@ function AuthPage() {
               </TabsContent>
             </Tabs>
             <div className="relative my-5">
-              <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
               <div className="relative flex justify-center text-xs uppercase">
                 <span className="bg-card px-2 text-muted-foreground">ou</span>
               </div>
             </div>
-            <Button type="button" variant="outline" className="w-full" onClick={google} disabled={loading}>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={google}
+              disabled={loading}
+            >
               Continuar com Google
             </Button>
           </CardContent>

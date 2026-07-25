@@ -49,19 +49,37 @@ export function TestingBanner() {
       <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-start gap-3 flex-wrap">
         <FlaskConical className="w-4 h-4 mt-0.5 shrink-0" />
         <div className="flex-1 min-w-[200px] text-sm">
-          <span className="font-semibold">Testando personalização:</span>{" "}
-          <span>{summary}</span>
+          <span className="font-semibold">Testando personalização:</span> <span>{summary}</span>
           <div className="text-xs text-amber-800/80 mt-0.5">
             Navegue pelo app para conferir. Aprove para manter ou rejeite para reverter.
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button size="sm" variant="outline" onClick={() => reject.mutate()} disabled={busy} className="border-amber-400 text-amber-900 hover:bg-amber-100">
-            {reject.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <X className="w-3.5 h-3.5 mr-1" />}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => reject.mutate()}
+            disabled={busy}
+            className="border-amber-400 text-amber-900 hover:bg-amber-100"
+          >
+            {reject.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+            ) : (
+              <X className="w-3.5 h-3.5 mr-1" />
+            )}
             Rejeitar e reverter
           </Button>
-          <Button size="sm" onClick={() => approve.mutate()} disabled={busy} className="bg-amber-600 hover:bg-amber-700 text-white">
-            {approve.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1" />}
+          <Button
+            size="sm"
+            onClick={() => approve.mutate()}
+            disabled={busy}
+            className="bg-amber-600 hover:bg-amber-700 text-white"
+          >
+            {approve.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+            ) : (
+              <Check className="w-3.5 h-3.5 mr-1" />
+            )}
             Aprovar mudança
           </Button>
         </div>

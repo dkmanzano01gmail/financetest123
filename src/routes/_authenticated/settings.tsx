@@ -7,15 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { toast } from "sonner";
 import { Sparkles, Palette } from "lucide-react";
 import { setCurrentWorkspaceId } from "@/lib/workspace-storage";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/_authenticated/settings")({ component: SettingsPage });
@@ -34,8 +46,11 @@ function SettingsPage() {
 
   useEffect(() => {
     if (workspace) {
-      setName(workspace.name); setType(workspace.type); setCurrency(workspace.currency);
-      setCountry(workspace.country); setPrivacy(workspace.privacy_mode);
+      setName(workspace.name);
+      setType(workspace.type);
+      setCurrency(workspace.currency);
+      setCountry(workspace.country);
+      setPrivacy(workspace.privacy_mode);
     }
   }, [workspace?.id]);
 
@@ -43,20 +58,25 @@ function SettingsPage() {
     mutationFn: async () => {
       if (!workspace) return;
       if (!name.trim()) throw new Error("Informe um nome.");
-      const { error } = await supabase.from("workspaces")
+      const { error } = await supabase
+        .from("workspaces")
         .update({ name: name.trim(), type, currency, country, privacy_mode: privacy })
         .eq("id", workspace.id)
         .eq("owner_id", workspace.owner_id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["workspaces"] }); toast.success("Configurações salvas"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["workspaces"] });
+      toast.success("Configurações salvas");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMut = useMutation({
     mutationFn: async () => {
       if (!workspace) return;
-      const { error } = await supabase.from("workspaces")
+      const { error } = await supabase
+        .from("workspaces")
         .delete()
         .eq("id", workspace.id)
         .eq("owner_id", workspace.owner_id);
@@ -76,7 +96,9 @@ function SettingsPage() {
   const seedMut = useMutation({
     mutationFn: async () => {
       if (!workspace) return;
-      const { error } = await (supabase as any).rpc("seed_sela_defaults", { _workspace_id: workspace.id });
+      const { error } = await (supabase as any).rpc("seed_sela_defaults", {
+        _workspace_id: workspace.id,
+      });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -96,78 +118,145 @@ function SettingsPage() {
 
       <div className="grid gap-4 max-w-2xl">
         <Card>
-          <CardHeader><CardTitle>Workspace</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Workspace</CardTitle>
+          </CardHeader>
           <CardContent className="space-y-3">
-            <div className="space-y-1.5"><Label>Nome</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+            <div className="space-y-1.5">
+              <Label>Nome</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Tipo</Label>
                 <Select value={type} onValueChange={(v) => setType(v as any)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="personal">Pessoal</SelectItem>
                     <SelectItem value="business">Negócio</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5"><Label>Moeda</Label><Input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} maxLength={3} /></div>
+              <div className="space-y-1.5">
+                <Label>Moeda</Label>
+                <Input
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                  maxLength={3}
+                />
+              </div>
             </div>
-            <div className="space-y-1.5"><Label>País</Label><Input value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} maxLength={2} /></div>
+            <div className="space-y-1.5">
+              <Label>País</Label>
+              <Input
+                value={country}
+                onChange={(e) => setCountry(e.target.value.toUpperCase())}
+                maxLength={2}
+              />
+            </div>
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div>
                 <div className="font-medium text-sm">Modo privacidade</div>
-                <div className="text-xs text-muted-foreground">Oculta valores financeiros sensíveis.</div>
+                <div className="text-xs text-muted-foreground">
+                  Oculta valores financeiros sensíveis.
+                </div>
               </div>
               <Switch checked={privacy} onCheckedChange={setPrivacy} />
             </div>
-            <div className="flex gap-2"><Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>Salvar</Button></div>
+            <div className="flex gap-2">
+              <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
+                Salvar
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" />Personalizações</CardTitle>
-            <CardDescription>Peça mudanças no app em linguagem natural. Cada workspace tem créditos mensais de personalização.</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              Personalizações
+            </CardTitle>
+            <CardDescription>
+              Peça mudanças no app em linguagem natural. Cada workspace tem créditos mensais de
+              personalização.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="secondary" onClick={() => navigate({ to: "/customizations" })}>Abrir Personalizações</Button>
+            <Button variant="secondary" onClick={() => navigate({ to: "/customizations" })}>
+              Abrir Personalizações
+            </Button>
           </CardContent>
         </Card>
 
         {workspace.type === "business" && (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Palette className="w-4 h-4 text-primary" />Padrões Selá Cerâmica</CardTitle>
-              <CardDescription>Cria categorias, contas e cartão padrão do ateliê. É idempotente: nada existente é duplicado ou sobrescrito.</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="w-4 h-4 text-primary" />
+                Padrões Selá Cerâmica
+              </CardTitle>
+              <CardDescription>
+                Cria categorias, contas e cartão padrão do ateliê. É idempotente: nada existente é
+                duplicado ou sobrescrito.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="secondary" onClick={() => seedMut.mutate()} disabled={seedMut.isPending}>Aplicar padrões Selá</Button>
+              <Button
+                variant="secondary"
+                onClick={() => seedMut.mutate()}
+                disabled={seedMut.isPending}
+              >
+                Aplicar padrões Selá
+              </Button>
             </CardContent>
           </Card>
         )}
 
         <Card className="border-destructive/30">
-          <CardHeader><CardTitle className="text-destructive">Zona de risco</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-destructive">Zona de risco</CardTitle>
+          </CardHeader>
           <CardContent>
-            <Button variant="destructive" onClick={() => { setConfirmText(""); setDeleteOpen(true); }}>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setConfirmText("");
+                setDeleteOpen(true);
+              }}
+            >
               Excluir workspace
             </Button>
           </CardContent>
         </Card>
       </div>
 
-      <AlertDialog open={deleteOpen} onOpenChange={(o) => { setDeleteOpen(o); if (!o) setConfirmText(""); }}>
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={(o) => {
+          setDeleteOpen(o);
+          if (!o) setConfirmText("");
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir workspace?</AlertDialogTitle>
             <AlertDialogDescription>
-              Isso removerá permanentemente todos os dados do workspace <strong>{workspace.name}</strong>
-              {" "}(transações, categorias, contas, cartões e personalizações). Esta ação não pode ser desfeita.
-              <br /><br />
+              Isso removerá permanentemente todos os dados do workspace{" "}
+              <strong>{workspace.name}</strong> (transações, categorias, contas, cartões e
+              personalizações). Esta ação não pode ser desfeita.
+              <br />
+              <br />
               Digite <code className="px-1 rounded bg-muted">{workspace.name}</code> para confirmar.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder={workspace.name} />
+          <Input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={workspace.name}
+          />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction

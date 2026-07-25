@@ -3,10 +3,17 @@ import { parseLocaleAmount } from "../src/lib/format.ts";
 import { parseCsv, parseDateBR, sha256Hex, buildImportHashSource } from "../src/lib/csv.ts";
 import { normalize as normalizeDescriptor, suggestForTransaction } from "../src/lib/suggestions.ts";
 
-let passed = 0, failed = 0;
+let passed = 0,
+  failed = 0;
 function t(name, fn) {
-  try { fn(); console.log(`✓ ${name}`); passed++; }
-  catch (e) { console.error(`✗ ${name}\n  ${e.message}`); failed++; }
+  try {
+    fn();
+    console.log(`✓ ${name}`);
+    passed++;
+  } catch (e) {
+    console.error(`✗ ${name}\n  ${e.message}`);
+    failed++;
+  }
 }
 function eq(a, b, msg = "") {
   if (a !== b) throw new Error(`${msg} expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
@@ -73,47 +80,88 @@ async function main() {
 
   t("buildImportHashSource — external ID short-circuits row content", () => {
     const a = buildImportHashSource({
-      workspaceId: "ws1", target: "account", targetId: "acc1",
-      externalId: "abc-123", date: "2026-01-01", amount: 10, description: "COFFEE",
+      workspaceId: "ws1",
+      target: "account",
+      targetId: "acc1",
+      externalId: "abc-123",
+      date: "2026-01-01",
+      amount: 10,
+      description: "COFFEE",
     });
     const b = buildImportHashSource({
-      workspaceId: "ws1", target: "account", targetId: "acc1",
-      externalId: "abc-123", date: "2026-06-15", amount: -999, description: "REFUND — reversal",
+      workspaceId: "ws1",
+      target: "account",
+      targetId: "acc1",
+      externalId: "abc-123",
+      date: "2026-06-15",
+      amount: -999,
+      description: "REFUND — reversal",
     });
     eq(a, b, "external ID must dominate the fingerprint");
     const c = buildImportHashSource({
-      workspaceId: "ws1", target: "account", targetId: "acc1",
-      externalId: "different", date: "2026-01-01", amount: 10, description: "COFFEE",
+      workspaceId: "ws1",
+      target: "account",
+      targetId: "acc1",
+      externalId: "different",
+      date: "2026-01-01",
+      amount: 10,
+      description: "COFFEE",
     });
     if (a === c) throw new Error("different external IDs must not collide");
   });
   t("buildImportHashSource — no external ID uses normalized fields", () => {
     const a = buildImportHashSource({
-      workspaceId: "ws1", target: "account", targetId: "acc1",
-      externalId: null, date: "2026-01-01", amount: -50, description: "  Padaria  ",
+      workspaceId: "ws1",
+      target: "account",
+      targetId: "acc1",
+      externalId: null,
+      date: "2026-01-01",
+      amount: -50,
+      description: "  Padaria  ",
     });
     const b = buildImportHashSource({
-      workspaceId: "ws1", target: "account", targetId: "acc1",
-      externalId: "", date: "2026-01-01", amount: 50, description: "padaria",
+      workspaceId: "ws1",
+      target: "account",
+      targetId: "acc1",
+      externalId: "",
+      date: "2026-01-01",
+      amount: 50,
+      description: "padaria",
     });
     eq(a, b, "sign and trailing spaces must not affect the fingerprint");
   });
   t("buildImportHashSource — different workspaces do not collide", () => {
     const a = buildImportHashSource({
-      workspaceId: "wsA", target: "account", targetId: "acc1", externalId: "same-id",
+      workspaceId: "wsA",
+      target: "account",
+      targetId: "acc1",
+      externalId: "same-id",
     });
     const b = buildImportHashSource({
-      workspaceId: "wsB", target: "account", targetId: "acc1", externalId: "same-id",
+      workspaceId: "wsB",
+      target: "account",
+      targetId: "acc1",
+      externalId: "same-id",
     });
     if (a === b) throw new Error("workspaces must be part of the fingerprint");
   });
 
   const ctx = {
     categories: [
-      { id: "food", name: "Restaurantes", type: "expense", importance_level: "flexible",
-        importance_comment: "ifood uber eats delivery restaurante padaria" },
-      { id: "tx",   name: "Transporte",   type: "expense", importance_level: "important",
-        importance_comment: "uber taxi 99 metro gasolina" },
+      {
+        id: "food",
+        name: "Restaurantes",
+        type: "expense",
+        importance_level: "flexible",
+        importance_comment: "ifood uber eats delivery restaurante padaria",
+      },
+      {
+        id: "tx",
+        name: "Transporte",
+        type: "expense",
+        importance_level: "important",
+        importance_comment: "uber taxi 99 metro gasolina",
+      },
     ],
     rules: [],
     history: [],
@@ -128,7 +176,14 @@ async function main() {
   });
   t("suggestForTransaction — manual category defaults to its importance", () => {
     const s = suggestForTransaction(
-      { id: "t2", type: "expense", description: "algo qualquer", counterparty: null, amount: 10, category_id: "tx" },
+      {
+        id: "t2",
+        type: "expense",
+        description: "algo qualquer",
+        counterparty: null,
+        amount: 10,
+        category_id: "tx",
+      },
       ctx,
     );
     eq(s.category_id, "tx");
@@ -136,11 +191,26 @@ async function main() {
   });
   t("suggestForTransaction — history match wins over comment/category", () => {
     const s = suggestForTransaction(
-      { id: "t3", type: "expense", description: "Uber viagem", counterparty: null, amount: 20, category_id: "food" },
+      {
+        id: "t3",
+        type: "expense",
+        description: "Uber viagem",
+        counterparty: null,
+        amount: 20,
+        category_id: "food",
+      },
       {
         ...ctx,
-        history: [{ description: "Uber viagem centro", counterparty: null,
-                    category_id: "tx", importance_level: "essential", date: "2026-01-01", amount: 20 }],
+        history: [
+          {
+            description: "Uber viagem centro",
+            counterparty: null,
+            category_id: "tx",
+            importance_level: "essential",
+            date: "2026-01-01",
+            amount: 20,
+          },
+        ],
       },
     );
     eq(s.category_id, "tx");

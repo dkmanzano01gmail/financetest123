@@ -32,7 +32,7 @@ type Category = {
 };
 
 type Rule = {
-  rule_kind?: "descriptor"|"amount"|"counterparty"|"recurrence"|"composite";
+  rule_kind?: "descriptor" | "amount" | "counterparty" | "recurrence" | "composite";
   match_text: string;
   match_mode: "contains" | "equals" | "starts_with" | "regex";
   category_hint: string | null;
@@ -42,11 +42,11 @@ type Rule = {
   workspace_type: "personal" | "business" | null;
   confidence: number;
   source_type: "system" | "user" | "learned";
-  amount_operator?: "equals"|"multiple_of"|"between"|"greater_than"|"less_than" | null;
+  amount_operator?: "equals" | "multiple_of" | "between" | "greater_than" | "less_than" | null;
   amount_value?: number | null;
   amount_value_2?: number | null;
   counterparty_match?: string | null;
-  counterparty_match_mode?: "contains"|"equals"|"starts_with" | null;
+  counterparty_match_mode?: "contains" | "equals" | "starts_with" | null;
   recurrence_min_count?: number | null;
   recurrence_window_days?: number | null;
   priority?: number | null;
@@ -62,19 +62,24 @@ type HistoryEntry = {
 };
 
 export function normalize(s: string): string {
-  return (s || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    // Common Nubank/bank prefixes that add no signal.
-    .replace(/\b(compra no debito|compra no débito|pagamento efetuado|pix\s+(enviado|recebido)|transferencia\s+(enviada|recebida)|debito automatico|débito automático)\b/g, " ")
-    // Masked card suffixes / transaction IDs / trailing UUID-ish tokens.
-    .replace(/(\bfinal\s+\d{2,4}\b|\bxxxx\d{2,4}\b|\*{2,}\d{2,4})/gi, " ")
-    .replace(/\b[a-f0-9]{16,}\b/g, " ")
-    // Punctuation → spaces so tokens split cleanly.
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    (s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      // Common Nubank/bank prefixes that add no signal.
+      .replace(
+        /\b(compra no debito|compra no débito|pagamento efetuado|pix\s+(enviado|recebido)|transferencia\s+(enviada|recebida)|debito automatico|débito automático)\b/g,
+        " ",
+      )
+      // Masked card suffixes / transaction IDs / trailing UUID-ish tokens.
+      .replace(/(\bfinal\s+\d{2,4}\b|\bxxxx\d{2,4}\b|\*{2,}\d{2,4})/gi, " ")
+      .replace(/\b[a-f0-9]{16,}\b/g, " ")
+      // Punctuation → spaces so tokens split cleanly.
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 function ruleMatches(text: string, r: Rule): boolean {
@@ -83,7 +88,11 @@ function ruleMatches(text: string, r: Rule): boolean {
   if (r.match_mode === "equals") return text === m;
   if (r.match_mode === "starts_with") return text.startsWith(m);
   if (r.match_mode === "regex") {
-    try { return new RegExp(m, "i").test(text); } catch { return false; }
+    try {
+      return new RegExp(m, "i").test(text);
+    } catch {
+      return false;
+    }
   }
   return text.includes(m);
 }
@@ -104,23 +113,20 @@ function amountMatches(amount: number, r: Rule): boolean {
   const a = Math.abs(amount);
   const vv = Math.abs(Number(v));
   if (op === "equals") return Math.abs(a - vv) < 0.005;
-  if (op === "multiple_of") return vv > 0 && Math.abs((a / vv) - Math.round(a / vv)) < 0.005;
+  if (op === "multiple_of") return vv > 0 && Math.abs(a / vv - Math.round(a / vv)) < 0.005;
   if (op === "greater_than") return a > vv;
   if (op === "less_than") return a < vv;
   if (op === "between") {
     const v2 = Math.abs(Number(r.amount_value_2 ?? v));
-    const lo = Math.min(vv, v2), hi = Math.max(vv, v2);
+    const lo = Math.min(vv, v2),
+      hi = Math.max(vv, v2);
     return a >= lo && a <= hi;
   }
   return false;
 }
 
 /** Returns true when the descriptor (or counterparty) repeats N times in the window. */
-function recurrenceMatches(
-  tx: SuggestionInput,
-  r: Rule,
-  history: HistoryEntry[],
-): boolean {
+function recurrenceMatches(tx: SuggestionInput, r: Rule, history: HistoryEntry[]): boolean {
   const minCount = r.recurrence_min_count ?? 2;
   const windowDays = r.recurrence_window_days ?? 90;
   const basisDescriptor = !r.counterparty_match;
@@ -136,7 +142,8 @@ function recurrenceMatches(
     }
     if (basisDescriptor) {
       const hd = normalize(h.description ?? "");
-      if (hd && (hd === subjectText || hd.includes(subjectText) || subjectText.includes(hd))) count++;
+      if (hd && (hd === subjectText || hd.includes(subjectText) || subjectText.includes(hd)))
+        count++;
     } else {
       const hc = normalize(h.counterparty ?? "");
       if (hc && (hc === subjectCp || hc.includes(subjectCp) || subjectCp.includes(hc))) count++;
@@ -162,34 +169,46 @@ function similarHistory(text: string, history: HistoryEntry[]): HistoryEntry | n
   return best?.entry ?? null;
 }
 
-export async function loadSuggestionContext(workspaceId: string, workspaceType: "personal" | "business") {
+export async function loadSuggestionContext(
+  workspaceId: string,
+  workspaceType: "personal" | "business",
+) {
   const [catsRes, rulesRes, histRes] = await Promise.all([
-    supabase.from("categories")
+    supabase
+      .from("categories")
       .select("id,name,type,importance_level,importance_comment" as any)
-      .eq("workspace_id", workspaceId).eq("is_active", true),
-    (supabase as any).from("importance_rules")
-      .select("rule_kind,match_text,match_mode,category_hint,category_id,importance_level,transaction_type,workspace_type,confidence,source_type,amount_operator,amount_value,amount_value_2,counterparty_match,counterparty_match_mode,recurrence_min_count,recurrence_window_days,priority")
+      .eq("workspace_id", workspaceId)
+      .eq("is_active", true),
+    (supabase as any)
+      .from("importance_rules")
+      .select(
+        "rule_kind,match_text,match_mode,category_hint,category_id,importance_level,transaction_type,workspace_type,confidence,source_type,amount_operator,amount_value,amount_value_2,counterparty_match,counterparty_match_mode,recurrence_min_count,recurrence_window_days,priority",
+      )
       .eq("is_active", true)
       .or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
       .order("priority", { ascending: true }),
-    supabase.from("transactions")
+    supabase
+      .from("transactions")
       .select("description,counterparty,date,amount,category_id,importance_level" as any)
       .eq("workspace_id", workspaceId)
-      .order("date", { ascending: false }).limit(800),
+      .order("date", { ascending: false })
+      .limit(800),
   ]);
   if (catsRes.error) throw catsRes.error;
   if (rulesRes.error) throw rulesRes.error;
   if (histRes.error) throw histRes.error;
   return {
     categories: ((catsRes.data as any[]) ?? []) as Category[],
-    rules: (((rulesRes.data as any[]) ?? []) as Rule[]).filter((r) => !r.workspace_type || r.workspace_type === workspaceType),
+    rules: (((rulesRes.data as any[]) ?? []) as Rule[]).filter(
+      (r) => !r.workspace_type || r.workspace_type === workspaceType,
+    ),
     history: ((histRes.data as any[]) ?? []) as HistoryEntry[],
   };
 }
 
 export function suggestForTransaction(
   tx: SuggestionInput,
-  ctx: { categories: Category[]; rules: Rule[]; history: HistoryEntry[] }
+  ctx: { categories: Category[]; rules: Rule[]; history: HistoryEntry[] },
 ): Suggestion {
   const text = normalize(`${tx.description ?? ""} ${tx.counterparty ?? ""}`);
   const catsByName = new Map<string, Category>();
@@ -231,21 +250,29 @@ export function suggestForTransaction(
     if (ok && hasRec) ok = ok && recurrenceMatches(tx, r, ctx.history);
     if (!ok) continue;
     // Score: more matched dimensions = more specific = wins.
-    const dims = (hasDesc?1:0) + (hasAmount?1:0) + (hasCp?1:0) + (hasRec?1:0);
+    const dims = (hasDesc ? 1 : 0) + (hasAmount ? 1 : 0) + (hasCp ? 1 : 0) + (hasRec ? 1 : 0);
     const score = dims * 10 + r.confidence - (r.priority ?? 100) / 1000;
-    if (score > bestRuleScore) { bestRule = r; bestRuleScore = score; }
+    if (score > bestRuleScore) {
+      bestRule = r;
+      bestRuleScore = score;
+    }
     void kind;
   }
   if (bestRule) {
     let cat: Category | null = null;
     if (bestRule.category_id) cat = catsById.get(bestRule.category_id) ?? null;
-    if (!cat && bestRule.category_hint) cat = catsByName.get(normalize(bestRule.category_hint)) ?? null;
+    if (!cat && bestRule.category_hint)
+      cat = catsByName.get(normalize(bestRule.category_hint)) ?? null;
     if (cat && cat.type !== tx.type) cat = null;
     const reasonBits: string[] = [];
     if (bestRule.match_text) reasonBits.push(`descritivo "${bestRule.match_text}"`);
-    if (bestRule.amount_operator) reasonBits.push(`valor ${bestRule.amount_operator} ${bestRule.amount_value}`);
+    if (bestRule.amount_operator)
+      reasonBits.push(`valor ${bestRule.amount_operator} ${bestRule.amount_value}`);
     if (bestRule.counterparty_match) reasonBits.push(`pessoa "${bestRule.counterparty_match}"`);
-    if (bestRule.recurrence_min_count) reasonBits.push(`recorrência ≥${bestRule.recurrence_min_count}/${bestRule.recurrence_window_days}d`);
+    if (bestRule.recurrence_min_count)
+      reasonBits.push(
+        `recorrência ≥${bestRule.recurrence_min_count}/${bestRule.recurrence_window_days}d`,
+      );
     return {
       transaction_id: tx.id,
       category_id: cat?.id ?? null,
@@ -280,13 +307,16 @@ export function suggestForTransaction(
     if (cat.type !== tx.type) continue;
     const hintText = [cat.name, cat.importance_comment].filter(Boolean).join(" ");
     const hintTokens = new Set(
-      normalize(hintText).split(" ").filter((tk) => tk.length >= 3)
+      normalize(hintText)
+        .split(" ")
+        .filter((tk) => tk.length >= 3),
     );
     if (hintTokens.size === 0) continue;
     const matched: string[] = [];
     for (const tk of txTokens) if (hintTokens.has(tk)) matched.push(tk);
     if (matched.length === 0) continue;
-    if (!bestCat || matched.length > bestCat.score) bestCat = { cat, score: matched.length, matched };
+    if (!bestCat || matched.length > bestCat.score)
+      bestCat = { cat, score: matched.length, matched };
   }
   if (bestCat) {
     return {
@@ -313,12 +343,21 @@ export function suggestForTransaction(
 }
 
 export function labelImp(i: Importance): string {
-  return i === "essential" ? "Essencial" : i === "important" ? "Importante" : i === "flexible" ? "Flexível" : "Supérfluo";
+  return i === "essential"
+    ? "Essencial"
+    : i === "important"
+      ? "Importante"
+      : i === "flexible"
+        ? "Flexível"
+        : "Supérfluo";
 }
 
 export function importanceBadgeClass(i: Importance): string {
-  return i === "essential" ? "bg-emerald-100 text-emerald-800"
-    : i === "important" ? "bg-sky-100 text-sky-800"
-    : i === "flexible" ? "bg-amber-100 text-amber-800"
-    : "bg-rose-100 text-rose-800";
+  return i === "essential"
+    ? "bg-emerald-100 text-emerald-800"
+    : i === "important"
+      ? "bg-sky-100 text-sky-800"
+      : i === "flexible"
+        ? "bg-amber-100 text-amber-800"
+        : "bg-rose-100 text-rose-800";
 }
