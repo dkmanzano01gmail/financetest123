@@ -25,6 +25,7 @@ import {
   Palette,
   GraduationCap,
   Flame,
+  UserRound,
 } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
@@ -77,6 +78,12 @@ const baseNavDef = [
     icon: CalendarCheck,
     key: "nav.atelier.attendance",
     label: "Presença",
+  },
+  {
+    to: "/atelier/students",
+    icon: UserRound,
+    key: "nav.atelier.students",
+    label: "Alunos",
   },
   { to: "/atelier/renovation", icon: Hammer, key: "nav.atelier.renovation", label: "Reforma" },
   {

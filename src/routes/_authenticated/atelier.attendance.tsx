@@ -32,6 +32,8 @@ const empty = {
   session_date: new Date().toISOString().slice(0, 10),
   session_time: "",
   student_name: "",
+  class_name: "",
+  record_type: "class",
   status: "present",
   comments: "",
 };
@@ -59,6 +61,20 @@ function Page() {
       ).data ?? [],
   });
 
+  const { data: students } = useQuery({
+    queryKey: ["students", wsId, "for-attendance"],
+    enabled: !!wsId,
+    queryFn: async () =>
+      (
+        await sb
+          .from("students")
+          .select("id,name,class_name,is_active")
+          .eq("workspace_id", wsId)
+          .eq("is_active", true)
+          .order("name")
+      ).data ?? [],
+  });
+
   const filtered = useMemo(
     () =>
       (rows ?? []).filter((r: any) => !q || r.student_name.toLowerCase().includes(q.toLowerCase())),
@@ -74,6 +90,8 @@ function Page() {
         weekday: wd,
         session_time: f.session_time || null,
         student_name: f.student_name,
+        class_name: f.class_name || null,
+        record_type: f.record_type || "class",
         status: f.status,
         confirmed_at: f.status === "present" ? new Date().toISOString() : null,
         comments: f.comments || null,
@@ -120,6 +138,8 @@ function Page() {
       session_date: r.session_date,
       session_time: r.session_time ?? "",
       student_name: r.student_name,
+      class_name: r.class_name ?? "",
+      record_type: r.record_type ?? "class",
       status: r.status,
       comments: r.comments ?? "",
     });
@@ -162,6 +182,8 @@ function Page() {
                   <th className="p-3">Dia</th>
                   <th className="p-3">Horário</th>
                   <th className="p-3">Aluno</th>
+                  <th className="p-3">Turma</th>
+                  <th className="p-3">Tipo</th>
                   <th className="p-3">Status</th>
                   <th className="p-3">Confirmação</th>
                   <th className="p-3"></th>
@@ -174,6 +196,8 @@ function Page() {
                     <td className="p-3">{r.weekday != null ? weekdays[r.weekday] : "—"}</td>
                     <td className="p-3">{r.session_time ?? "—"}</td>
                     <td className="p-3">{r.student_name}</td>
+                    <td className="p-3">{r.class_name ?? "—"}</td>
+                    <td className="p-3 text-xs">{r.record_type ?? "class"}</td>
                     <td className="p-3">
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${r.status === "present" ? "bg-income/10 text-income" : r.status === "absent" ? "bg-destructive/10 text-destructive" : "bg-muted"}`}
@@ -230,9 +254,40 @@ function Page() {
             <div className="space-y-1.5 col-span-2">
               <Label>Aluno</Label>
               <Input
+                list="attendance-student-suggestions"
                 value={f.student_name}
                 onChange={(e) => setF({ ...f, student_name: e.target.value })}
               />
+              <datalist id="attendance-student-suggestions">
+                {(students ?? []).map((s: any) => (
+                  <option key={s.id} value={s.name} />
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Turma</Label>
+              <Input
+                value={f.class_name}
+                onChange={(e) => setF({ ...f, class_name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tipo de registro</Label>
+              <Select
+                value={f.record_type}
+                onValueChange={(v) => setF({ ...f, record_type: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="class">Aula</SelectItem>
+                  <SelectItem value="makeup">Reposição</SelectItem>
+                  <SelectItem value="trial">Experimental</SelectItem>
+                  <SelectItem value="workshop">Workshop</SelectItem>
+                  <SelectItem value="other">Outro</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5 col-span-2">
               <Label>Status</Label>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,8 @@ const emptyForm = {
   amount: "",
   recurrence: "none",
   status: "projected",
+  is_active: true,
+  day_of_month: "",
   notes: "",
 };
 
@@ -95,6 +98,11 @@ function CashFlowPage() {
         amount: Number(form.amount.replace(",", ".") || 0),
         recurrence: form.recurrence,
         status: form.status,
+        is_active: form.is_active,
+        day_of_month:
+          form.recurrence === "monthly" && form.day_of_month.trim()
+            ? Math.min(31, Math.max(1, parseInt(form.day_of_month, 10)))
+            : null,
         notes: form.notes || null,
       };
       const { error } = editId
@@ -173,6 +181,8 @@ function CashFlowPage() {
       amount: String(e.amount),
       recurrence: e.recurrence,
       status: e.status,
+      is_active: e.is_active !== false,
+      day_of_month: e.day_of_month != null ? String(e.day_of_month) : "",
       notes: e.notes ?? "",
     });
     setOpen(true);
@@ -282,6 +292,8 @@ function CashFlowPage() {
                   <th className="p-3">Descrição</th>
                   <th className="p-3">Tipo</th>
                   <th className="p-3">Recorrência</th>
+                  <th className="p-3">Dia</th>
+                  <th className="p-3">Ativo</th>
                   <th className="p-3">Status</th>
                   <th className="p-3 text-right">Valor</th>
                   <th className="p-3"></th>
@@ -294,6 +306,8 @@ function CashFlowPage() {
                     <td className="p-3">{e.description}</td>
                     <td className="p-3">{e.type === "income" ? "Entrada" : "Saída"}</td>
                     <td className="p-3 text-xs">{e.recurrence}</td>
+                    <td className="p-3 text-xs">{e.day_of_month ?? "—"}</td>
+                    <td className="p-3 text-xs">{e.is_active === false ? "Não" : "Sim"}</td>
                     <td className="p-3 text-xs">{e.status}</td>
                     <td
                       className={`p-3 text-right font-mono ${e.type === "income" ? "text-income" : "text-expense"}`}
@@ -392,6 +406,24 @@ function CashFlowPage() {
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
+            </div>
+            {form.recurrence === "monthly" && (
+              <div className="space-y-1.5">
+                <Label>Dia do mês (1–31)</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="ex: 10"
+                  value={form.day_of_month}
+                  onChange={(e) => setForm({ ...form, day_of_month: e.target.value })}
+                />
+              </div>
+            )}
+            <div className="space-y-1.5 col-span-2 flex items-center gap-3">
+              <Switch
+                checked={form.is_active}
+                onCheckedChange={(v) => setForm({ ...form, is_active: v })}
+              />
+              <Label>Ativo (recorrência considerada nas projeções)</Label>
             </div>
           </div>
           <DialogFooter>

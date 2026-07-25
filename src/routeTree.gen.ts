@@ -26,6 +26,7 @@ import { Route as AuthenticatedBudgetAnalysisRouteImport } from './routes/_authe
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 import { Route as AuthenticatedSuperAdminCustomizationsRouteImport } from './routes/_authenticated/super-admin.customizations'
 import { Route as AuthenticatedAtelierWorkshopPricingRouteImport } from './routes/_authenticated/atelier.workshop-pricing'
+import { Route as AuthenticatedAtelierStudentsRouteImport } from './routes/_authenticated/atelier.students'
 import { Route as AuthenticatedAtelierRenovationRouteImport } from './routes/_authenticated/atelier.renovation'
 import { Route as AuthenticatedAtelierRawMaterialsRouteImport } from './routes/_authenticated/atelier.raw-materials'
 import { Route as AuthenticatedAtelierPiecePricingRouteImport } from './routes/_authenticated/atelier.piece-pricing'
@@ -124,6 +125,12 @@ const AuthenticatedAtelierWorkshopPricingRoute =
     path: '/atelier/workshop-pricing',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAtelierStudentsRoute =
+  AuthenticatedAtelierStudentsRouteImport.update({
+    id: '/atelier/students',
+    path: '/atelier/students',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAtelierRenovationRoute =
   AuthenticatedAtelierRenovationRouteImport.update({
     id: '/atelier/renovation',
@@ -189,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
   '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
+  '/atelier/students': typeof AuthenticatedAtelierStudentsRoute
   '/atelier/workshop-pricing': typeof AuthenticatedAtelierWorkshopPricingRoute
   '/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
@@ -214,6 +222,7 @@ export interface FileRoutesByTo {
   '/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
   '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
+  '/atelier/students': typeof AuthenticatedAtelierStudentsRoute
   '/atelier/workshop-pricing': typeof AuthenticatedAtelierWorkshopPricingRoute
   '/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
@@ -241,6 +250,7 @@ export interface FileRoutesById {
   '/_authenticated/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
   '/_authenticated/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/_authenticated/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
+  '/_authenticated/atelier/students': typeof AuthenticatedAtelierStudentsRoute
   '/_authenticated/atelier/workshop-pricing': typeof AuthenticatedAtelierWorkshopPricingRoute
   '/_authenticated/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
@@ -268,6 +278,7 @@ export interface FileRouteTypes {
     | '/atelier/piece-pricing'
     | '/atelier/raw-materials'
     | '/atelier/renovation'
+    | '/atelier/students'
     | '/atelier/workshop-pricing'
     | '/super-admin/customizations'
   fileRoutesByTo: FileRoutesByTo
@@ -293,6 +304,7 @@ export interface FileRouteTypes {
     | '/atelier/piece-pricing'
     | '/atelier/raw-materials'
     | '/atelier/renovation'
+    | '/atelier/students'
     | '/atelier/workshop-pricing'
     | '/super-admin/customizations'
   id:
@@ -319,6 +331,7 @@ export interface FileRouteTypes {
     | '/_authenticated/atelier/piece-pricing'
     | '/_authenticated/atelier/raw-materials'
     | '/_authenticated/atelier/renovation'
+    | '/_authenticated/atelier/students'
     | '/_authenticated/atelier/workshop-pricing'
     | '/_authenticated/super-admin/customizations'
   fileRoutesById: FileRoutesById
@@ -450,6 +463,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAtelierWorkshopPricingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/atelier/students': {
+      id: '/_authenticated/atelier/students'
+      path: '/atelier/students'
+      fullPath: '/atelier/students'
+      preLoaderRoute: typeof AuthenticatedAtelierStudentsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/atelier/renovation': {
       id: '/_authenticated/atelier/renovation'
       path: '/atelier/renovation'
@@ -521,6 +541,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAtelierPiecePricingRoute: typeof AuthenticatedAtelierPiecePricingRoute
   AuthenticatedAtelierRawMaterialsRoute: typeof AuthenticatedAtelierRawMaterialsRoute
   AuthenticatedAtelierRenovationRoute: typeof AuthenticatedAtelierRenovationRoute
+  AuthenticatedAtelierStudentsRoute: typeof AuthenticatedAtelierStudentsRoute
   AuthenticatedAtelierWorkshopPricingRoute: typeof AuthenticatedAtelierWorkshopPricingRoute
   AuthenticatedSuperAdminCustomizationsRoute: typeof AuthenticatedSuperAdminCustomizationsRoute
 }
@@ -546,6 +567,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAtelierPiecePricingRoute: AuthenticatedAtelierPiecePricingRoute,
   AuthenticatedAtelierRawMaterialsRoute: AuthenticatedAtelierRawMaterialsRoute,
   AuthenticatedAtelierRenovationRoute: AuthenticatedAtelierRenovationRoute,
+  AuthenticatedAtelierStudentsRoute: AuthenticatedAtelierStudentsRoute,
   AuthenticatedAtelierWorkshopPricingRoute:
     AuthenticatedAtelierWorkshopPricingRoute,
   AuthenticatedSuperAdminCustomizationsRoute:
