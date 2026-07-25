@@ -48,6 +48,8 @@ const emptyForm = {
   amount: "",
   recurrence: "none",
   status: "projected",
+  is_active: true,
+  day_of_month: "",
   notes: "",
 };
 
@@ -95,6 +97,11 @@ function CashFlowPage() {
         amount: Number(form.amount.replace(",", ".") || 0),
         recurrence: form.recurrence,
         status: form.status,
+        is_active: form.is_active,
+        day_of_month:
+          form.recurrence === "monthly" && form.day_of_month.trim()
+            ? Math.min(31, Math.max(1, parseInt(form.day_of_month, 10)))
+            : null,
         notes: form.notes || null,
       };
       const { error } = editId
@@ -173,6 +180,8 @@ function CashFlowPage() {
       amount: String(e.amount),
       recurrence: e.recurrence,
       status: e.status,
+      is_active: e.is_active !== false,
+      day_of_month: e.day_of_month != null ? String(e.day_of_month) : "",
       notes: e.notes ?? "",
     });
     setOpen(true);
