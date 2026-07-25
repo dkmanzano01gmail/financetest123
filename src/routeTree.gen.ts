@@ -26,6 +26,7 @@ import { Route as AuthenticatedBudgetAnalysisRouteImport } from './routes/_authe
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 import { Route as AuthenticatedSuperAdminCustomizationsRouteImport } from './routes/_authenticated/super-admin.customizations'
 import { Route as AuthenticatedAtelierRawMaterialsRouteImport } from './routes/_authenticated/atelier.raw-materials'
+import { Route as AuthenticatedAtelierClassMaterialsRouteImport } from './routes/_authenticated/atelier.class-materials'
 import { Route as AuthenticatedAtelierCashFlowRouteImport } from './routes/_authenticated/atelier.cash-flow'
 
 const AuthRoute = AuthRouteImport.update({
@@ -118,6 +119,12 @@ const AuthenticatedAtelierRawMaterialsRoute =
     path: '/atelier/raw-materials',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAtelierClassMaterialsRoute =
+  AuthenticatedAtelierClassMaterialsRouteImport.update({
+    id: '/atelier/class-materials',
+    path: '/atelier/class-materials',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAtelierCashFlowRoute =
   AuthenticatedAtelierCashFlowRouteImport.update({
     id: '/atelier/cash-flow',
@@ -141,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/transactions': typeof AuthenticatedTransactionsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
+  '/atelier/class-materials': typeof AuthenticatedAtelierClassMaterialsRoute
   '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
@@ -160,6 +168,7 @@ export interface FileRoutesByTo {
   '/transactions': typeof AuthenticatedTransactionsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
+  '/atelier/class-materials': typeof AuthenticatedAtelierClassMaterialsRoute
   '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
@@ -181,6 +190,7 @@ export interface FileRoutesById {
   '/_authenticated/transactions': typeof AuthenticatedTransactionsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/_authenticated/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
+  '/_authenticated/atelier/class-materials': typeof AuthenticatedAtelierClassMaterialsRoute
   '/_authenticated/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/_authenticated/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
@@ -202,6 +212,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/auth/callback'
     | '/atelier/cash-flow'
+    | '/atelier/class-materials'
     | '/atelier/raw-materials'
     | '/super-admin/customizations'
   fileRoutesByTo: FileRoutesByTo
@@ -221,6 +232,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/auth/callback'
     | '/atelier/cash-flow'
+    | '/atelier/class-materials'
     | '/atelier/raw-materials'
     | '/super-admin/customizations'
   id:
@@ -241,6 +253,7 @@ export interface FileRouteTypes {
     | '/_authenticated/transactions'
     | '/auth/callback'
     | '/_authenticated/atelier/cash-flow'
+    | '/_authenticated/atelier/class-materials'
     | '/_authenticated/atelier/raw-materials'
     | '/_authenticated/super-admin/customizations'
   fileRoutesById: FileRoutesById
@@ -372,6 +385,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAtelierRawMaterialsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/atelier/class-materials': {
+      id: '/_authenticated/atelier/class-materials'
+      path: '/atelier/class-materials'
+      fullPath: '/atelier/class-materials'
+      preLoaderRoute: typeof AuthenticatedAtelierClassMaterialsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/atelier/cash-flow': {
       id: '/_authenticated/atelier/cash-flow'
       path: '/atelier/cash-flow'
@@ -395,6 +415,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTransactionsRoute: typeof AuthenticatedTransactionsRoute
   AuthenticatedAtelierCashFlowRoute: typeof AuthenticatedAtelierCashFlowRoute
+  AuthenticatedAtelierClassMaterialsRoute: typeof AuthenticatedAtelierClassMaterialsRoute
   AuthenticatedAtelierRawMaterialsRoute: typeof AuthenticatedAtelierRawMaterialsRoute
   AuthenticatedSuperAdminCustomizationsRoute: typeof AuthenticatedSuperAdminCustomizationsRoute
 }
@@ -412,6 +433,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTransactionsRoute: AuthenticatedTransactionsRoute,
   AuthenticatedAtelierCashFlowRoute: AuthenticatedAtelierCashFlowRoute,
+  AuthenticatedAtelierClassMaterialsRoute:
+    AuthenticatedAtelierClassMaterialsRoute,
   AuthenticatedAtelierRawMaterialsRoute: AuthenticatedAtelierRawMaterialsRoute,
   AuthenticatedSuperAdminCustomizationsRoute:
     AuthenticatedSuperAdminCustomizationsRoute,
