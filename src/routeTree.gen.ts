@@ -25,6 +25,7 @@ import { Route as AuthenticatedCardsRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedBudgetAnalysisRouteImport } from './routes/_authenticated/budget-analysis'
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 import { Route as AuthenticatedSuperAdminCustomizationsRouteImport } from './routes/_authenticated/super-admin.customizations'
+import { Route as AuthenticatedAtelierRawMaterialsRouteImport } from './routes/_authenticated/atelier.raw-materials'
 import { Route as AuthenticatedAtelierCashFlowRouteImport } from './routes/_authenticated/atelier.cash-flow'
 
 const AuthRoute = AuthRouteImport.update({
@@ -111,6 +112,12 @@ const AuthenticatedSuperAdminCustomizationsRoute =
     path: '/super-admin/customizations',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAtelierRawMaterialsRoute =
+  AuthenticatedAtelierRawMaterialsRouteImport.update({
+    id: '/atelier/raw-materials',
+    path: '/atelier/raw-materials',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAtelierCashFlowRoute =
   AuthenticatedAtelierCashFlowRouteImport.update({
     id: '/atelier/cash-flow',
@@ -134,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/transactions': typeof AuthenticatedTransactionsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
+  '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
 export interface FileRoutesByTo {
@@ -152,6 +160,7 @@ export interface FileRoutesByTo {
   '/transactions': typeof AuthenticatedTransactionsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
+  '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
 export interface FileRoutesById {
@@ -172,6 +181,7 @@ export interface FileRoutesById {
   '/_authenticated/transactions': typeof AuthenticatedTransactionsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/_authenticated/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
+  '/_authenticated/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/_authenticated/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
 }
 export interface FileRouteTypes {
@@ -192,6 +202,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/auth/callback'
     | '/atelier/cash-flow'
+    | '/atelier/raw-materials'
     | '/super-admin/customizations'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -210,6 +221,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/auth/callback'
     | '/atelier/cash-flow'
+    | '/atelier/raw-materials'
     | '/super-admin/customizations'
   id:
     | '__root__'
@@ -229,6 +241,7 @@ export interface FileRouteTypes {
     | '/_authenticated/transactions'
     | '/auth/callback'
     | '/_authenticated/atelier/cash-flow'
+    | '/_authenticated/atelier/raw-materials'
     | '/_authenticated/super-admin/customizations'
   fileRoutesById: FileRoutesById
 }
@@ -352,6 +365,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSuperAdminCustomizationsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/atelier/raw-materials': {
+      id: '/_authenticated/atelier/raw-materials'
+      path: '/atelier/raw-materials'
+      fullPath: '/atelier/raw-materials'
+      preLoaderRoute: typeof AuthenticatedAtelierRawMaterialsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/atelier/cash-flow': {
       id: '/_authenticated/atelier/cash-flow'
       path: '/atelier/cash-flow'
@@ -375,6 +395,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTransactionsRoute: typeof AuthenticatedTransactionsRoute
   AuthenticatedAtelierCashFlowRoute: typeof AuthenticatedAtelierCashFlowRoute
+  AuthenticatedAtelierRawMaterialsRoute: typeof AuthenticatedAtelierRawMaterialsRoute
   AuthenticatedSuperAdminCustomizationsRoute: typeof AuthenticatedSuperAdminCustomizationsRoute
 }
 
@@ -391,6 +412,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTransactionsRoute: AuthenticatedTransactionsRoute,
   AuthenticatedAtelierCashFlowRoute: AuthenticatedAtelierCashFlowRoute,
+  AuthenticatedAtelierRawMaterialsRoute: AuthenticatedAtelierRawMaterialsRoute,
   AuthenticatedSuperAdminCustomizationsRoute:
     AuthenticatedSuperAdminCustomizationsRoute,
 }
