@@ -192,10 +192,18 @@ export type Database = {
       }
       attendance_records: {
         Row: {
+          class_name: string | null
           comments: string | null
           confirmed_at: string | null
           created_at: string
+          generates_makeup: boolean | null
           id: string
+          legacy_source_id: string | null
+          makeup_completed: boolean | null
+          makeup_reference: string | null
+          makeups_available_in_month: number | null
+          makeups_used_in_month: number | null
+          record_type: string | null
           session_date: string
           session_time: string | null
           status: string
@@ -205,10 +213,18 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          class_name?: string | null
           comments?: string | null
           confirmed_at?: string | null
           created_at?: string
+          generates_makeup?: boolean | null
           id?: string
+          legacy_source_id?: string | null
+          makeup_completed?: boolean | null
+          makeup_reference?: string | null
+          makeups_available_in_month?: number | null
+          makeups_used_in_month?: number | null
+          record_type?: string | null
           session_date: string
           session_time?: string | null
           status?: string
@@ -218,10 +234,18 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          class_name?: string | null
           comments?: string | null
           confirmed_at?: string | null
           created_at?: string
+          generates_makeup?: boolean | null
           id?: string
+          legacy_source_id?: string | null
+          makeup_completed?: boolean | null
+          makeup_reference?: string | null
+          makeups_available_in_month?: number | null
+          makeups_used_in_month?: number | null
+          record_type?: string | null
           session_date?: string
           session_time?: string | null
           status?: string
@@ -297,11 +321,15 @@ export type Database = {
           category_id: string | null
           created_at: string
           created_by: string | null
+          day_of_month: number | null
           description: string
           entry_date: string
           id: string
+          is_active: boolean
+          legacy_source_id: string | null
           notes: string | null
           recurrence: string
+          specific_date: string | null
           status: string
           type: string
           updated_at: string
@@ -312,11 +340,15 @@ export type Database = {
           category_id?: string | null
           created_at?: string
           created_by?: string | null
+          day_of_month?: number | null
           description: string
           entry_date: string
           id?: string
+          is_active?: boolean
+          legacy_source_id?: string | null
           notes?: string | null
           recurrence?: string
+          specific_date?: string | null
           status?: string
           type: string
           updated_at?: string
@@ -327,11 +359,15 @@ export type Database = {
           category_id?: string | null
           created_at?: string
           created_by?: string | null
+          day_of_month?: number | null
           description?: string
           entry_date?: string
           id?: string
+          is_active?: boolean
+          legacy_source_id?: string | null
           notes?: string | null
           recurrence?: string
+          specific_date?: string | null
           status?: string
           type?: string
           updated_at?: string
@@ -446,9 +482,12 @@ export type Database = {
           created_at: string
           grams: number
           id: string
+          legacy_source_id: string | null
           material: string
           payment_date: string | null
           payment_status: string
+          piece_name: string | null
+          quantity: number
           student_name: string
           updated_at: string
           usage_date: string
@@ -460,9 +499,12 @@ export type Database = {
           created_at?: string
           grams?: number
           id?: string
+          legacy_source_id?: string | null
           material: string
           payment_date?: string | null
           payment_status?: string
+          piece_name?: string | null
+          quantity?: number
           student_name: string
           updated_at?: string
           usage_date?: string
@@ -474,9 +516,12 @@ export type Database = {
           created_at?: string
           grams?: number
           id?: string
+          legacy_source_id?: string | null
           material?: string
           payment_date?: string | null
           payment_status?: string
+          piece_name?: string | null
+          quantity?: number
           student_name?: string
           updated_at?: string
           usage_date?: string
@@ -995,6 +1040,41 @@ export type Database = {
           },
         ]
       }
+      legacy_import_archive: {
+        Row: {
+          id: string
+          imported_at: string
+          payload: Json
+          sheet_name: string
+          source_key: string
+          workspace_id: string
+        }
+        Insert: {
+          id?: string
+          imported_at?: string
+          payload?: Json
+          sheet_name: string
+          source_key: string
+          workspace_id: string
+        }
+        Update: {
+          id?: string
+          imported_at?: string
+          payload?: Json
+          sheet_name?: string
+          source_key?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legacy_import_archive_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       piece_pricing: {
         Row: {
           biscuit_cost: number
@@ -1147,14 +1227,18 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_active: boolean
+          legacy_source_id: string | null
           material_type: string | null
           min_stock: number
           name: string
           notes: string | null
           purchase_date: string | null
+          purchase_link: string | null
           quantity_available: number
           quantity_purchased: number
           supplier: string | null
+          supplier_url: string | null
           unit: string
           unit_cost: number
           updated_at: string
@@ -1163,14 +1247,18 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_active?: boolean
+          legacy_source_id?: string | null
           material_type?: string | null
           min_stock?: number
           name: string
           notes?: string | null
           purchase_date?: string | null
+          purchase_link?: string | null
           quantity_available?: number
           quantity_purchased?: number
           supplier?: string | null
+          supplier_url?: string | null
           unit?: string
           unit_cost?: number
           updated_at?: string
@@ -1179,14 +1267,18 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_active?: boolean
+          legacy_source_id?: string | null
           material_type?: string | null
           min_stock?: number
           name?: string
           notes?: string | null
           purchase_date?: string | null
+          purchase_link?: string | null
           quantity_available?: number
           quantity_purchased?: number
           supplier?: string | null
+          supplier_url?: string | null
           unit?: string
           unit_cost?: number
           updated_at?: string
@@ -1254,6 +1346,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "renovation_items_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      students: {
+        Row: {
+          class_name: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          legacy_source_id: string | null
+          monthly_fee: number
+          name: string
+          notes: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          class_name?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          legacy_source_id?: string | null
+          monthly_fee?: number
+          name: string
+          notes?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          class_name?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          legacy_source_id?: string | null
+          monthly_fee?: number
+          name?: string
+          notes?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
