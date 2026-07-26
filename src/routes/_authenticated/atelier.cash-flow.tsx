@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { Button } from "@/components/ui/button";
@@ -115,10 +115,17 @@ function CashFlowPage() {
       return data;
     },
   });
-  const { data: transactions = [], isLoading: txLoading } = useQuery({
+  const {
+    data: transactions = [],
+    error: transactionsError,
+    isLoading: txLoading,
+    isFetching: txFetching,
+    refetch: refetchTransactions,
+  } = useQuery({
     queryKey: [
-      "cash-flow-actual-transactions-v2",
+      "transactions",
       wsId,
+      "cash-flow",
       year,
       month,
       monthsCount,
@@ -136,19 +143,42 @@ function CashFlowPage() {
       const { data, error } = await sb
         .from("transactions")
         .select(
-          "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,categories(name,color)",
+          "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,categories!transactions_category_id_fkey(name,color)",
         )
         .eq("workspace_id", wsId)
         .gte("date", start)
         .lte("date", end)
-        // Imported/manual transactions may not have an account, but they are still realized.
-        // Card purchases stay out of cash flow so paying the invoice is not counted twice.
-        .is("credit_card_id", null)
         .order("date");
       if (error) throw error;
       return data ?? [];
     },
+    retry: 1,
+    refetchOnWindowFocus: true,
   });
+
+  useEffect(() => {
+    if (!wsId) return;
+
+    const channel = supabase
+      .channel(`cash-flow-transactions-${wsId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transactions",
+          filter: `workspace_id=eq.${wsId}`,
+        },
+        () => {
+          qc.invalidateQueries({ queryKey: ["transactions", wsId] });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [qc, wsId]);
   const { data: categories = [] } = useQuery({
     queryKey: ["categories", wsId, "cash-flow"],
     enabled: !!wsId,
@@ -398,14 +428,60 @@ function CashFlowPage() {
             <CalendarRange className="mr-1 h-3.5 w-3.5" />
             {projection.startDate} a {projection.endDate}
           </Badge>
+          {txFetching && !txLoading && (
+            <span className="text-xs text-muted-foreground">Atualizando transações…</span>
+          )}
         </CardContent>
       </Card>
 
-      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+      {transactionsError && (
+        <Card className="mb-4 border-destructive/40 bg-destructive/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+            <div>
+              <strong>Não foi possível carregar as transações realizadas.</strong>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {transactionsError instanceof Error
+                  ? transactionsError.message
+                  : "Erro desconhecido ao consultar as transações."}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={txFetching}
+              onClick={() => void refetchTransactions()}
+            >
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Saldo inicial"
           value={formatCurrency(projection.startingCash, currency, privacy)}
           sub={settings?.starting_balance_date ?? "—"}
+        />
+        <StatCard
+          label="Entradas realizadas"
+          value={formatCurrency(projection.totalActualIncome, currency, privacy)}
+          tone="income"
+          icon={TrendingUp}
+        />
+        <StatCard
+          label="Saídas realizadas"
+          value={formatCurrency(projection.totalActualExpense, currency, privacy)}
+          tone="expense"
+          icon={TrendingDown}
+        />
+        <StatCard
+          label="Resultado realizado"
+          value={formatCurrency(projection.actualNet, currency, privacy)}
+          tone={projection.actualNet >= 0 ? "income" : "expense"}
+          sub={`${projection.actualEvents.length} ${
+            projection.actualEvents.length === 1 ? "transação" : "transações"
+          }`}
         />
         <StatCard
           label="Receitas previstas"
@@ -423,12 +499,6 @@ function CashFlowPage() {
           label="Saldo previsto"
           value={formatCurrency(projection.endingCash, currency, privacy)}
           tone={projection.endingCash >= 0 ? "income" : "expense"}
-        />
-        <StatCard
-          label="Realizado no período"
-          value={formatCurrency(projection.actualNet, currency, privacy)}
-          tone={projection.actualNet >= 0 ? "income" : "expense"}
-          sub={`${formatCurrency(projection.totalActualIncome, currency, privacy)} entradas`}
         />
         <StatCard
           label="Menor caixa previsto"
