@@ -39,7 +39,10 @@ const n = (value: string) => {
 const empty = () => ({
   usage_date: new Date().toISOString().slice(0, 10),
   student_name: "",
+  kiln_id: "",
   piece_name: "",
+  production_status: "in_progress",
+  completed_at: "",
   quantity: "1",
   clay_weight_kg: "0",
   clay_type: "",
@@ -154,6 +157,29 @@ function Page() {
     queryFn: async () =>
       (await sb.from("firing_settings").select("*").eq("workspace_id", wsId).maybeSingle()).data ?? null,
   });
+  const { data: kilns = [] } = useQuery({
+    queryKey: ["kilns", wsId, "class-materials"],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("kilns")
+        .select("*")
+        .eq("workspace_id", wsId)
+        .eq("is_active", true)
+        .order("is_default", { ascending: false })
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const selectedKiln = useMemo(
+    () =>
+      (kilns as any[]).find((kiln) => kiln.id === form.kiln_id) ??
+      (kilns as any[]).find((kiln) => kiln.is_default) ??
+      (kilns as any[])[0] ??
+      firingSettings,
+    [kilns, form.kiln_id, firingSettings],
+  );
 
   const filtered = useMemo(() => {
     return (rows as any[]).filter((row) => {
@@ -198,14 +224,14 @@ function Page() {
       lengthCm: n(form.length_cm),
       depthCm: n(form.depth_cm),
       glazeCone: form.glaze_cone,
-      firingSettings,
+      firingSettings: selectedKiln,
       chargeBisque: form.charge_biscuit,
       chargeGlaze: form.charge_glaze,
       kilnFiringProfitRate: Number(classSettings?.kiln_firing_profit_percent ?? 100) / 100,
       otherCosts: n(form.other_cost),
       marginRate: Number(classSettings?.margin_percent ?? 0) / 100,
     });
-  }, [form, materials, firingSettings, classSettings]);
+  }, [form, materials, selectedKiln, classSettings]);
 
   const totals = useMemo(
     () =>
@@ -273,6 +299,7 @@ function Page() {
     mutationFn: async () => {
       if (!form.student_name) throw new Error("Selecione o aluno.");
       if (!form.piece_name.trim()) throw new Error("Informe o nome da peça.");
+      if ((kilns as any[]).length > 0 && !selectedKiln?.id) throw new Error("Selecione o forno.");
       const chargedInput = form.amount_charged.trim() ? parseLocaleAmount(form.amount_charged) : calculation.chargeAmount;
       if (!Number.isFinite(chargedInput) || chargedInput < 0) throw new Error("Valor cobrado inválido.");
       const paidInput = form.payment_status === "paid"
@@ -285,7 +312,14 @@ function Page() {
         workspace_id: wsId,
         usage_date: form.usage_date,
         student_name: form.student_name,
+        student_id: (students as any[]).find((student) => student.name === form.student_name)?.id ?? null,
+        kiln_id: selectedKiln?.id ?? null,
         piece_name: form.piece_name.trim(),
+        production_status: form.production_status,
+        completed_at:
+          ["completed", "delivered"].includes(form.production_status)
+            ? form.completed_at || new Date().toISOString().slice(0, 10)
+            : null,
         quantity: Math.max(1, Math.round(n(form.quantity))),
         material: form.clay_type || form.glaze_name || "Peça cerâmica",
         grams: n(form.clay_weight_kg) * 1000,
@@ -384,7 +418,10 @@ function Page() {
     setForm({
       usage_date: row.usage_date,
       student_name: row.student_name,
+      kiln_id: row.kiln_id ?? "",
       piece_name: row.piece_name ?? "",
+      production_status: row.production_status ?? "in_progress",
+      completed_at: row.completed_at ?? "",
       quantity: String(row.quantity ?? 1),
       clay_weight_kg: String(row.clay_weight_kg ?? Number(row.grams || 0) / 1000),
       clay_type: row.clay_type ?? row.material ?? "",
@@ -477,8 +514,8 @@ function Page() {
         <Card>
           <CardHeader><CardTitle className="text-base">Peças e cobranças</CardTitle></CardHeader>
           <CardContent className="overflow-x-auto p-0">
-            <table className="w-full text-sm"><thead className="bg-muted/40"><tr className="text-left"><th className="p-3">Data</th><th className="p-3">Aluno</th><th className="p-3">Peça</th><th className="p-3">Materiais</th><th className="p-3 text-right">Custo</th><th className="p-3 text-right">Cobrança</th><th className="p-3 text-right">Pendente</th><th className="p-3">Status</th><th className="p-3" /></tr></thead>
-              <tbody>{filtered.map((row: any) => <tr key={row.id} className="border-t"><td className="p-3 font-mono">{row.usage_date}</td><td className="p-3 font-medium">{row.student_name}</td><td className="p-3">{row.piece_name || "—"}<div className="text-xs text-muted-foreground">{row.quantity ?? 1} un.</div></td><td className="p-3 text-xs">{row.clay_type || "—"}<br />{row.glaze_name || "—"}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.total_cost || 0), currency, privacy)}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.amount_charged || 0), currency, privacy)}</td><td className="p-3 text-right font-mono text-expense">{formatCurrency(Number(row.amount_pending ?? Math.max(0, Number(row.amount_charged || 0) - Number(row.amount_paid || 0))), currency, privacy)}</td><td className="p-3">{statusLabel(row.payment_status)}</td><td className="p-3"><div className="flex justify-end gap-1">{row.payment_status !== "paid" && row.payment_status !== "waived" && <Button variant="outline" size="sm" onClick={() => markPaid.mutate(row)}>Marcar pago</Button>}<Button variant="ghost" size="icon" onClick={() => edit(row)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => remove.mutate(row.id)}><Trash2 className="h-4 w-4" /></Button></div></td></tr>)}</tbody>
+            <table className="w-full text-sm"><thead className="bg-muted/40"><tr className="text-left"><th className="p-3">Data</th><th className="p-3">Aluno</th><th className="p-3">Peça</th><th className="p-3">Produção</th><th className="p-3">Forno</th><th className="p-3">Materiais</th><th className="p-3 text-right">Custo</th><th className="p-3 text-right">Cobrança</th><th className="p-3 text-right">Pendente</th><th className="p-3">Pagamento</th><th className="p-3" /></tr></thead>
+              <tbody>{filtered.map((row: any) => <tr key={row.id} className="border-t"><td className="p-3 font-mono">{row.usage_date}</td><td className="p-3 font-medium">{row.student_name}</td><td className="p-3">{row.piece_name || "—"}<div className="text-xs text-muted-foreground">{row.quantity ?? 1} un.</div></td><td className="p-3">{productionLabel(row.production_status)}</td><td className="p-3">{(kilns as any[]).find((kiln) => kiln.id === row.kiln_id)?.name || "Padrão legado"}</td><td className="p-3 text-xs">{row.clay_type || "—"}<br />{row.glaze_name || "—"}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.total_cost || 0), currency, privacy)}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.amount_charged || 0), currency, privacy)}</td><td className="p-3 text-right font-mono text-expense">{formatCurrency(Number(row.amount_pending ?? Math.max(0, Number(row.amount_charged || 0) - Number(row.amount_paid || 0))), currency, privacy)}</td><td className="p-3">{statusLabel(row.payment_status)}</td><td className="p-3"><div className="flex justify-end gap-1">{row.payment_status !== "paid" && row.payment_status !== "waived" && <Button variant="outline" size="sm" onClick={() => markPaid.mutate(row)}>Marcar pago</Button>}<Button variant="ghost" size="icon" onClick={() => edit(row)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => remove.mutate(row.id)}><Trash2 className="h-4 w-4" /></Button></div></td></tr>)}</tbody>
             </table>
           </CardContent>
         </Card>
@@ -491,6 +528,9 @@ function Page() {
             <Field label="Data"><Input type="date" value={form.usage_date} onChange={(event) => setForm({ ...form, usage_date: event.target.value })} /></Field>
             <Field label="Aluno"><Select value={form.student_name || "none"} onValueChange={(value) => setForm({ ...form, student_name: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Selecione</SelectItem>{students.map((student: any) => <SelectItem key={student.id} value={student.name}>{student.name}</SelectItem>)}</SelectContent></Select></Field>
             <Field label="Peça"><Input value={form.piece_name} onChange={(event) => setForm({ ...form, piece_name: event.target.value })} /></Field>
+            <Field label="Etapa de produção"><Select value={form.production_status} onValueChange={(value) => setForm({ ...form, production_status: value, completed_at: ["completed", "delivered"].includes(value) ? form.completed_at || new Date().toISOString().slice(0, 10) : "" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in_progress">Em produção</SelectItem><SelectItem value="drying">Secando</SelectItem><SelectItem value="bisque">Biscoito</SelectItem><SelectItem value="glazing">Esmaltação</SelectItem><SelectItem value="completed">Concluída</SelectItem><SelectItem value="delivered">Entregue</SelectItem></SelectContent></Select></Field>
+            <Field label="Forno"><Select value={form.kiln_id || selectedKiln?.id || "legacy"} onValueChange={(value) => setForm({ ...form, kiln_id: value === "legacy" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(kilns as any[]).length === 0 && <SelectItem value="legacy">Parâmetros antigos</SelectItem>}{(kilns as any[]).map((kiln) => <SelectItem key={kiln.id} value={kiln.id}>{kiln.name}{kiln.is_default ? " · padrão" : ""}</SelectItem>)}</SelectContent></Select></Field>
+            {["completed", "delivered"].includes(form.production_status) && <Field label="Data de conclusão"><Input type="date" value={form.completed_at} onChange={(event) => setForm({ ...form, completed_at: event.target.value })} /></Field>}
             <Field label="Quantidade"><Input type="number" min={1} value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></Field>
             <Field label="Argila (kg)"><Input inputMode="decimal" value={form.clay_weight_kg} onChange={(event) => setForm({ ...form, clay_weight_kg: event.target.value })} /></Field>
             <Field label="Tipo de argila"><Select value={form.clay_type || "none"} onValueChange={(value) => setForm({ ...form, clay_type: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Selecione</SelectItem>{clayMaterials.map((material: any) => <SelectItem key={material.id} value={material.name}>{material.name}</SelectItem>)}</SelectContent></Select></Field>
@@ -526,6 +566,19 @@ function Page() {
 
 function statusLabel(value: string) {
   return value === "paid" ? "Pago" : value === "partial" ? "Parcial" : value === "waived" ? "Cortesia" : "Pendente";
+}
+function productionLabel(value: string) {
+  return value === "drying"
+    ? "Secando"
+    : value === "bisque"
+      ? "Biscoito"
+      : value === "glazing"
+        ? "Esmaltação"
+        : value === "completed"
+          ? "Concluída"
+          : value === "delivered"
+            ? "Entregue"
+            : "Em produção";
 }
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "income" | "expense" }) {
   return <Card><CardContent className="p-4"><div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div><div className={`mt-1 font-mono text-xl ${tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : ""}`}>{value}</div></CardContent></Card>;
