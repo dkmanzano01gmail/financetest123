@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
 import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
+import { summarizeTransactionsByCategory } from "@/lib/transaction-summary";
 import { Plus, Receipt, Trash2, Sparkles, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -110,6 +111,20 @@ function TransactionsPage() {
       return true;
     });
   }, [txs, type, search]);
+
+  const categorySummary = useMemo(() => summarizeTransactionsByCategory(filtered), [filtered]);
+
+  const filteredTotals = useMemo(
+    () =>
+      categorySummary.reduce(
+        (totals, category) => {
+          totals[category.type] += category.value;
+          return totals;
+        },
+        { income: 0, expense: 0 },
+      ),
+    [categorySummary],
+  );
 
   const removeMut = useMutation({
     mutationFn: async (id: string) => {
@@ -241,6 +256,73 @@ function TransactionsPage() {
             </button>
           ))}
         </div>
+      )}
+
+      {categorySummary.length > 0 && (
+        <section className="mb-4" aria-labelledby="category-summary-title">
+          <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 id="category-summary-title" className="text-base font-semibold">
+                Resumo por categoria
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Valores das transações exibidas nos filtros atuais
+              </p>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {filtered.length} {filtered.length === 1 ? "transação" : "transações"}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {categorySummary.map((category) => (
+              <Card key={category.key} className="overflow-hidden bg-card/80">
+                <CardContent className="relative p-4">
+                  <div
+                    className="absolute inset-y-0 left-0 w-1"
+                    style={{ backgroundColor: category.color }}
+                    aria-hidden="true"
+                  />
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{category.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {category.count} {category.count === 1 ? "transação" : "transações"}
+                      </div>
+                    </div>
+                    <div
+                      className={`shrink-0 text-right font-mono font-semibold ${
+                        category.type === "income" ? "text-income" : "text-expense"
+                      }`}
+                    >
+                      {category.type === "expense" ? "-" : ""}
+                      {formatCurrency(category.value, currency, privacy)}
+                    </div>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {formatCurrency(category.value, currency, privacy)} em{" "}
+                    {(category.type === "income" ? t.income : t.expense).toLowerCase()}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="mt-2 flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            <span>
+              {t.income}:{" "}
+              <strong className="font-mono text-income">
+                {formatCurrency(filteredTotals.income, currency, privacy)}
+              </strong>
+            </span>
+            <span>
+              {t.expense}:{" "}
+              <strong className="font-mono text-expense">
+                {formatCurrency(filteredTotals.expense, currency, privacy)}
+              </strong>
+            </span>
+          </div>
+        </section>
       )}
 
       <Card>
