@@ -9,6 +9,11 @@ export type TransactionCategorySummary = {
   value: number;
 };
 
+export function transactionCategoryKey(transaction: OrnaTransaction): string {
+  const name = transaction.categories?.name || "Sem categoria";
+  return `${transaction.type}:${transaction.category_id || name}`;
+}
+
 export function summarizeTransactionsByCategory(
   transactions: OrnaTransaction[],
 ): TransactionCategorySummary[] {
@@ -16,7 +21,7 @@ export function summarizeTransactionsByCategory(
 
   for (const transaction of transactions) {
     const name = transaction.categories?.name || "Sem categoria";
-    const key = `${transaction.type}:${transaction.category_id || name}`;
+    const key = transactionCategoryKey(transaction);
     const current = summaries.get(key);
     const amount = Math.abs(Number(transaction.amount) || 0);
 
