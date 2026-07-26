@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ const emptyFiring = {
   firing_date: new Date().toISOString().slice(0, 10),
   firing_type: "biscuit",
   cone: "Biscoito",
+  kiln_id: "",
   notes: "",
 };
 const emptyPiece = {
@@ -62,7 +63,6 @@ function Page() {
   const [pieceEdit, setPieceEdit] = useState<string | null>(null);
   const [pf, setPf] = useState(emptyPiece);
   const [activeFiring, setActiveFiring] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const { data: firings } = useQuery({
     queryKey: ["firings", wsId],
@@ -112,13 +112,31 @@ function Page() {
         glaze10_utilization: 0.9,
       },
   });
-  const [settingsForm, setSettingsForm] = useState<any>(settings);
-  useEffect(() => setSettingsForm(settings), [settings]);
+  const { data: kilns = [] } = useQuery({
+    queryKey: ["kilns", wsId, "firing-pricing"],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("kilns")
+        .select("*")
+        .eq("workspace_id", wsId)
+        .eq("is_active", true)
+        .order("is_default", { ascending: false })
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   const activeF = firings?.find((f: any) => f.id === activeFiring);
+  const activeKiln =
+    (kilns as any[]).find((kiln) => kiln.id === activeF?.kiln_id) ??
+    (kilns as any[]).find((kiln) => kiln.is_default) ??
+    (kilns as any[])[0] ??
+    settings;
   const activeProfile = useMemo(
-    () => resolveFiringProfile(settings, activeF?.firing_type ?? "biscuit", activeF?.cone),
-    [settings, activeF?.firing_type, activeF?.cone],
+    () => resolveFiringProfile(activeKiln, activeF?.firing_type ?? "biscuit", activeF?.cone),
+    [activeKiln, activeF?.firing_type, activeF?.cone],
   );
   const kilnResult = useMemo(
     () =>
@@ -139,7 +157,7 @@ function Page() {
   );
   const pieceCost = kilnResult.unitCost * (Number(pf.quantity) || 1);
   const suggestedCharge =
-    pieceCost * (1 + Number(settings?.customer_margin_percent ?? 100) / 100);
+    pieceCost * (1 + Number(activeKiln?.customer_margin_percent ?? 100) / 100);
 
   const totals = useMemo(() => {
     let internal = 0,
@@ -151,53 +169,20 @@ function Page() {
     return { internal, charges, profit: charges - internal };
   }, [pieces]);
 
-  const saveSettings = useMutation({
-    mutationFn: async () => {
-      if (!settingsForm) throw new Error("Carregue os parâmetros antes de salvar.");
-      const payload = {
-        workspace_id: wsId,
-        oven_diameter_cm: Number(settingsForm.oven_diameter_cm),
-        area_adjustment: Number(settingsForm.area_adjustment),
-        resistance_cost: Number(settingsForm.resistance_cost),
-        resistance_burns: Number(settingsForm.biscuit_resistance_burns ?? settingsForm.resistance_burns),
-        power_kw: Number(settingsForm.power_kw),
-        biscuit_hours: Number(settingsForm.biscuit_hours),
-        glaze_hours: Number(settingsForm.glaze6_hours ?? settingsForm.glaze_hours),
-        utilization: Number(settingsForm.biscuit_utilization ?? settingsForm.utilization),
-        biscuit_resistance_burns: Number(settingsForm.biscuit_resistance_burns),
-        biscuit_utilization: Number(settingsForm.biscuit_utilization),
-        glaze6_resistance_burns: Number(settingsForm.glaze6_resistance_burns),
-        glaze6_hours: Number(settingsForm.glaze6_hours),
-        glaze6_utilization: Number(settingsForm.glaze6_utilization),
-        glaze7_resistance_burns: Number(settingsForm.glaze7_resistance_burns),
-        glaze7_hours: Number(settingsForm.glaze7_hours),
-        glaze7_utilization: Number(settingsForm.glaze7_utilization),
-        glaze10_resistance_burns: Number(settingsForm.glaze10_resistance_burns),
-        glaze10_hours: Number(settingsForm.glaze10_hours),
-        glaze10_utilization: Number(settingsForm.glaze10_utilization),
-        kwh_cost: Number(settingsForm.kwh_cost),
-        final_buffer: Number(settingsForm.final_buffer),
-        customer_margin_percent: Number(settingsForm.customer_margin_percent),
-      };
-      const { error } = await sb.from("firing_settings").upsert(payload);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["firing_settings"] });
-      setSettingsOpen(false);
-      toast.success("Parâmetros do forno salvos");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   const saveFiring = useMutation({
     mutationFn: async () => {
+      const selectedKilnId =
+        ff.kiln_id ||
+        (kilns as any[]).find((kiln) => kiln.is_default)?.id ||
+        (kilns as any[])[0]?.id ||
+        null;
       const p: any = {
         workspace_id: wsId,
         reference: ff.reference,
         firing_date: ff.firing_date || null,
         firing_type: ff.firing_type,
         cone: ff.firing_type === "biscuit" ? "Biscoito" : ff.cone || "6",
+        kiln_id: selectedKilnId,
         notes: ff.notes || null,
       };
       const { error } = firingEdit
@@ -311,6 +296,7 @@ function Page() {
       firing_date: r.firing_date ?? "",
       firing_type: r.firing_type,
       cone: r.cone ?? (r.firing_type === "biscuit" ? "Biscoito" : "6"),
+      kiln_id: r.kiln_id ?? "",
       notes: r.notes ?? "",
     });
     setFiringOpen(true);
@@ -337,8 +323,8 @@ function Page() {
         description="Custo por queima e cobrança de clientes/alunos"
         action={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setSettingsOpen(true)}>
-              <Settings2 className="w-4 h-4 mr-1" />Parâmetros do forno
+            <Button variant="outline" asChild>
+              <Link to="/atelier/kilns"><Settings2 className="w-4 h-4 mr-1" />Gerenciar fornos</Link>
             </Button>
             <Button onClick={() => { setFiringEdit(null); setFf(emptyFiring); setFiringOpen(true); }}>
               <Plus className="w-4 h-4 mr-1" />Nova queima
@@ -378,6 +364,9 @@ function Page() {
                       </div>
                       <div className="text-xs text-muted-foreground font-mono">
                         {r.firing_date ?? "—"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {(kilns as any[]).find((kiln) => kiln.id === r.kiln_id)?.name || "Forno padrão legado"}
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -519,38 +508,6 @@ function Page() {
         </div>
       )}
 
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader><DialogTitle>Parâmetros do forno</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <Param label="Diâmetro útil (cm)" field="oven_diameter_cm" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Fator de ajuste de área" field="area_adjustment" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Custo da resistência" field="resistance_cost" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Potência (kW)" field="power_kw" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Custo do kWh" field="kwh_cost" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Buffer final (0–1)" field="final_buffer" value={settingsForm} setValue={setSettingsForm} />
-            <div className="col-span-2 mt-2 text-sm font-medium">Perfil Biscoito</div>
-            <Param label="Queimas até troca" field="biscuit_resistance_burns" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Horas" field="biscuit_hours" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Uso da potência (0–1)" field="biscuit_utilization" value={settingsForm} setValue={setSettingsForm} />
-            <div className="col-span-2 mt-2 text-sm font-medium">Perfil Esmalte cone 6</div>
-            <Param label="Queimas até troca" field="glaze6_resistance_burns" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Horas" field="glaze6_hours" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Uso da potência (0–1)" field="glaze6_utilization" value={settingsForm} setValue={setSettingsForm} />
-            <div className="col-span-2 mt-2 text-sm font-medium">Perfil Esmalte cone 7</div>
-            <Param label="Queimas até troca" field="glaze7_resistance_burns" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Horas" field="glaze7_hours" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Uso da potência (0–1)" field="glaze7_utilization" value={settingsForm} setValue={setSettingsForm} />
-            <div className="col-span-2 mt-2 text-sm font-medium">Perfil Esmalte cone 10</div>
-            <Param label="Queimas até troca" field="glaze10_resistance_burns" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Horas" field="glaze10_hours" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Uso da potência (0–1)" field="glaze10_utilization" value={settingsForm} setValue={setSettingsForm} />
-            <Param label="Margem de cobrança (%)" field="customer_margin_percent" value={settingsForm} setValue={setSettingsForm} />
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>Cancelar</Button><Button onClick={() => saveSettings.mutate()}>Salvar</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={firingOpen} onOpenChange={setFiringOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -558,11 +515,25 @@ function Page() {
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5 col-span-2">
-              <Label>Referência do forno</Label>
+              <Label>Referência da queima</Label>
               <Input
                 value={ff.reference}
                 onChange={(e) => setFf({ ...ff, reference: e.target.value })}
               />
+            </div>
+            <div className="space-y-1.5 col-span-2">
+              <Label>Forno</Label>
+              <Select
+                value={ff.kiln_id || (kilns as any[]).find((kiln) => kiln.is_default)?.id || (kilns as any[])[0]?.id || "legacy"}
+                onValueChange={(value) => setFf({ ...ff, kiln_id: value === "legacy" ? "" : value })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(kilns as any[]).length === 0 && <SelectItem value="legacy">Parâmetros antigos</SelectItem>}
+                  {(kilns as any[]).map((kiln) => <SelectItem key={kiln.id} value={kiln.id}>{kiln.name}{kiln.is_default ? " · padrão" : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {(kilns as any[]).length === 0 && <div className="text-xs text-muted-foreground">Cadastre um forno na nova aba Fornos para calcular com parâmetros específicos.</div>}
             </div>
             <div className="space-y-1.5">
               <Label>Data</Label>
@@ -710,8 +681,4 @@ function Page() {
       </Dialog>
     </PageContainer>
   );
-}
-
-function Param({ label, field, value, setValue }: { label: string; field: string; value: any; setValue: (v: any) => void }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><Input value={value?.[field] ?? ""} onChange={(event) => setValue({ ...value, [field]: event.target.value })} /></div>;
 }
