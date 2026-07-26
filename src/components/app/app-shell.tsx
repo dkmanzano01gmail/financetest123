@@ -27,6 +27,7 @@ import {
   Flame,
   UserRound,
   MessageSquare,
+  Gauge,
 } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
@@ -85,6 +86,12 @@ const baseNavDef = [
     icon: UserRound,
     key: "nav.atelier.students",
     label: "Alunos",
+  },
+  {
+    to: "/atelier/kilns",
+    icon: Gauge,
+    key: "nav.atelier.kilns",
+    label: "Fornos",
   },
   { to: "/atelier/renovation", icon: Hammer, key: "nav.atelier.renovation", label: "Reforma" },
   {
