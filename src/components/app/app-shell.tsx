@@ -78,7 +78,7 @@ const baseNavDef = [
     to: "/atelier/attendance",
     icon: CalendarCheck,
     key: "nav.atelier.attendance",
-    label: "Presença",
+    label: "Lista de presença",
   },
   {
     to: "/atelier/students",
