@@ -17,6 +17,7 @@ import {
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency } from "@/lib/format";
+import { calculateKilnCost, calculatePiecePrice, resolveFiringProfile } from "@/lib/orna-logic";
 import { Plus, Trash2, Pencil, Palette, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -25,14 +26,18 @@ const sb = supabase as any;
 const num = (s: string) => Number((s ?? "").replace(",", ".") || 0);
 const emptyF = {
   name: "",
+  quantity: "1",
   height_cm: "0",
   length_cm: "0",
   depth_cm: "0",
   clay_grams: "0",
   glaze_grams: "0",
+  glaze_cone: "6",
   labor_cost: "0",
   packaging_cost: "0",
   other_cost: "0",
+  customization_cost: "0",
+  fixed_allocation: "0",
   margin_percent: "100",
   notes: "",
 };
@@ -58,11 +63,45 @@ function Page() {
         glaze_gram_price: 1,
         biscuit_coeff: 0.0045,
         glaze_firing_coeff: 0.007,
-        default_labor: 0,
-        default_packaging: 0,
+        default_labor: 25,
+        default_packaging: 5,
         default_margin_percent: 100,
+        kiln_firing_profit_percent: 100,
+        loss_percent: 10,
+        payment_fee_percent: 3.5,
+        tax_percent: 0,
+        expected_discount_percent: 0,
       },
   });
+  const { data: firingSettings } = useQuery({
+    queryKey: ["firing_settings", wsId, "piece-pricing"],
+    enabled: !!wsId,
+    queryFn: async () =>
+      (await sb.from("firing_settings").select("*").eq("workspace_id", wsId).maybeSingle()).data ?? {
+        oven_diameter_cm: 57,
+        area_adjustment: 1.0825,
+        resistance_cost: 2000,
+        resistance_burns: 275,
+        power_kw: 9.85,
+        biscuit_hours: 9,
+        glaze_hours: 10.5,
+        utilization: 0.65,
+        kwh_cost: 1,
+        final_buffer: 0.1,
+        biscuit_resistance_burns: 275,
+        biscuit_utilization: 0.65,
+        glaze6_resistance_burns: 175,
+        glaze6_hours: 10.5,
+        glaze6_utilization: 0.75,
+        glaze7_resistance_burns: 150,
+        glaze7_hours: 11,
+        glaze7_utilization: 0.78,
+        glaze10_resistance_burns: 110,
+        glaze10_hours: 12,
+        glaze10_utilization: 0.9,
+      },
+  });
+
   const { data: rows } = useQuery({
     queryKey: ["piece_pricing", wsId],
     enabled: !!wsId,
@@ -82,40 +121,95 @@ function Page() {
   }, [defaults]);
 
   const breakdown = useMemo(() => {
-    const h = num(f.height_cm),
-      l = num(f.length_cm),
-      dp = num(f.depth_cm);
-    const clayGrams = num(f.clay_grams);
-    const clayCost = (clayGrams / 1000) * Number(defaults?.clay_kg_price ?? 7.7);
-    const glazeCost = num(f.glaze_grams) * Number(defaults?.glaze_gram_price ?? 1);
-    const biscuit = Number(defaults?.biscuit_coeff ?? 0.0045) * h * l * dp;
-    const glazeFiring = Number(defaults?.glaze_firing_coeff ?? 0.007) * h * l * dp;
-    const labor = num(f.labor_cost),
-      pack = num(f.packaging_cost),
-      other = num(f.other_cost);
-    const total = clayCost + glazeCost + biscuit + glazeFiring + labor + pack + other;
-    const margin = num(f.margin_percent);
-    const suggested = total * (1 + margin / 100);
-    return { clayCost, glazeCost, biscuit, glazeFiring, labor, pack, other, total, suggested };
-  }, [f, defaults]);
+    const height = num(f.height_cm);
+    const length = num(f.length_cm);
+    const depth = num(f.depth_cm);
+    const bisqueProfile = resolveFiringProfile(firingSettings, "biscuit", "Biscoito");
+    const glazeProfile = resolveFiringProfile(firingSettings, "glaze", f.glaze_cone);
+    const buildKilnInput = (profile: ReturnType<typeof resolveFiringProfile>) => ({
+      lengthCm: length,
+      depthCm: depth,
+      ovenDiameter: profile.ovenDiameter,
+      areaAdjustment: profile.areaAdjustment,
+      resistanceCost: profile.resistanceCost,
+      resistanceBurns: profile.resistanceBurns,
+      powerKw: profile.powerKw,
+      hours: profile.hours,
+      utilization: profile.utilization,
+      kwhCost: profile.kwhCost,
+      finalBuffer: profile.finalBuffer,
+    });
+    const bisque = calculateKilnCost(buildKilnInput(bisqueProfile));
+    const glazeFiring = calculateKilnCost(buildKilnInput(glazeProfile));
+    const result = calculatePiecePrice({
+      quantity: num(f.quantity),
+      clayWeightKg: num(f.clay_grams) / 1000,
+      clay10kgPrice: Number(defaults?.clay_kg_price ?? 7.7) * 10,
+      glazeGrams: num(f.glaze_grams),
+      glazeCostPerGram: Number(defaults?.glaze_gram_price ?? 1),
+      bisqueCost: bisque.unitCost,
+      glazeFiringCost: glazeFiring.unitCost,
+      kilnFiringProfitRate: Number(defaults?.kiln_firing_profit_percent ?? 100) / 100,
+      laborCost: num(f.labor_cost),
+      packagingCost: num(f.packaging_cost),
+      otherDirectCosts: num(f.other_cost),
+      customizationCost: num(f.customization_cost),
+      fixedAllocation: num(f.fixed_allocation),
+      lossRate: Number(defaults?.loss_percent ?? 0) / 100,
+      desiredProfitRate: num(f.margin_percent) / 100,
+      paymentFeeRate: Number(defaults?.payment_fee_percent ?? 0) / 100,
+      taxRate: Number(defaults?.tax_percent ?? 0) / 100,
+      expectedDiscountRate: Number(defaults?.expected_discount_percent ?? 0) / 100,
+    });
+    return {
+      clayCost: result.clayCost,
+      glazeCost: result.glazeCost,
+      biscuit: bisque.unitCost,
+      glazeFiring: glazeFiring.unitCost,
+      labor: num(f.labor_cost),
+      pack: num(f.packaging_cost),
+      other: num(f.other_cost),
+      customization: num(f.customization_cost),
+      fixedAllocation: num(f.fixed_allocation),
+      losses: result.lossesCost,
+      total: result.directCost,
+      suggested: result.suggestedUnitPrice,
+      suggestedTotal: result.suggestedTotalPrice,
+      firingCharge: result.firingCharge,
+      profit: result.profitPerUnit,
+      netMargin: result.netMargin,
+      kilnUsePercent: Math.max(bisque.usePercent, glazeFiring.usePercent),
+    };
+  }, [f, defaults, firingSettings]);
 
   const save = useMutation({
     mutationFn: async () => {
       const p: any = {
         workspace_id: wsId,
         name: f.name,
+        quantity: Math.max(1, Math.round(num(f.quantity))),
         height_cm: num(f.height_cm),
         length_cm: num(f.length_cm),
         depth_cm: num(f.depth_cm),
         clay_grams: num(f.clay_grams),
         clay_cost: breakdown.clayCost,
         glaze_grams: num(f.glaze_grams),
+        glaze_cone: f.glaze_cone || "6",
         glaze_cost: breakdown.glazeCost,
         biscuit_cost: breakdown.biscuit,
         glaze_firing_cost: breakdown.glazeFiring,
         labor_cost: breakdown.labor,
         packaging_cost: breakdown.pack,
         other_cost: breakdown.other,
+        customization_cost: breakdown.customization,
+        fixed_allocation: breakdown.fixedAllocation,
+        loss_percent: Number(defaults?.loss_percent ?? 0),
+        payment_fee_percent: Number(defaults?.payment_fee_percent ?? 0),
+        tax_percent: Number(defaults?.tax_percent ?? 0),
+        expected_discount_percent: Number(defaults?.expected_discount_percent ?? 0),
+        kiln_firing_profit_percent: Number(defaults?.kiln_firing_profit_percent ?? 100),
+        net_profit: breakdown.profit,
+        net_margin_percent: breakdown.netMargin * 100,
         total_cost: breakdown.total,
         margin_percent: num(f.margin_percent),
         suggested_price: breakdown.suggested,
@@ -158,6 +252,11 @@ function Page() {
         default_labor: Number(d.default_labor),
         default_packaging: Number(d.default_packaging),
         default_margin_percent: Number(d.default_margin_percent),
+        kiln_firing_profit_percent: Number(d.kiln_firing_profit_percent || 0),
+        loss_percent: Number(d.loss_percent || 0),
+        payment_fee_percent: Number(d.payment_fee_percent || 0),
+        tax_percent: Number(d.tax_percent || 0),
+        expected_discount_percent: Number(d.expected_discount_percent || 0),
       });
       if (error) throw error;
     },
@@ -173,14 +272,18 @@ function Page() {
     setEditId(r.id);
     setF({
       name: r.name,
+      quantity: String(r.quantity ?? 1),
       height_cm: String(r.height_cm),
       length_cm: String(r.length_cm),
       depth_cm: String(r.depth_cm),
       clay_grams: String(r.clay_grams),
       glaze_grams: String(r.glaze_grams),
+      glaze_cone: String(r.glaze_cone ?? "6"),
       labor_cost: String(r.labor_cost),
       packaging_cost: String(r.packaging_cost),
       other_cost: String(r.other_cost),
+      customization_cost: String(r.customization_cost ?? 0),
+      fixed_allocation: String(r.fixed_allocation ?? 0),
       margin_percent: String(r.margin_percent),
       notes: r.notes ?? "",
     });
@@ -204,8 +307,8 @@ function Page() {
                 setF({
                   ...emptyF,
                   margin_percent: String(defaults?.default_margin_percent ?? 100),
-                  labor_cost: String(defaults?.default_labor ?? 0),
-                  packaging_cost: String(defaults?.default_packaging ?? 0),
+                  labor_cost: String(defaults?.default_labor ?? 25),
+                  packaging_cost: String(defaults?.default_packaging ?? 5),
                 });
                 setOpen(true);
               }}
@@ -254,7 +357,7 @@ function Page() {
                   <Row k="Esmalte" v={formatCurrency(Number(r.glaze_cost), currency, privacy)} />
                   <Row k="Biscoito" v={formatCurrency(Number(r.biscuit_cost), currency, privacy)} />
                   <Row
-                    k="Vidrado"
+                    k={`Vidrado cone ${r.glaze_cone ?? "6"}`}
                     v={formatCurrency(Number(r.glaze_firing_cost), currency, privacy)}
                   />
                   <Row
@@ -298,6 +401,15 @@ function Page() {
               <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
             </div>
             <div className="space-y-1.5">
+              <Label>Quantidade</Label>
+              <Input
+                type="number"
+                min={1}
+                value={f.quantity}
+                onChange={(e) => setF({ ...f, quantity: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
               <Label>Altura (cm)</Label>
               <Input
                 value={f.height_cm}
@@ -333,6 +445,18 @@ function Page() {
               />
             </div>
             <div className="space-y-1.5">
+              <Label>Cone do esmalte</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                value={f.glaze_cone}
+                onChange={(e) => setF({ ...f, glaze_cone: e.target.value })}
+              >
+                <option value="6">Cone 6</option>
+                <option value="7">Cone 7</option>
+                <option value="10">Cone 10</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
               <Label>Mão de obra</Label>
               <Input
                 value={f.labor_cost}
@@ -351,6 +475,20 @@ function Page() {
               <Input
                 value={f.other_cost}
                 onChange={(e) => setF({ ...f, other_cost: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Personalização</Label>
+              <Input
+                value={f.customization_cost}
+                onChange={(e) => setF({ ...f, customization_cost: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Rateio fixo</Label>
+              <Input
+                value={f.fixed_allocation}
+                onChange={(e) => setF({ ...f, fixed_allocation: e.target.value })}
               />
             </div>
             <div className="space-y-1.5">
@@ -377,15 +515,18 @@ function Page() {
               <Row k="Mão de obra" v={formatCurrency(breakdown.labor, currency, privacy)} />
               <Row k="Embalagem" v={formatCurrency(breakdown.pack, currency, privacy)} />
               <Row k="Outros" v={formatCurrency(breakdown.other, currency, privacy)} />
+              <Row k="Personalização" v={formatCurrency(breakdown.customization, currency, privacy)} />
+              <Row k="Rateio fixo" v={formatCurrency(breakdown.fixedAllocation, currency, privacy)} />
+              <Row k="Perdas/retrabalho" v={formatCurrency(breakdown.losses, currency, privacy)} />
+              <Row k="Queimas com margem" v={formatCurrency(breakdown.firingCharge, currency, privacy)} />
               <div className="border-t border-border pt-1">
                 <Row k="Custo total" v={formatCurrency(breakdown.total, currency, privacy)} bold />
               </div>
               <div className="pt-1">
-                <Row
-                  k="Preço sugerido"
-                  v={formatCurrency(breakdown.suggested, currency, privacy)}
-                  bold
-                />
+                <Row k="Preço sugerido unitário" v={formatCurrency(breakdown.suggested, currency, privacy)} bold />
+                <Row k="Preço total" v={formatCurrency(breakdown.suggestedTotal, currency, privacy)} />
+                <Row k="Uso estimado do forno" v={`${(breakdown.kilnUsePercent * 100).toFixed(2)}%`} />
+                <Row k="Lucro líquido estimado" v={formatCurrency(breakdown.profit, currency, privacy)} />
               </div>
             </CardContent>
           </Card>
@@ -448,6 +589,11 @@ function Page() {
                 onChange={(e) => setD({ ...d, default_packaging: e.target.value })}
               />
             </div>
+            <div className="space-y-1.5"><Label>Margem nas queimas (%)</Label><Input value={d?.kiln_firing_profit_percent ?? ""} onChange={(e) => setD({ ...d, kiln_firing_profit_percent: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Perdas esperadas (%)</Label><Input value={d?.loss_percent ?? ""} onChange={(e) => setD({ ...d, loss_percent: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Taxa de pagamento (%)</Label><Input value={d?.payment_fee_percent ?? ""} onChange={(e) => setD({ ...d, payment_fee_percent: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Impostos (%)</Label><Input value={d?.tax_percent ?? ""} onChange={(e) => setD({ ...d, tax_percent: e.target.value })} /></div>
+            <div className="space-y-1.5 col-span-2"><Label>Desconto esperado (%)</Label><Input value={d?.expected_discount_percent ?? ""} onChange={(e) => setD({ ...d, expected_discount_percent: e.target.value })} /></div>
             <div className="space-y-1.5 col-span-2">
               <Label>Margem padrão (%)</Label>
               <Input

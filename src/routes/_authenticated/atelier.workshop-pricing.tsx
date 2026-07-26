@@ -17,6 +17,7 @@ import {
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency } from "@/lib/format";
+import { calculateWorkshop } from "@/lib/orna-logic";
 import { Plus, Trash2, Pencil, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,16 +27,25 @@ export const Route = createFileRoute("/_authenticated/atelier/workshop-pricing")
 const sb = supabase as any;
 const num = (s: string) => Number((s ?? "").replace(",", ".") || 0);
 const empty = {
-  name: "",
+  name: "Workshop Orna",
   event_date: "",
-  attendees: "0",
+  attendees: "15",
   price_per_person: "290",
-  clay_cost: "0",
-  glaze_cost: "0",
-  firing_cost: "0",
-  food_cost: "0",
+  space_hours: "3",
+  space_cost_per_hour: "150",
+  clay_kg_per_person: "1",
+  clay_10kg_price: "77",
+  glaze_per_person: "2.58",
+  biscuit_per_person: "22",
+  glaze_firing_per_person: "57.232",
+  food_per_person: "20",
+  packaging_per_person: "5",
   labor_cost: "0",
   other_cost: "0",
+  variable_cost_per_person: "0",
+  payment_fee_percent: "3.5",
+  tax_percent: "0",
+  surprise_percent: "0",
   notes: "",
 };
 
@@ -63,19 +73,48 @@ function Page() {
   });
 
   const calc = useMemo(() => {
-    const attendees = num(f.attendees),
-      price = num(f.price_per_person);
-    const revenue = attendees * price;
-    const cost =
-      num(f.clay_cost) +
-      num(f.glaze_cost) +
-      num(f.firing_cost) +
-      num(f.food_cost) +
-      num(f.labor_cost) +
-      num(f.other_cost);
-    const profit = revenue - cost;
-    const margin = revenue ? (profit / revenue) * 100 : 0;
-    return { revenue, cost, profit, margin };
+    const attendees = Math.max(0, Math.round(num(f.attendees)));
+    const spaceCost = num(f.space_hours) * num(f.space_cost_per_hour);
+    const clayPerPerson = num(f.clay_kg_per_person) * (num(f.clay_10kg_price) / 10);
+    const variablePerPerson =
+      clayPerPerson +
+      num(f.glaze_per_person) +
+      num(f.biscuit_per_person) +
+      num(f.glaze_firing_per_person) +
+      num(f.food_per_person) +
+      num(f.packaging_per_person) +
+      num(f.variable_cost_per_person);
+    const fixedCosts = spaceCost + num(f.labor_cost) + num(f.other_cost);
+    const result = calculateWorkshop({
+      attendees,
+      pricePerPerson: num(f.price_per_person),
+      fixedCosts,
+      variableCostPerPerson: variablePerPerson,
+      paymentFeeRate: num(f.payment_fee_percent) / 100,
+      taxRate: num(f.tax_percent) / 100,
+      surpriseRate: num(f.surprise_percent) / 100,
+    });
+    return {
+      attendees,
+      revenue: result.grossRevenue,
+      cost: result.totalCost,
+      profit: result.profit,
+      margin: result.marginPercent,
+      fees: result.fees,
+      surprise: result.surprise,
+      variable: result.variableCosts,
+      variablePerPerson,
+      fixedCosts,
+      spaceCost,
+      clayCost: attendees * clayPerPerson,
+      glazeCost: attendees * num(f.glaze_per_person),
+      firingCost:
+        attendees * (num(f.biscuit_per_person) + num(f.glaze_firing_per_person)),
+      foodCost: attendees * num(f.food_per_person),
+      packagingCost: attendees * num(f.packaging_per_person),
+      breakEven: result.breakEvenAttendees,
+      costPerPerson: attendees ? result.totalCost / attendees : 0,
+    };
   }, [f]);
 
   const save = useMutation({
@@ -84,14 +123,30 @@ function Page() {
         workspace_id: wsId,
         name: f.name,
         event_date: f.event_date || null,
-        attendees: Math.round(num(f.attendees)),
+        attendees: calc.attendees,
         price_per_person: num(f.price_per_person),
-        clay_cost: num(f.clay_cost),
-        glaze_cost: num(f.glaze_cost),
-        firing_cost: num(f.firing_cost),
-        food_cost: num(f.food_cost),
+        space_hours: num(f.space_hours),
+        space_cost_per_hour: num(f.space_cost_per_hour),
+        clay_kg_per_person: num(f.clay_kg_per_person),
+        clay_10kg_price: num(f.clay_10kg_price),
+        glaze_per_person: num(f.glaze_per_person),
+        biscuit_per_person: num(f.biscuit_per_person),
+        glaze_firing_per_person: num(f.glaze_firing_per_person),
+        food_per_person: num(f.food_per_person),
+        packaging_per_person: num(f.packaging_per_person),
+        clay_cost: calc.clayCost,
+        glaze_cost: calc.glazeCost,
+        firing_cost: calc.firingCost,
+        food_cost: calc.foodCost,
         labor_cost: num(f.labor_cost),
         other_cost: num(f.other_cost),
+        fixed_cost: calc.fixedCosts,
+        extra_variable_cost_per_person: num(f.variable_cost_per_person),
+        variable_cost_per_person: calc.variablePerPerson,
+        payment_fee_percent: num(f.payment_fee_percent),
+        tax_percent: num(f.tax_percent),
+        surprise_percent: num(f.surprise_percent),
+        break_even_attendees: calc.breakEven,
         total_revenue: calc.revenue,
         total_cost: calc.cost,
         profit: calc.profit,
@@ -129,14 +184,23 @@ function Page() {
     setF({
       name: r.name,
       event_date: r.event_date ?? "",
-      attendees: String(r.attendees),
-      price_per_person: String(r.price_per_person),
-      clay_cost: String(r.clay_cost),
-      glaze_cost: String(r.glaze_cost),
-      firing_cost: String(r.firing_cost),
-      food_cost: String(r.food_cost),
-      labor_cost: String(r.labor_cost),
-      other_cost: String(r.other_cost),
+      attendees: String(r.attendees ?? 15),
+      price_per_person: String(r.price_per_person ?? 290),
+      space_hours: String(r.space_hours ?? 3),
+      space_cost_per_hour: String(r.space_cost_per_hour ?? 150),
+      clay_kg_per_person: String(r.clay_kg_per_person ?? 1),
+      clay_10kg_price: String(r.clay_10kg_price ?? 77),
+      glaze_per_person: String(r.glaze_per_person ?? 2.58),
+      biscuit_per_person: String(r.biscuit_per_person ?? 22),
+      glaze_firing_per_person: String(r.glaze_firing_per_person ?? 57.232),
+      food_per_person: String(r.food_per_person ?? 20),
+      packaging_per_person: String(r.packaging_per_person ?? 5),
+      labor_cost: String(r.labor_cost ?? 0),
+      other_cost: String(r.other_cost ?? 0),
+      variable_cost_per_person: String(r.extra_variable_cost_per_person ?? 0),
+      payment_fee_percent: String(r.payment_fee_percent ?? 3.5),
+      tax_percent: String(r.tax_percent ?? 0),
+      surprise_percent: String(r.surprise_percent ?? 0),
       notes: r.notes ?? "",
     });
     setOpen(true);
@@ -251,55 +315,28 @@ function Page() {
                 onChange={(e) => setF({ ...f, price_per_person: e.target.value })}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Argila</Label>
-              <Input
-                value={f.clay_cost}
-                onChange={(e) => setF({ ...f, clay_cost: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Esmalte</Label>
-              <Input
-                value={f.glaze_cost}
-                onChange={(e) => setF({ ...f, glaze_cost: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Queimas</Label>
-              <Input
-                value={f.firing_cost}
-                onChange={(e) => setF({ ...f, firing_cost: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Café/alimentação</Label>
-              <Input
-                value={f.food_cost}
-                onChange={(e) => setF({ ...f, food_cost: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Instrutor</Label>
-              <Input
-                value={f.labor_cost}
-                onChange={(e) => setF({ ...f, labor_cost: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Outros</Label>
-              <Input
-                value={f.other_cost}
-                onChange={(e) => setF({ ...f, other_cost: e.target.value })}
-              />
-            </div>
+            <div className="space-y-1.5"><Label>Horas do espaço</Label><Input value={f.space_hours} onChange={(e) => setF({ ...f, space_hours: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Custo do espaço/hora</Label><Input value={f.space_cost_per_hour} onChange={(e) => setF({ ...f, space_cost_per_hour: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Argila kg/pessoa</Label><Input value={f.clay_kg_per_person} onChange={(e) => setF({ ...f, clay_kg_per_person: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Preço da argila (10 kg)</Label><Input value={f.clay_10kg_price} onChange={(e) => setF({ ...f, clay_10kg_price: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Esmalte/pessoa</Label><Input value={f.glaze_per_person} onChange={(e) => setF({ ...f, glaze_per_person: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Biscoito/pessoa</Label><Input value={f.biscuit_per_person} onChange={(e) => setF({ ...f, biscuit_per_person: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Queima esmalte/pessoa</Label><Input value={f.glaze_firing_per_person} onChange={(e) => setF({ ...f, glaze_firing_per_person: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Alimentação/pessoa</Label><Input value={f.food_per_person} onChange={(e) => setF({ ...f, food_per_person: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Embalagem/pessoa</Label><Input value={f.packaging_per_person} onChange={(e) => setF({ ...f, packaging_per_person: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Instrutor (fixo)</Label><Input value={f.labor_cost} onChange={(e) => setF({ ...f, labor_cost: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Outros fixos</Label><Input value={f.other_cost} onChange={(e) => setF({ ...f, other_cost: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Outro variável/pessoa</Label><Input value={f.variable_cost_per_person} onChange={(e) => setF({ ...f, variable_cost_per_person: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Taxa de pagamento (%)</Label><Input value={f.payment_fee_percent} onChange={(e) => setF({ ...f, payment_fee_percent: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Impostos (%)</Label><Input value={f.tax_percent} onChange={(e) => setF({ ...f, tax_percent: e.target.value })} /></div>
+            <div className="space-y-1.5 col-span-2"><Label>Reserva para imprevistos (%)</Label><Input value={f.surprise_percent} onChange={(e) => setF({ ...f, surprise_percent: e.target.value })} /></div>
             <div className="space-y-1.5 col-span-2">
               <Label>Notas</Label>
               <Input value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
             </div>
           </div>
           <Card className="mt-3">
-            <CardContent className="p-4 grid grid-cols-4 gap-3 text-sm">
+            <CardContent className="p-4 grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
               <div>
                 <div className="text-xs text-muted-foreground">Receita</div>
                 <div className="font-mono text-income">
@@ -320,6 +357,9 @@ function Page() {
                 <div className="text-xs text-muted-foreground">Margem</div>
                 <div className="font-mono">{calc.margin.toFixed(1)}%</div>
               </div>
+              <div><div className="text-xs text-muted-foreground">Custo/pessoa</div><div className="font-mono">{formatCurrency(calc.costPerPerson, currency, privacy)}</div></div>
+              <div><div className="text-xs text-muted-foreground">Taxas + impostos</div><div className="font-mono">{formatCurrency(calc.fees, currency, privacy)}</div></div>
+              <div><div className="text-xs text-muted-foreground">Ponto de equilíbrio</div><div className="font-mono">{calc.breakEven == null ? "—" : `${calc.breakEven} pessoas`}</div></div>
             </CardContent>
           </Card>
           <DialogFooter>

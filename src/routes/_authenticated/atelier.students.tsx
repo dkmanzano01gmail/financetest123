@@ -53,6 +53,7 @@ function Page() {
   const [f, setF] = useState(empty);
   const [q, setQ] = useState("");
   const [delId, setDelId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("active");
 
   const { data: rows, isLoading, error } = useQuery({
     queryKey: ["students", wsId],
@@ -72,13 +73,25 @@ function Page() {
     () =>
       (rows ?? []).filter(
         (r: any) =>
-          !q ||
+          (statusFilter === "all" || (statusFilter === "active" ? r.is_active : !r.is_active)) &&
+          (!q ||
           r.name.toLowerCase().includes(q.toLowerCase()) ||
-          (r.class_name ?? "").toLowerCase().includes(q.toLowerCase()),
+          (r.class_name ?? "").toLowerCase().includes(q.toLowerCase())),
       ),
-    [rows, q],
+    [rows, q, statusFilter],
   );
 
+
+  const studentSummary = useMemo(() => {
+    const active = (rows ?? []).filter((row: any) => row.is_active);
+    const groups = new Set(active.map((row: any) => row.class_name).filter(Boolean));
+    return {
+      active: active.length,
+      inactive: (rows ?? []).length - active.length,
+      groups: groups.size,
+      monthlyRevenue: active.reduce((sum: number, row: any) => sum + Number(row.monthly_fee || 0), 0),
+    };
+  }, [rows]);
   const save = useMutation({
     mutationFn: async () => {
       if (!f.name.trim()) throw new Error("Informe o nome do aluno.");
@@ -124,7 +137,7 @@ function Page() {
     mutationFn: async (id: string) => {
       const { error } = await sb
         .from("students")
-        .delete()
+        .update({ is_active: false })
         .eq("id", id)
         .eq("workspace_id", wsId);
       if (error) throw error;
@@ -132,7 +145,7 @@ function Page() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["students"] });
       setDelId(null);
-      toast.success("Removido");
+      toast.success("Aluno inativado");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -167,12 +180,18 @@ function Page() {
           </Button>
         }
       />
-      <Input
-        placeholder="Buscar por nome ou turma"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        className="max-w-xs mb-3"
-      />
+      <div className="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4">
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Alunos ativos</div><div className="font-mono text-2xl">{studentSummary.active}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Inativos</div><div className="font-mono text-2xl">{studentSummary.inactive}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Turmas</div><div className="font-mono text-2xl">{studentSummary.groups}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Receita mensal recorrente</div><div className="font-mono text-xl text-income">{formatCurrency(studentSummary.monthlyRevenue, currency, privacy)}</div></CardContent></Card>
+      </div>
+      <div className="mb-3 flex gap-2">
+        <Input placeholder="Buscar por nome ou turma" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
+        <select className="h-9 rounded-md border bg-background px-3 text-sm" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <option value="active">Ativos</option><option value="inactive">Inativos</option><option value="all">Todos</option>
+        </select>
+      </div>
       {isLoading ? (
         <div className="text-sm text-muted-foreground p-6">Carregando…</div>
       ) : error ? (
@@ -275,15 +294,15 @@ function Page() {
       <AlertDialog open={!!delId} onOpenChange={(o) => !o && setDelId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover aluno?</AlertDialogTitle>
+            <AlertDialogTitle>Inativar aluno?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação não pode ser desfeita. O aluno será excluído deste workspace.
+              O aluno será inativado e continuará disponível no histórico.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={() => delId && del.mutate(delId)}>
-              Remover
+              Inativar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { toast } from "sonner";
-import { Sparkles, Palette } from "lucide-react";
+import { Sparkles, Palette, Calculator } from "lucide-react";
 import { setCurrentWorkspaceId } from "@/lib/workspace-storage";
 import {
   AlertDialog,
@@ -91,6 +91,35 @@ function SettingsPage() {
       navigate({ to: "/onboarding" });
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+
+
+  const { data: costSummary } = useQuery({
+    queryKey: ["cost-summary", workspace?.id],
+    enabled: !!workspace?.id,
+    queryFn: async () => {
+      const [pieces, workshops] = await Promise.all([
+        (supabase as any)
+          .from("piece_pricing")
+          .select("name,suggested_price,created_at", { count: "exact" })
+          .eq("workspace_id", workspace!.id)
+          .order("created_at", { ascending: false })
+          .limit(1),
+        (supabase as any)
+          .from("workshop_pricing")
+          .select("name,total_revenue,created_at", { count: "exact" })
+          .eq("workspace_id", workspace!.id)
+          .order("created_at", { ascending: false })
+          .limit(1),
+      ]);
+      if (pieces.error) throw pieces.error;
+      if (workshops.error) throw workshops.error;
+      return {
+        totalSaved: Number(pieces.count || 0) + Number(workshops.count || 0),
+        latestPricing: pieces.data?.[0] ?? null,
+        latestWorkshop: workshops.data?.[0] ?? null,
+      };
+    },
   });
 
   const seedMut = useMutation({
@@ -190,6 +219,24 @@ function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+
+
+        {workspace.type === "business" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calculator className="w-4 h-4 text-primary" />
+                Resumo dos cálculos
+              </CardTitle>
+              <CardDescription>Equivalente ao resumo da aba Configurações do Apps Script.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Cálculos salvos</span><strong>{costSummary?.totalSaved ?? 0}</strong></div>
+              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Última precificação</span><strong className="text-right">{costSummary?.latestPricing?.name ?? "Nenhuma"}</strong></div>
+              <div className="flex justify-between gap-3"><span className="text-muted-foreground">Último workshop</span><strong className="text-right">{costSummary?.latestWorkshop?.name ?? "Nenhum"}</strong></div>
+            </CardContent>
+          </Card>
+        )}
 
         {workspace.type === "business" && (
           <Card>

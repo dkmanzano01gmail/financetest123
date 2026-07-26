@@ -17,12 +17,12 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
+import { dashboardSummary } from "@/lib/orna-logic";
 import {
   ArrowDownRight,
   ArrowUpRight,
   Wallet,
   TrendingUp,
-  CreditCard,
   Receipt,
 } from "lucide-react";
 import {
@@ -56,30 +56,15 @@ function Dashboard() {
   const { cardOrder, hiddenCards: hiddenCards2 } = useCustomizedUI(wsId);
   const t = L(workspace?.type ?? "personal", labelOverrides);
 
-  const { data: txs } = useQuery({
-    queryKey: ["transactions", wsId, year, month],
-    enabled: !!wsId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("transactions")
-        .select("*, categories!transactions_category_id_fkey(name, color)")
-        .eq("workspace_id", wsId!)
-        .eq("year", year)
-        .eq("month", month);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
   const { data: yearTxs } = useQuery({
-    queryKey: ["transactions-year", wsId, year],
+    queryKey: ["transactions-dashboard-period", wsId, year],
     enabled: !!wsId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
-        .select("type, amount, month")
+        .select("id,date,type,amount,description,counterparty,status,categories!transactions_category_id_fkey(name,color)")
         .eq("workspace_id", wsId!)
-        .eq("year", year);
+        .in("year", [year, year - 1]);
       if (error) throw error;
       return data ?? [];
     },
@@ -99,57 +84,39 @@ function Dashboard() {
     },
   });
 
-  const totals = useMemo(() => {
-    const income = (txs ?? [])
-      .filter((t: any) => t.type === "income")
-      .reduce((s: number, t: any) => s + Number(t.amount), 0);
-    const expense = (txs ?? [])
-      .filter((t: any) => t.type === "expense")
-      .reduce((s: number, t: any) => s + Number(t.amount), 0);
-    return { income, expense, net: income - expense };
-  }, [txs]);
+  const summary = useMemo(
+    () => dashboardSummary((yearTxs ?? []) as any, month, year),
+    [yearTxs, month, year],
+  );
+  const totals = {
+    income: summary.income,
+    expense: summary.expense,
+    net: summary.balance,
+  };
 
   const accountsBalance = useMemo(() => {
     if (!accounts) return 0;
     return accounts.reduce(
-      (s: number, a: any) => s + Number(a.current_manual_balance ?? a.initial_balance ?? 0),
+      (sum: number, account: any) =>
+        sum + Number(account.current_manual_balance ?? account.initial_balance ?? 0),
       0,
     );
   }, [accounts]);
 
-  const monthlySeries = useMemo(() => {
-    const arr = Array.from({ length: 12 }, (_, i) => ({
-      month: monthLabel(i + 1),
-      income: 0,
-      expense: 0,
-    }));
-    for (const t of yearTxs ?? []) {
-      const idx = (t as any).month - 1;
-      if ((t as any).type === "income") arr[idx].income += Number((t as any).amount);
-      else arr[idx].expense += Number((t as any).amount);
-    }
-    return arr;
-  }, [yearTxs]);
+  const monthlySeries = useMemo(
+    () =>
+      summary.monthly.map((item) => ({
+        month: monthLabel(item.month),
+        income: item.income,
+        expense: item.expense,
+        balance: item.balance,
+      })),
+    [summary.monthly],
+  );
 
-  const { expenseByCategory, incomeByCategory } = useMemo(() => {
-    const build = (type: "income" | "expense") => {
-      const m = new Map<string, { name: string; color: string; value: number }>();
-      for (const tx of txs ?? []) {
-        if ((tx as any).type !== type) continue;
-        const cat = (tx as any).categories;
-        const name = cat?.name ?? "Sem categoria";
-        const color = cat?.color ?? (type === "income" ? "#6E7A57" : "#A03A2A");
-        const v = Number((tx as any).amount);
-        const prev = m.get(name);
-        if (prev) prev.value += v;
-        else m.set(name, { name, color, value: v });
-      }
-      return Array.from(m.values()).sort((a, b) => b.value - a.value);
-    };
-    return { expenseByCategory: build("expense"), incomeByCategory: build("income") };
-  }, [txs]);
+  const expenseByCategory = summary.expenseCategories;
+  const incomeByCategory = summary.incomeCategories;
   const byCategory = expenseByCategory;
-
   const topCategory = byCategory[0];
 
   if (!workspace)
@@ -159,7 +126,7 @@ function Dashboard() {
       </PageContainer>
     );
 
-  const hasData = (txs?.length ?? 0) > 0;
+  const hasData = summary.count > 0;
 
   return (
     <PageContainer>
@@ -261,6 +228,32 @@ function Dashboard() {
         })()}
       </div>
 
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard
+          label="Margem líquida"
+          value={`${(summary.metrics.netMargin * 100).toFixed(1)}%`}
+          sub={`${formatCurrency(summary.metrics.balanceDelta, currency, privacy)} vs mês anterior`}
+          positive={summary.metrics.netMargin >= 0}
+        />
+        <MetricCard
+          label="Despesas / receitas"
+          value={summary.metrics.expenseRatio == null ? "—" : `${(summary.metrics.expenseRatio * 100).toFixed(1)}%`}
+          sub={`${formatCurrency(summary.metrics.expenseDelta, currency, privacy)} de variação`}
+          positive={summary.metrics.expenseDelta <= 0}
+        />
+        <MetricCard
+          label="Ticket médio"
+          value={formatCurrency(summary.metrics.averageTransaction, currency, privacy)}
+          sub={`${summary.count} transações no mês`}
+        />
+        <MetricCard
+          label="Saldo médio mensal"
+          value={formatCurrency(summary.metrics.averageMonthlyBalance, currency, privacy)}
+          sub={`${summary.monthly.filter((item) => item.income || item.expense).length} meses ativos em ${year}`}
+          positive={summary.metrics.averageMonthlyBalance >= 0}
+        />
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -344,13 +337,32 @@ function Dashboard() {
         </Card>
         <Card className="md:col-span-2">
           <CardHeader>
+            <CardTitle className="text-base">Despesas do mês × média dos outros meses</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {summary.expenseBenchmarks.slice(0, 6).map((item) => (
+              <div key={item.name} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-border/60 pb-2 text-sm last:border-0">
+                <span className="truncate">{item.name}</span>
+                <span className="font-mono">{formatCurrency(item.current, currency, privacy)}</span>
+                <span className={`min-w-20 text-right text-xs ${item.difference > 0 ? "text-expense" : "text-income"}`}>
+                  {item.average ? `${item.differencePct >= 0 ? "+" : ""}${(item.differencePct * 100).toFixed(0)}%` : "sem média"}
+                </span>
+              </div>
+            ))}
+            {!summary.expenseBenchmarks.length && (
+              <div className="text-sm text-muted-foreground">Sem histórico suficiente para comparação.</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="md:col-span-2">
+          <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Receipt className="w-4 h-4" />
               Últimas transações
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {(txs ?? []).slice(0, 8).map((tx: any) => (
+            {[...summary.current].sort((a: any, b: any) => b.date.localeCompare(a.date)).slice(0, 8).map((tx: any) => (
               <div key={tx.id} className="flex items-center gap-3 py-1">
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === "income" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}
@@ -418,6 +430,34 @@ function StatCard({
             <Icon className="w-4 h-4" />
           </div>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  sub,
+  positive,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  positive?: boolean;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div
+          className={`mt-1 font-mono text-xl ${
+            positive === true ? "text-income" : positive === false ? "text-expense" : ""
+          }`}
+        >
+          {value}
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground">{sub}</div>
       </CardContent>
     </Card>
   );

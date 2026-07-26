@@ -32,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
 import { Scale, Wallet, AlertCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -45,6 +45,8 @@ import {
   CartesianGrid,
 } from "recharts";
 
+const NOW = new Date();
+
 export const Route = createFileRoute("/_authenticated/reconciliation")({
   component: ReconciliationPage,
 });
@@ -56,6 +58,8 @@ function ReconciliationPage() {
   const currency = workspace?.currency ?? "BRL";
   const privacy = workspace?.privacy_mode ?? false;
   const [selected, setSelected] = useState<string>("__all__");
+  const [month, setMonth] = useState(NOW.getMonth() + 1);
+  const [year, setYear] = useState(NOW.getFullYear());
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [initialBalance, setInitialBalance] = useState("");
@@ -134,64 +138,84 @@ function ReconciliationPage() {
 
   const computed = useMemo(() => {
     if (!accounts || !txs) return [];
+    const periodStart = `${year}-${String(month).padStart(2, "0")}-01`;
+    const periodEnd = `${year}-${String(month).padStart(2, "0")}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`;
     return accounts.map((a) => {
-      const accTxs = txs.filter(
-        (t) =>
-          t.account_id === a.id && (!a.initial_balance_date || t.date >= a.initial_balance_date),
+      const initialDate = a.initial_balance_date || "0000-01-01";
+      const accountTransactions = txs.filter(
+        (t) => t.account_id === a.id && t.date >= initialDate,
       );
-      let income = 0,
-        expense = 0;
-      for (const t of accTxs) {
+      const beforePeriod = accountTransactions.filter((t) => t.date < periodStart);
+      const periodTransactions = accountTransactions.filter(
+        (t) => t.date >= periodStart && t.date <= periodEnd,
+      );
+      const signed = (t: any) =>
+        t.type === "income" ? Math.abs(Number(t.amount)) : -Math.abs(Number(t.amount));
+      const startBalance =
+        Number(a.initial_balance ?? 0) + beforePeriod.reduce((sum, t) => sum + signed(t), 0);
+      let income = 0;
+      let expense = 0;
+      for (const t of periodTransactions) {
         const amt = Math.abs(Number(t.amount));
         if (t.type === "income") income += amt;
         else expense += amt;
       }
-      const calculated = Number(a.initial_balance ?? 0) + income - expense;
+      const calculated = startBalance + income - expense;
       const reportedVal =
         a.current_manual_balance != null ? Number(a.current_manual_balance) : null;
       const tol = Number(a.tolerance ?? 1);
       const diff = reportedVal != null ? reportedVal - calculated : 0;
       let status: "reconciled" | "small_diff" | "relevant_diff" | "no_balance" = "no_balance";
       if (reportedVal != null) {
-        if (Math.abs(diff) === 0) status = "reconciled";
+        if (Math.abs(diff) < 0.005) status = "reconciled";
         else if (Math.abs(diff) <= tol) status = "small_diff";
         else status = "relevant_diff";
       }
       return {
         account: a,
+        startBalance,
         income,
         expense,
         calculated,
         reported: reportedVal,
         diff,
         status,
-        txs: accTxs,
+        txs: periodTransactions,
       };
     });
-  }, [accounts, txs]);
+  }, [accounts, txs, month, year]);
 
   const selectedRow =
     selected !== "__all__" ? computed.find((c) => c.account.id === selected) : null;
 
   const dailySeries = useMemo(() => {
     if (!selectedRow) return [];
-    const sorted = [...selectedRow.txs].sort((a, b) => a.date.localeCompare(b.date));
-    const byDay = new Map<string, { date: string; in: number; out: number }>();
-    for (const t of sorted) {
-      const cur = byDay.get(t.date) ?? { date: t.date, in: 0, out: 0 };
+    const byDay = new Map<string, { date: string; in: number; out: number; transactions: any[] }>();
+    for (const t of selectedRow.txs) {
+      const cur: { date: string; in: number; out: number; transactions: any[] } =
+        byDay.get(t.date) ?? { date: t.date, in: 0, out: 0, transactions: [] };
       const amt = Math.abs(Number(t.amount));
       if (t.type === "income") cur.in += amt;
       else cur.out += amt;
+      cur.transactions.push(t);
       byDay.set(t.date, cur);
     }
-    let bal = Number(selectedRow.account.initial_balance ?? 0);
-    return Array.from(byDay.values())
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map((d) => {
-        bal = bal + d.in - d.out;
-        return { date: d.date, saldo: Number(bal.toFixed(2)) };
-      });
-  }, [selectedRow]);
+    let balance = Number(selectedRow.startBalance ?? 0);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return Array.from({ length: daysInMonth }, (_, index) => {
+      const date = `${year}-${String(month).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`;
+      const day: { date: string; in: number; out: number; transactions: any[] } =
+        byDay.get(date) ?? { date, in: 0, out: 0, transactions: [] };
+      balance += day.in - day.out;
+      return {
+        ...day,
+        saldo: Number(balance.toFixed(2)),
+        net: day.in - day.out,
+        monthEndHighlight: index + 1 > daysInMonth - 5,
+      };
+    });
+  }, [selectedRow, month, year]);
+
 
   if (!accounts) {
     return (
@@ -234,6 +258,22 @@ function ReconciliationPage() {
       />
 
       <div className="flex flex-wrap gap-3 mb-5">
+        <Select value={String(month)} onValueChange={(value) => setMonth(Number(value))}>
+          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {Array.from({ length: 12 }, (_, index) => (
+              <SelectItem key={index + 1} value={String(index + 1)}>{monthLabel(index + 1)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={String(year)} onValueChange={(value) => setYear(Number(value))}>
+          <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {[NOW.getFullYear() - 1, NOW.getFullYear(), NOW.getFullYear() + 1].map((item) => (
+              <SelectItem key={item} value={String(item)}>{item}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={selected} onValueChange={setSelected}>
           <SelectTrigger className="w-64">
             <SelectValue />
@@ -252,7 +292,7 @@ function ReconciliationPage() {
       {selected === "__all__" ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <Stat label="Saldo calculado" value={totalCalc} currency={currency} privacy={privacy} />
+            <Stat label={`Saldo final · ${monthLabel(month)}/${year}`} value={totalCalc} currency={currency} privacy={privacy} />
             <Stat
               label="Saldo informado"
               value={totalReported}
@@ -435,11 +475,11 @@ function AccountDetail({
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <Stat
-          label="Saldo inicial"
-          value={Number(a.initial_balance)}
+          label="Saldo no início do mês"
+          value={Number(row.startBalance)}
           currency={currency}
           privacy={privacy}
-          sub={formatDate(a.initial_balance_date)}
+          sub={`Referência original: ${formatDate(a.initial_balance_date)}`}
         />
         <Stat
           label="Entradas"
@@ -556,30 +596,32 @@ function AccountDetail({
             </TableHeader>
             <TableBody>
               {(() => {
-                const running = Number(a.initial_balance ?? 0);
-                const sorted = [...row.txs].sort((x: any, y: any) => x.date.localeCompare(y.date));
-                return sorted
+                let running = Number(row.startBalance ?? 0);
+                const withBalance = [...row.txs]
+                  .sort((x: any, y: any) => x.date.localeCompare(y.date))
+                  .map((transaction: any) => {
+                    const amount = Math.abs(Number(transaction.amount));
+                    running += transaction.type === "income" ? amount : -amount;
+                    return { ...transaction, runningBalance: running };
+                  });
+                return withBalance
                   .slice(-30)
                   .reverse()
-                  .map((t: any) => {
-                    // Compute running through full series, but show last 30 rows
-                    // (For accuracy we'd recompute, but slice from end works after sort.)
-                    return (
-                      <TableRow key={t.id}>
-                        <TableCell className="text-xs">{formatDate(t.date)}</TableCell>
-                        <TableCell className="text-sm">{t.description}</TableCell>
-                        <TableCell
-                          className={`text-right text-sm ${t.type === "income" ? "text-emerald-700" : "text-rose-700"}`}
-                        >
-                          {t.type === "income" ? "+" : "−"}
-                          {formatCurrency(Math.abs(Number(t.amount)), currency, privacy)}
-                        </TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">
-                          —
-                        </TableCell>
-                      </TableRow>
-                    );
-                  });
+                  .map((t: any) => (
+                    <TableRow key={t.id}>
+                      <TableCell className="text-xs">{formatDate(t.date)}</TableCell>
+                      <TableCell className="text-sm">{t.description}</TableCell>
+                      <TableCell
+                        className={`text-right text-sm ${t.type === "income" ? "text-emerald-700" : "text-rose-700"}`}
+                      >
+                        {t.type === "income" ? "+" : "−"}
+                        {formatCurrency(Math.abs(Number(t.amount)), currency, privacy)}
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground">
+                        {formatCurrency(t.runningBalance, currency, privacy)}
+                      </TableCell>
+                    </TableRow>
+                  ));
               })()}
               {row.txs.length === 0 && (
                 <TableRow>

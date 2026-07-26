@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,8 @@ import {
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency } from "@/lib/format";
-import { Plus, Trash2, Pencil, Flame, Package } from "lucide-react";
+import { calculateKilnCost, resolveFiringProfile } from "@/lib/orna-logic";
+import { Plus, Trash2, Pencil, Flame, Package, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/atelier/firing-pricing")({ component: Page });
@@ -34,6 +35,7 @@ const emptyFiring = {
   reference: "Yby 10Z2",
   firing_date: new Date().toISOString().slice(0, 10),
   firing_type: "biscuit",
+  cone: "Biscoito",
   notes: "",
 };
 const emptyPiece = {
@@ -60,6 +62,7 @@ function Page() {
   const [pieceEdit, setPieceEdit] = useState<string | null>(null);
   const [pf, setPf] = useState(emptyPiece);
   const [activeFiring, setActiveFiring] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const { data: firings } = useQuery({
     queryKey: ["firings", wsId],
@@ -77,28 +80,66 @@ function Page() {
     queryKey: ["firing_pieces", activeFiring],
     enabled: !!activeFiring,
     queryFn: async () =>
-      (await sb.from("firing_pieces").select("*").eq("firing_id", activeFiring).order("created_at"))
+      (await sb.from("firing_pieces").select("*").eq("firing_id", activeFiring).eq("workspace_id", wsId).order("created_at"))
         .data ?? [],
   });
-  const { data: defaults } = useQuery({
-    queryKey: ["piece_pricing_defaults", wsId],
+  const { data: settings } = useQuery({
+    queryKey: ["firing_settings", wsId],
     enabled: !!wsId,
     queryFn: async () =>
-      (await sb.from("piece_pricing_defaults").select("*").eq("workspace_id", wsId).maybeSingle())
-        .data ?? { biscuit_coeff: 0.0045, glaze_firing_coeff: 0.007 },
+      (await sb.from("firing_settings").select("*").eq("workspace_id", wsId).maybeSingle()).data ?? {
+        oven_diameter_cm: 57,
+        area_adjustment: 1.0825,
+        resistance_cost: 2000,
+        resistance_burns: 275,
+        power_kw: 9.85,
+        biscuit_hours: 9,
+        glaze_hours: 10.5,
+        utilization: 0.65,
+        kwh_cost: 1,
+        final_buffer: 0.1,
+        customer_margin_percent: 100,
+        biscuit_resistance_burns: 275,
+        biscuit_utilization: 0.65,
+        glaze6_resistance_burns: 175,
+        glaze6_hours: 10.5,
+        glaze6_utilization: 0.75,
+        glaze7_resistance_burns: 150,
+        glaze7_hours: 11,
+        glaze7_utilization: 0.78,
+        glaze10_resistance_burns: 110,
+        glaze10_hours: 12,
+        glaze10_utilization: 0.9,
+      },
   });
+  const [settingsForm, setSettingsForm] = useState<any>(settings);
+  useEffect(() => setSettingsForm(settings), [settings]);
 
   const activeF = firings?.find((f: any) => f.id === activeFiring);
-  const coeff =
-    activeF?.firing_type === "glaze"
-      ? Number(defaults?.glaze_firing_coeff ?? 0.007)
-      : Number(defaults?.biscuit_coeff ?? 0.0045);
-
-  const pieceCost = useMemo(() => {
-    return (
-      coeff * num(pf.height_cm) * num(pf.length_cm) * num(pf.depth_cm) * (Number(pf.quantity) || 1)
-    );
-  }, [pf, coeff]);
+  const activeProfile = useMemo(
+    () => resolveFiringProfile(settings, activeF?.firing_type ?? "biscuit", activeF?.cone),
+    [settings, activeF?.firing_type, activeF?.cone],
+  );
+  const kilnResult = useMemo(
+    () =>
+      calculateKilnCost({
+        lengthCm: num(pf.length_cm),
+        depthCm: num(pf.depth_cm),
+        ovenDiameter: activeProfile.ovenDiameter,
+        areaAdjustment: activeProfile.areaAdjustment,
+        resistanceCost: activeProfile.resistanceCost,
+        resistanceBurns: activeProfile.resistanceBurns,
+        powerKw: activeProfile.powerKw,
+        hours: activeProfile.hours,
+        utilization: activeProfile.utilization,
+        kwhCost: activeProfile.kwhCost,
+        finalBuffer: activeProfile.finalBuffer,
+      }),
+    [pf.length_cm, pf.depth_cm, activeProfile],
+  );
+  const pieceCost = kilnResult.unitCost * (Number(pf.quantity) || 1);
+  const suggestedCharge =
+    pieceCost * (1 + Number(settings?.customer_margin_percent ?? 100) / 100);
 
   const totals = useMemo(() => {
     let internal = 0,
@@ -110,6 +151,45 @@ function Page() {
     return { internal, charges, profit: charges - internal };
   }, [pieces]);
 
+  const saveSettings = useMutation({
+    mutationFn: async () => {
+      if (!settingsForm) throw new Error("Carregue os parâmetros antes de salvar.");
+      const payload = {
+        workspace_id: wsId,
+        oven_diameter_cm: Number(settingsForm.oven_diameter_cm),
+        area_adjustment: Number(settingsForm.area_adjustment),
+        resistance_cost: Number(settingsForm.resistance_cost),
+        resistance_burns: Number(settingsForm.biscuit_resistance_burns ?? settingsForm.resistance_burns),
+        power_kw: Number(settingsForm.power_kw),
+        biscuit_hours: Number(settingsForm.biscuit_hours),
+        glaze_hours: Number(settingsForm.glaze6_hours ?? settingsForm.glaze_hours),
+        utilization: Number(settingsForm.biscuit_utilization ?? settingsForm.utilization),
+        biscuit_resistance_burns: Number(settingsForm.biscuit_resistance_burns),
+        biscuit_utilization: Number(settingsForm.biscuit_utilization),
+        glaze6_resistance_burns: Number(settingsForm.glaze6_resistance_burns),
+        glaze6_hours: Number(settingsForm.glaze6_hours),
+        glaze6_utilization: Number(settingsForm.glaze6_utilization),
+        glaze7_resistance_burns: Number(settingsForm.glaze7_resistance_burns),
+        glaze7_hours: Number(settingsForm.glaze7_hours),
+        glaze7_utilization: Number(settingsForm.glaze7_utilization),
+        glaze10_resistance_burns: Number(settingsForm.glaze10_resistance_burns),
+        glaze10_hours: Number(settingsForm.glaze10_hours),
+        glaze10_utilization: Number(settingsForm.glaze10_utilization),
+        kwh_cost: Number(settingsForm.kwh_cost),
+        final_buffer: Number(settingsForm.final_buffer),
+        customer_margin_percent: Number(settingsForm.customer_margin_percent),
+      };
+      const { error } = await sb.from("firing_settings").upsert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["firing_settings"] });
+      setSettingsOpen(false);
+      toast.success("Parâmetros do forno salvos");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const saveFiring = useMutation({
     mutationFn: async () => {
       const p: any = {
@@ -117,6 +197,7 @@ function Page() {
         reference: ff.reference,
         firing_date: ff.firing_date || null,
         firing_type: ff.firing_type,
+        cone: ff.firing_type === "biscuit" ? "Biscoito" : ff.cone || "6",
         notes: ff.notes || null,
       };
       const { error } = firingEdit
@@ -148,6 +229,33 @@ function Page() {
     },
   });
 
+  async function syncFiringTotals(firingId: string | null) {
+    if (!firingId) return;
+    const { data: allPieces, error: readError } = await sb
+      .from("firing_pieces")
+      .select("internal_cost,charge_amount")
+      .eq("firing_id", firingId)
+      .eq("workspace_id", wsId);
+    if (readError) throw readError;
+    const totals = (allPieces ?? []).reduce(
+      (acc: { internal: number; charges: number }, piece: any) => ({
+        internal: acc.internal + Number(piece.internal_cost || 0),
+        charges: acc.charges + Number(piece.charge_amount || 0),
+      }),
+      { internal: 0, charges: 0 },
+    );
+    const { error } = await sb
+      .from("firing_pricing")
+      .update({
+        total_internal_cost: totals.internal,
+        total_charges: totals.charges,
+        profit: totals.charges - totals.internal,
+      })
+      .eq("id", firingId)
+      .eq("workspace_id", wsId);
+    if (error) throw error;
+  }
+
   const savePiece = useMutation({
     mutationFn: async () => {
       const p: any = {
@@ -161,29 +269,13 @@ function Page() {
         quantity: Math.max(1, Math.round(num(pf.quantity))),
         internal_cost: pieceCost,
         charge_customer: pf.charge_customer,
-        charge_amount: pf.charge_customer ? num(pf.charge_amount) : 0,
+        charge_amount: pf.charge_customer ? num(pf.charge_amount) || suggestedCharge : 0,
       };
       const { error } = pieceEdit
         ? await sb.from("firing_pieces").update(p).eq("id", pieceEdit).eq("workspace_id", wsId)
         : await sb.from("firing_pieces").insert(p);
       if (error) throw error;
-      // recompute totals on firing row
-      const { data: allPieces } = await sb
-        .from("firing_pieces")
-        .select("internal_cost,charge_amount")
-        .eq("firing_id", activeFiring);
-      const tot = (allPieces ?? []).reduce(
-        (a: any, x: any) => ({
-          i: a.i + Number(x.internal_cost),
-          c: a.c + Number(x.charge_amount),
-        }),
-        { i: 0, c: 0 },
-      );
-      await sb
-        .from("firing_pricing")
-        .update({ total_internal_cost: tot.i, total_charges: tot.c, profit: tot.c - tot.i })
-        .eq("id", activeFiring)
-        .eq("workspace_id", wsId);
+      await syncFiringTotals(activeFiring);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["firing_pieces"] });
@@ -203,11 +295,13 @@ function Page() {
         .eq("id", id)
         .eq("workspace_id", wsId);
       if (error) throw error;
+      await syncFiringTotals(activeFiring);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["firing_pieces"] });
       qc.invalidateQueries({ queryKey: ["firings"] });
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   function editFiring(r: any) {
@@ -216,6 +310,7 @@ function Page() {
       reference: r.reference,
       firing_date: r.firing_date ?? "",
       firing_type: r.firing_type,
+      cone: r.cone ?? (r.firing_type === "biscuit" ? "Biscoito" : "6"),
       notes: r.notes ?? "",
     });
     setFiringOpen(true);
@@ -241,16 +336,14 @@ function Page() {
         title="Precificação de Queimas"
         description="Custo por queima e cobrança de clientes/alunos"
         action={
-          <Button
-            onClick={() => {
-              setFiringEdit(null);
-              setFf(emptyFiring);
-              setFiringOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            Nova queima
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setSettingsOpen(true)}>
+              <Settings2 className="w-4 h-4 mr-1" />Parâmetros do forno
+            </Button>
+            <Button onClick={() => { setFiringEdit(null); setFf(emptyFiring); setFiringOpen(true); }}>
+              <Plus className="w-4 h-4 mr-1" />Nova queima
+            </Button>
+          </div>
         }
       />
 
@@ -279,7 +372,9 @@ function Page() {
                     <div className="min-w-0">
                       <div className="font-medium text-sm">
                         {r.reference} ·{" "}
-                        <span className="text-xs text-muted-foreground">{r.firing_type}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {r.firing_type === "biscuit" ? "Biscoito" : `Vidrado cone ${r.cone || "6"}`}
+                        </span>
                       </div>
                       <div className="text-xs text-muted-foreground font-mono">
                         {r.firing_date ?? "—"}
@@ -331,7 +426,7 @@ function Page() {
                     <div>
                       <div className="font-medium">Peças da queima</div>
                       <div className="text-xs text-muted-foreground">
-                        Coeficiente: {coeff} × A × C × P × qtd
+                        Custo por ocupação do forno: energia + resistência + buffer
                       </div>
                     </div>
                     <Button
@@ -424,6 +519,38 @@ function Page() {
         </div>
       )}
 
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Parâmetros do forno</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <Param label="Diâmetro útil (cm)" field="oven_diameter_cm" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Fator de ajuste de área" field="area_adjustment" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Custo da resistência" field="resistance_cost" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Potência (kW)" field="power_kw" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Custo do kWh" field="kwh_cost" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Buffer final (0–1)" field="final_buffer" value={settingsForm} setValue={setSettingsForm} />
+            <div className="col-span-2 mt-2 text-sm font-medium">Perfil Biscoito</div>
+            <Param label="Queimas até troca" field="biscuit_resistance_burns" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Horas" field="biscuit_hours" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Uso da potência (0–1)" field="biscuit_utilization" value={settingsForm} setValue={setSettingsForm} />
+            <div className="col-span-2 mt-2 text-sm font-medium">Perfil Esmalte cone 6</div>
+            <Param label="Queimas até troca" field="glaze6_resistance_burns" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Horas" field="glaze6_hours" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Uso da potência (0–1)" field="glaze6_utilization" value={settingsForm} setValue={setSettingsForm} />
+            <div className="col-span-2 mt-2 text-sm font-medium">Perfil Esmalte cone 7</div>
+            <Param label="Queimas até troca" field="glaze7_resistance_burns" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Horas" field="glaze7_hours" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Uso da potência (0–1)" field="glaze7_utilization" value={settingsForm} setValue={setSettingsForm} />
+            <div className="col-span-2 mt-2 text-sm font-medium">Perfil Esmalte cone 10</div>
+            <Param label="Queimas até troca" field="glaze10_resistance_burns" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Horas" field="glaze10_hours" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Uso da potência (0–1)" field="glaze10_utilization" value={settingsForm} setValue={setSettingsForm} />
+            <Param label="Margem de cobrança (%)" field="customer_margin_percent" value={settingsForm} setValue={setSettingsForm} />
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>Cancelar</Button><Button onClick={() => saveSettings.mutate()}>Salvar</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={firingOpen} onOpenChange={setFiringOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -449,7 +576,13 @@ function Page() {
               <Label>Tipo</Label>
               <Select
                 value={ff.firing_type}
-                onValueChange={(v) => setFf({ ...ff, firing_type: v })}
+                onValueChange={(v) =>
+                  setFf({
+                    ...ff,
+                    firing_type: v,
+                    cone: v === "biscuit" ? "Biscoito" : ff.cone === "Biscoito" ? "6" : ff.cone,
+                  })
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -461,6 +594,19 @@ function Page() {
                 </SelectContent>
               </Select>
             </div>
+            {ff.firing_type !== "biscuit" && (
+              <div className="space-y-1.5 col-span-2">
+                <Label>Cone</Label>
+                <Select value={ff.cone || "6"} onValueChange={(v) => setFf({ ...ff, cone: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="6">Cone 6</SelectItem>
+                    <SelectItem value="7">Cone 7</SelectItem>
+                    <SelectItem value="10">Cone 10</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5 col-span-2">
               <Label>Notas</Label>
               <Input value={ff.notes} onChange={(e) => setFf({ ...ff, notes: e.target.value })} />
@@ -542,10 +688,13 @@ function Page() {
               </div>
             )}
           </div>
-          <div className="text-sm">
-            Custo interno calculado:{" "}
-            <span className="font-mono">{formatCurrency(pieceCost, currency, privacy)}</span>
-          </div>
+          <Card><CardContent className="p-3 text-sm space-y-1">
+            <div className="flex justify-between"><span>Uso estimado do forno</span><span className="font-mono">{(kilnResult.usePercent * 100).toFixed(2)}%</span></div>
+            <div className="flex justify-between"><span>Energia</span><span className="font-mono">{formatCurrency(kilnResult.energyCost * (Number(pf.quantity) || 1), currency, privacy)}</span></div>
+            <div className="flex justify-between"><span>Resistência</span><span className="font-mono">{formatCurrency(kilnResult.resistanceCost * (Number(pf.quantity) || 1), currency, privacy)}</span></div>
+            <div className="flex justify-between font-semibold"><span>Custo interno</span><span className="font-mono">{formatCurrency(pieceCost, currency, privacy)}</span></div>
+            <div className="flex justify-between text-income"><span>Cobrança sugerida</span><span className="font-mono">{formatCurrency(suggestedCharge, currency, privacy)}</span></div>
+          </CardContent></Card>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPieceOpen(false)}>
               Cancelar
@@ -561,4 +710,8 @@ function Page() {
       </Dialog>
     </PageContainer>
   );
+}
+
+function Param({ label, field, value, setValue }: { label: string; field: string; value: any; setValue: (v: any) => void }) {
+  return <div className="space-y-1.5"><Label>{label}</Label><Input value={value?.[field] ?? ""} onChange={(event) => setValue({ ...value, [field]: event.target.value })} /></div>;
 }
