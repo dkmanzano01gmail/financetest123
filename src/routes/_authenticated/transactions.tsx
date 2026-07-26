@@ -30,7 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
 import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
-import { summarizeTransactionsByCategory } from "@/lib/transaction-summary";
+import { summarizeTransactionsByCategory, transactionCategoryKey } from "@/lib/transaction-summary";
 import { Plus, Receipt, Trash2, Sparkles, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -57,6 +57,7 @@ function TransactionsPage() {
   const [year, setYear] = useState<string>("all");
   const [type, setType] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -104,26 +105,46 @@ function TransactionsPage() {
     },
   });
 
-  const filtered = useMemo(() => {
-    return (txs ?? []).filter((tx: any) => {
+  const filterableTransactions = useMemo(() => {
+    return (txs ?? []).filter((tx) => {
       if (type !== "all" && tx.type !== type) return false;
       if (search && !tx.description?.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
   }, [txs, type, search]);
 
-  const categorySummary = useMemo(() => summarizeTransactionsByCategory(filtered), [filtered]);
+  const categorySummary = useMemo(
+    () => summarizeTransactionsByCategory(filterableTransactions),
+    [filterableTransactions],
+  );
+
+  const filtered = useMemo(
+    () =>
+      selectedCategoryKey
+        ? filterableTransactions.filter(
+            (transaction) => transactionCategoryKey(transaction) === selectedCategoryKey,
+          )
+        : filterableTransactions,
+    [filterableTransactions, selectedCategoryKey],
+  );
+
+  const selectedCategory = useMemo(
+    () => categorySummary.find((category) => category.key === selectedCategoryKey) ?? null,
+    [categorySummary, selectedCategoryKey],
+  );
 
   const filteredTotals = useMemo(
     () =>
-      categorySummary.reduce(
-        (totals, category) => {
-          totals[category.type] += category.value;
+      filtered.reduce(
+        (totals, transaction) => {
+          totals[transaction.type as "income" | "expense"] += Math.abs(
+            Number(transaction.amount) || 0,
+          );
           return totals;
         },
         { income: 0, expense: 0 },
       ),
-    [categorySummary],
+    [filtered],
   );
 
   const removeMut = useMutation({
@@ -194,10 +215,19 @@ function TransactionsPage() {
           <Input
             placeholder="Buscar descrição..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setSelectedCategoryKey(null);
+            }}
             className="max-w-xs"
           />
-          <Select value={month} onValueChange={setMonth}>
+          <Select
+            value={month}
+            onValueChange={(value) => {
+              setMonth(value);
+              setSelectedCategoryKey(null);
+            }}
+          >
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
@@ -210,7 +240,13 @@ function TransactionsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={year} onValueChange={setYear}>
+          <Select
+            value={year}
+            onValueChange={(value) => {
+              setYear(value);
+              setSelectedCategoryKey(null);
+            }}
+          >
             <SelectTrigger className="w-24">
               <SelectValue />
             </SelectTrigger>
@@ -223,7 +259,13 @@ function TransactionsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={type} onValueChange={setType}>
+          <Select
+            value={type}
+            onValueChange={(value) => {
+              setType(value);
+              setSelectedCategoryKey(null);
+            }}
+          >
             <SelectTrigger className="w-36">
               <SelectValue />
             </SelectTrigger>
@@ -248,6 +290,7 @@ function TransactionsPage() {
                 if (fc.type) setType(String(fc.type));
                 if (fc.month) setMonth(String(fc.month));
                 if (fc.year) setYear(String(fc.year));
+                setSelectedCategoryKey(null);
                 toast.success(`Filtro "${f.name}" aplicado`);
               }}
               className="text-xs px-2.5 py-1 rounded-full border bg-card hover:bg-accent transition"
@@ -266,17 +309,41 @@ function TransactionsPage() {
                 Resumo por categoria
               </h2>
               <p className="text-xs text-muted-foreground">
-                Valores das transações exibidas nos filtros atuais
+                Clique em uma categoria para filtrar as transações
               </p>
             </div>
-            <div className="text-xs text-muted-foreground">
-              {filtered.length} {filtered.length === 1 ? "transação" : "transações"}
+            <div className="flex items-center gap-2">
+              <div className="text-xs text-muted-foreground">
+                {selectedCategoryKey
+                  ? `${filtered.length} de ${filterableTransactions.length} transações`
+                  : `${filtered.length} ${filtered.length === 1 ? "transação" : "transações"}`}
+              </div>
+              {selectedCategory && (
+                <Button variant="ghost" size="sm" onClick={() => setSelectedCategoryKey(null)}>
+                  Mostrar todas
+                </Button>
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {categorySummary.map((category) => (
-              <Card key={category.key} className="overflow-hidden bg-card/80">
+              <button
+                key={category.key}
+                type="button"
+                aria-pressed={selectedCategoryKey === category.key}
+                aria-label={`Filtrar por ${category.name}`}
+                onClick={() =>
+                  setSelectedCategoryKey((current) =>
+                    current === category.key ? null : category.key,
+                  )
+                }
+                className={`overflow-hidden rounded-xl border bg-card/80 text-left text-card-foreground shadow transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  selectedCategoryKey === category.key
+                    ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                    : ""
+                }`}
+              >
                 <CardContent className="relative p-4">
                   <div
                     className="absolute inset-y-0 left-0 w-1"
@@ -304,7 +371,7 @@ function TransactionsPage() {
                     {(category.type === "income" ? t.income : t.expense).toLowerCase()}
                   </div>
                 </CardContent>
-              </Card>
+              </button>
             ))}
           </div>
 
