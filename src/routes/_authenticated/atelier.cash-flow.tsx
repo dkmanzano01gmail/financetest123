@@ -26,7 +26,7 @@ import {
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, monthLabel, parseLocaleAmount } from "@/lib/format";
-import { buildCashFlowProjection } from "@/lib/orna-logic";
+import { buildCashFlowProjection, type CashFlowDay, type CashFlowEvent } from "@/lib/orna-logic";
 import {
   AlertTriangle,
   CalendarRange,
@@ -116,22 +116,33 @@ function CashFlowPage() {
     },
   });
   const { data: transactions = [], isLoading: txLoading } = useQuery({
-    queryKey: ["cash-flow-actual-transactions", wsId, year, month, monthsCount, settings?.starting_balance_date],
+    queryKey: [
+      "cash-flow-actual-transactions-v2",
+      wsId,
+      year,
+      month,
+      monthsCount,
+      settings?.starting_balance_date,
+    ],
     enabled: !!wsId,
     queryFn: async () => {
       const selectedStart = `${year}-${String(month).padStart(2, "0")}-01`;
-      const start = settings?.starting_balance_date && settings.starting_balance_date < selectedStart
-        ? settings.starting_balance_date
-        : selectedStart;
+      const start =
+        settings?.starting_balance_date && settings.starting_balance_date < selectedStart
+          ? settings.starting_balance_date
+          : selectedStart;
       const endDate = new Date(year, month - 1 + monthsCount, 0);
       const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
       const { data, error } = await sb
         .from("transactions")
-        .select("id,date,type,amount,description,counterparty,status,account_id,credit_card_id,categories(name,color)")
+        .select(
+          "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,categories(name,color)",
+        )
         .eq("workspace_id", wsId)
         .gte("date", start)
         .lte("date", end)
-        .not("account_id", "is", null)
+        // Imported/manual transactions may not have an account, but they are still realized.
+        // Card purchases stay out of cash flow so paying the invoice is not counted twice.
         .is("credit_card_id", null)
         .order("date");
       if (error) throw error;
@@ -157,11 +168,16 @@ function CashFlowPage() {
     const selectedStart = `${year}-${String(month).padStart(2, "0")}-01`;
     const referenceDate = settings?.starting_balance_date ?? selectedStart;
     return (transactions as any[])
-      .filter((transaction) => transaction.date >= referenceDate && transaction.date < selectedStart)
-      .reduce((balance, transaction) => {
-        const amount = Math.abs(Number(transaction.amount || 0));
-        return balance + (transaction.type === "income" ? amount : -amount);
-      }, Number(settings?.starting_balance ?? 0));
+      .filter(
+        (transaction) => transaction.date >= referenceDate && transaction.date < selectedStart,
+      )
+      .reduce(
+        (balance, transaction) => {
+          const amount = Math.abs(Number(transaction.amount || 0));
+          return balance + (transaction.type === "income" ? amount : -amount);
+        },
+        Number(settings?.starting_balance ?? 0),
+      );
   }, [transactions, settings, month, year]);
 
   const projection = useMemo(
@@ -182,6 +198,7 @@ function CashFlowPage() {
       projection.daily.map((day) => ({
         ...day,
         label: day.dayLabel,
+        actualExpenseBar: day.actualExpense ? -day.actualExpense : 0,
         actualForecastBalance: day.actualForecastBalance,
       })),
     [projection],
@@ -337,23 +354,38 @@ function CashFlowPage() {
       <Card className="mb-4">
         <CardContent className="flex flex-wrap items-center gap-2 p-3">
           <Select value={String(month)} onValueChange={(value) => setMonth(Number(value))}>
-            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               {Array.from({ length: 12 }, (_, index) => (
-                <SelectItem key={index + 1} value={String(index + 1)}>{monthLabel(index + 1)}</SelectItem>
+                <SelectItem key={index + 1} value={String(index + 1)}>
+                  {monthLabel(index + 1)}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={String(year)} onValueChange={(value) => setYear(Number(value))}>
-            <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
-              {[TODAY.getFullYear() - 1, TODAY.getFullYear(), TODAY.getFullYear() + 1].map((item) => (
-                <SelectItem key={item} value={String(item)}>{item}</SelectItem>
-              ))}
+              {[TODAY.getFullYear() - 1, TODAY.getFullYear(), TODAY.getFullYear() + 1].map(
+                (item) => (
+                  <SelectItem key={item} value={String(item)}>
+                    {item}
+                  </SelectItem>
+                ),
+              )}
             </SelectContent>
           </Select>
-          <Select value={String(monthsCount)} onValueChange={(value) => setMonthsCount(Number(value))}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <Select
+            value={String(monthsCount)}
+            onValueChange={(value) => setMonthsCount(Number(value))}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="1">1 mês</SelectItem>
               <SelectItem value="2">2 meses</SelectItem>
@@ -412,17 +444,27 @@ function CashFlowPage() {
           <CardContent className="flex items-center gap-3 p-4 text-sm">
             <AlertTriangle className="h-5 w-5 text-destructive" />
             <div>
-              <strong>Necessidade de caixa:</strong> o saldo previsto fica negativo em {projection.firstNegativeDate}. Reserva mínima sugerida: {formatCurrency(projection.cashNeedAmount, currency, privacy)}.
+              <strong>Necessidade de caixa:</strong> o saldo previsto fica negativo em{" "}
+              {projection.firstNegativeDate}. Reserva mínima sugerida:{" "}
+              {formatCurrency(projection.cashNeedAmount, currency, privacy)}.
             </div>
           </CardContent>
         </Card>
       )}
 
       <Card className="mb-4">
-        <CardHeader><CardTitle className="text-base">Saldo diário: previsto × realizado</CardTitle></CardHeader>
-        <CardContent className="h-80 p-3">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Movimentação e saldo por dia</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Barras mostram entradas e saídas realizadas. Linhas mostram o saldo previsto e o saldo
+            recalculado com o realizado. Passe o mouse em um dia para ver cada transação.
+          </p>
+        </CardHeader>
+        <CardContent className="h-[26rem] p-3">
           {busy ? (
-            <div className="pt-24 text-center text-sm text-muted-foreground">Carregando projeção…</div>
+            <div className="pt-24 text-center text-sm text-muted-foreground">
+              Carregando projeção…
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chart} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
@@ -431,16 +473,49 @@ function CashFlowPage() {
                 <YAxis
                   fontSize={11}
                   tickFormatter={(value) =>
-                    privacy ? "•" : Intl.NumberFormat("pt-BR", { notation: "compact" }).format(value)
+                    privacy
+                      ? "•"
+                      : Intl.NumberFormat("pt-BR", { notation: "compact" }).format(value)
                   }
                 />
-                <Tooltip formatter={(value: number) => formatCurrency(Number(value), currency, privacy)} />
-                <Legend />
+                <Tooltip
+                  content={<CashFlowTooltip currency={currency} privacy={privacy} />}
+                  cursor={{ fill: "var(--muted)", opacity: 0.35 }}
+                />
+                <Legend verticalAlign="top" height={36} />
                 <ReferenceLine y={0} stroke="var(--destructive)" strokeDasharray="4 4" />
-                <Bar dataKey="actualIncome" name="Entradas realizadas" fill="var(--income)" opacity={0.24} />
-                <Bar dataKey="actualExpense" name="Saídas realizadas" fill="var(--expense)" opacity={0.24} />
-                <Line type="monotone" dataKey="projectedBalance" name="Saldo previsto" stroke="var(--primary)" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="actualForecastBalance" name="Realizado + previsão futura" stroke="var(--income)" strokeWidth={2.5} dot={false} connectNulls />
+                <Bar
+                  dataKey="actualIncome"
+                  name="Entradas realizadas"
+                  fill="var(--income)"
+                  opacity={0.72}
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  dataKey="actualExpenseBar"
+                  name="Saídas realizadas"
+                  fill="var(--expense)"
+                  opacity={0.72}
+                  radius={[0, 0, 4, 4]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="projectedBalance"
+                  name="Saldo previsto"
+                  stroke="var(--primary)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="actualForecastBalance"
+                  name="Saldo com realizado"
+                  stroke="var(--income)"
+                  strokeWidth={2.5}
+                  dot={false}
+                  activeDot={{ r: 5 }}
+                  connectNulls
+                />
               </ComposedChart>
             </ResponsiveContainer>
           )}
@@ -449,68 +524,130 @@ function CashFlowPage() {
 
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle className="text-base">Eventos previstos do período</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Eventos previstos do período</CardTitle>
+          </CardHeader>
           <CardContent className="max-h-80 overflow-auto p-0">
             {projection.projectedEvents.length === 0 ? (
-              <div className="p-6 text-sm text-muted-foreground">Sem previsões ativas no período.</div>
-            ) : projection.projectedEvents.map((event) => (
-              <div key={event.id} className="flex items-center gap-3 border-t px-4 py-2 text-sm first:border-t-0">
-                <span className="w-24 font-mono text-xs text-muted-foreground">{event.date}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{event.description}</div>
-                  <div className="text-xs text-muted-foreground">{event.category}</div>
-                </div>
-                <span className={event.type === "income" ? "text-income" : "text-expense"}>
-                  {event.type === "income" ? "+" : "-"}{formatCurrency(event.amount, currency, privacy)}
-                </span>
+              <div className="p-6 text-sm text-muted-foreground">
+                Sem previsões ativas no período.
               </div>
-            ))}
+            ) : (
+              projection.projectedEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className="flex items-center gap-3 border-t px-4 py-2 text-sm first:border-t-0"
+                >
+                  <span className="w-24 font-mono text-xs text-muted-foreground">{event.date}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{event.description}</div>
+                    <div className="text-xs text-muted-foreground">{event.category}</div>
+                  </div>
+                  <span className={event.type === "income" ? "text-income" : "text-expense"}>
+                    {event.type === "income" ? "+" : "-"}
+                    {formatCurrency(event.amount, currency, privacy)}
+                  </span>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="text-base">Transações realizadas do período</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Transações realizadas do período</CardTitle>
+          </CardHeader>
           <CardContent className="max-h-80 overflow-auto p-0">
             {projection.actualEvents.length === 0 ? (
-              <div className="p-6 text-sm text-muted-foreground">Sem transações realizadas no período.</div>
-            ) : projection.actualEvents.map((event) => (
-              <div key={event.id} className="flex items-center gap-3 border-t px-4 py-2 text-sm first:border-t-0">
-                <span className="w-24 font-mono text-xs text-muted-foreground">{event.date}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{event.description}</div>
-                  <div className="text-xs text-muted-foreground">{event.category}</div>
-                </div>
-                <span className={event.type === "income" ? "text-income" : "text-expense"}>
-                  {event.type === "income" ? "+" : "-"}{formatCurrency(event.amount, currency, privacy)}
-                </span>
+              <div className="p-6 text-sm text-muted-foreground">
+                Sem transações realizadas no período.
               </div>
-            ))}
+            ) : (
+              projection.actualEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className="flex items-center gap-3 border-t px-4 py-2 text-sm first:border-t-0"
+                >
+                  <span className="w-24 font-mono text-xs text-muted-foreground">{event.date}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{event.description}</div>
+                    <div className="text-xs text-muted-foreground">{event.category}</div>
+                  </div>
+                  <span className={event.type === "income" ? "text-income" : "text-expense"}>
+                    {event.type === "income" ? "+" : "-"}
+                    {formatCurrency(event.amount, currency, privacy)}
+                  </span>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       </div>
 
       {entries.length === 0 ? (
-        <EmptyState icon={Wallet} title="Sem previsões cadastradas" description="Cadastre receitas e despesas recorrentes ou únicas para projetar o caixa." />
+        <EmptyState
+          icon={Wallet}
+          title="Sem previsões cadastradas"
+          description="Cadastre receitas e despesas recorrentes ou únicas para projetar o caixa."
+        />
       ) : (
         <Card>
-          <CardHeader><CardTitle className="text-base">Cadastros de previsão</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Cadastros de previsão</CardTitle>
+          </CardHeader>
           <CardContent className="overflow-x-auto p-0">
             <table className="w-full text-sm">
               <thead className="bg-muted/40">
                 <tr className="text-left">
-                  <th className="p-3">Descrição</th><th className="p-3">Categoria</th><th className="p-3">Tipo</th><th className="p-3">Recorrência</th><th className="p-3">Data/Dia</th><th className="p-3">Ativo</th><th className="p-3 text-right">Valor</th><th className="p-3" />
+                  <th className="p-3">Descrição</th>
+                  <th className="p-3">Categoria</th>
+                  <th className="p-3">Tipo</th>
+                  <th className="p-3">Recorrência</th>
+                  <th className="p-3">Data/Dia</th>
+                  <th className="p-3">Ativo</th>
+                  <th className="p-3 text-right">Valor</th>
+                  <th className="p-3" />
                 </tr>
               </thead>
               <tbody>
                 {entries.map((entry: any) => (
                   <tr key={entry.id} className="border-t">
-                    <td className="p-3"><div className="font-medium">{entry.description}</div>{entry.notes && <div className="max-w-md truncate text-xs text-muted-foreground">{entry.notes}</div>}</td>
+                    <td className="p-3">
+                      <div className="font-medium">{entry.description}</div>
+                      {entry.notes && (
+                        <div className="max-w-md truncate text-xs text-muted-foreground">
+                          {entry.notes}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3">{entry.categories?.name ?? "—"}</td>
                     <td className="p-3">{entry.type === "income" ? "Receita" : "Despesa"}</td>
                     <td className="p-3">{recurrenceLabel(entry.recurrence)}</td>
-                    <td className="p-3 font-mono text-xs">{entry.recurrence === "monthly" ? `dia ${entry.day_of_month ?? 1}` : entry.specific_date ?? entry.entry_date}</td>
-                    <td className="p-3"><Switch checked={entry.is_active !== false} onCheckedChange={() => toggleMut.mutate(entry)} /></td>
-                    <td className={`p-3 text-right font-mono ${entry.type === "income" ? "text-income" : "text-expense"}`}>{formatCurrency(Number(entry.amount), currency, privacy)}</td>
-                    <td className="p-3"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" onClick={() => openEdit(entry)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => delMut.mutate(entry.id)}><Trash2 className="h-4 w-4" /></Button></div></td>
+                    <td className="p-3 font-mono text-xs">
+                      {entry.recurrence === "monthly"
+                        ? `dia ${entry.day_of_month ?? 1}`
+                        : (entry.specific_date ?? entry.entry_date)}
+                    </td>
+                    <td className="p-3">
+                      <Switch
+                        checked={entry.is_active !== false}
+                        onCheckedChange={() => toggleMut.mutate(entry)}
+                      />
+                    </td>
+                    <td
+                      className={`p-3 text-right font-mono ${entry.type === "income" ? "text-income" : "text-expense"}`}
+                    >
+                      {formatCurrency(Number(entry.amount), currency, privacy)}
+                    </td>
+                    <td className="p-3">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(entry)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => delMut.mutate(entry.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -521,30 +658,175 @@ function CashFlowPage() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>{editId ? "Editar previsão" : "Nova previsão"}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editId ? "Editar previsão" : "Nova previsão"}</DialogTitle>
+          </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 space-y-1.5"><Label>Descrição</Label><Input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
-            <div className="space-y-1.5"><Label>Tipo</Label><Select value={form.type} onValueChange={(value) => setForm({ ...form, type: value, category_id: "" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="income">Receita</SelectItem><SelectItem value="expense">Despesa</SelectItem></SelectContent></Select></div>
-            <div className="space-y-1.5"><Label>Categoria</Label><Select value={form.category_id || "none"} onValueChange={(value) => setForm({ ...form, category_id: value === "none" ? "" : value })}><SelectTrigger><SelectValue placeholder="Sem categoria" /></SelectTrigger><SelectContent><SelectItem value="none">Sem categoria</SelectItem>{categories.filter((category: any) => category.type === form.type).map((category: any) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>
-            <div className="space-y-1.5"><Label>Valor</Label><Input inputMode="decimal" placeholder="0,00" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} /></div>
-            <div className="space-y-1.5"><Label>Recorrência</Label><Select value={form.recurrence} onValueChange={(value) => setForm({ ...form, recurrence: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Única</SelectItem><SelectItem value="weekly">Semanal</SelectItem><SelectItem value="monthly">Mensal</SelectItem><SelectItem value="yearly">Anual</SelectItem></SelectContent></Select></div>
+            <div className="col-span-2 space-y-1.5">
+              <Label>Descrição</Label>
+              <Input
+                value={form.description}
+                onChange={(event) => setForm({ ...form, description: event.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tipo</Label>
+              <Select
+                value={form.type}
+                onValueChange={(value) => setForm({ ...form, type: value, category_id: "" })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="income">Receita</SelectItem>
+                  <SelectItem value="expense">Despesa</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Categoria</Label>
+              <Select
+                value={form.category_id || "none"}
+                onValueChange={(value) =>
+                  setForm({ ...form, category_id: value === "none" ? "" : value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sem categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem categoria</SelectItem>
+                  {categories
+                    .filter((category: any) => category.type === form.type)
+                    .map((category: any) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Valor</Label>
+              <Input
+                inputMode="decimal"
+                placeholder="0,00"
+                value={form.amount}
+                onChange={(event) => setForm({ ...form, amount: event.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Recorrência</Label>
+              <Select
+                value={form.recurrence}
+                onValueChange={(value) => setForm({ ...form, recurrence: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Única</SelectItem>
+                  <SelectItem value="weekly">Semanal</SelectItem>
+                  <SelectItem value="monthly">Mensal</SelectItem>
+                  <SelectItem value="yearly">Anual</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {form.recurrence === "monthly" ? (
-              <div className="space-y-1.5"><Label>Dia do mês</Label><Input type="number" min={1} max={31} value={form.day_of_month} onChange={(event) => setForm({ ...form, day_of_month: event.target.value })} /></div>
+              <div className="space-y-1.5">
+                <Label>Dia do mês</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={form.day_of_month}
+                  onChange={(event) => setForm({ ...form, day_of_month: event.target.value })}
+                />
+              </div>
             ) : (
-              <div className="space-y-1.5"><Label>{form.recurrence === "none" ? "Data específica" : "Primeira ocorrência"}</Label><Input type="date" value={form.recurrence === "none" ? form.specific_date : form.entry_date} onChange={(event) => setForm(form.recurrence === "none" ? { ...form, specific_date: event.target.value, entry_date: event.target.value } : { ...form, entry_date: event.target.value })} /></div>
+              <div className="space-y-1.5">
+                <Label>
+                  {form.recurrence === "none" ? "Data específica" : "Primeira ocorrência"}
+                </Label>
+                <Input
+                  type="date"
+                  value={form.recurrence === "none" ? form.specific_date : form.entry_date}
+                  onChange={(event) =>
+                    setForm(
+                      form.recurrence === "none"
+                        ? {
+                            ...form,
+                            specific_date: event.target.value,
+                            entry_date: event.target.value,
+                          }
+                        : { ...form, entry_date: event.target.value },
+                    )
+                  }
+                />
+              </div>
             )}
-            <div className="col-span-2 space-y-1.5"><Label>Observações</Label><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
-            <div className="col-span-2 flex items-center gap-3"><Switch checked={form.is_active} onCheckedChange={(value) => setForm({ ...form, is_active: value })} /><Label>Ativo nas projeções</Label></div>
+            <div className="col-span-2 space-y-1.5">
+              <Label>Observações</Label>
+              <Input
+                value={form.notes}
+                onChange={(event) => setForm({ ...form, notes: event.target.value })}
+              />
+            </div>
+            <div className="col-span-2 flex items-center gap-3">
+              <Switch
+                checked={form.is_active}
+                onCheckedChange={(value) => setForm({ ...form, is_active: value })}
+              />
+              <Label>Ativo nas projeções</Label>
+            </div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>Salvar</Button></DialogFooter>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
+              Salvar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={balOpen} onOpenChange={setBalOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Saldo inicial da projeção</DialogTitle></DialogHeader>
-          <div className="space-y-3"><div className="space-y-1.5"><Label>Data de referência</Label><Input type="date" value={balForm.starting_balance_date} onChange={(event) => setBalForm({ ...balForm, starting_balance_date: event.target.value })} /></div><div className="space-y-1.5"><Label>Saldo</Label><Input inputMode="decimal" value={balForm.starting_balance} onChange={(event) => setBalForm({ ...balForm, starting_balance: event.target.value })} /></div></div>
-          <DialogFooter><Button variant="outline" onClick={() => setBalOpen(false)}>Cancelar</Button><Button onClick={() => balMut.mutate()} disabled={balMut.isPending}>Salvar</Button></DialogFooter>
+          <DialogHeader>
+            <DialogTitle>Saldo inicial da projeção</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Data de referência</Label>
+              <Input
+                type="date"
+                value={balForm.starting_balance_date}
+                onChange={(event) =>
+                  setBalForm({ ...balForm, starting_balance_date: event.target.value })
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Saldo</Label>
+              <Input
+                inputMode="decimal"
+                value={balForm.starting_balance}
+                onChange={(event) =>
+                  setBalForm({ ...balForm, starting_balance: event.target.value })
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => balMut.mutate()} disabled={balMut.isPending}>
+              Salvar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </PageContainer>
@@ -552,9 +834,197 @@ function CashFlowPage() {
 }
 
 function recurrenceLabel(value?: string) {
-  return ({ none: "Única", weekly: "Semanal", monthly: "Mensal", yearly: "Anual" } as Record<string, string>)[value ?? ""] ?? value ?? "—";
+  return (
+    (
+      { none: "Única", weekly: "Semanal", monthly: "Mensal", yearly: "Anual" } as Record<
+        string,
+        string
+      >
+    )[value ?? ""] ??
+    value ??
+    "—"
+  );
 }
 
-function StatCard({ label, value, sub, tone, icon: Icon }: { label: string; value: string; sub?: string; tone?: "income" | "expense"; icon?: typeof Wallet }) {
-  return <Card><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div><div className={`mt-1 font-mono text-xl ${tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : ""}`}>{value}</div>{sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}</div>{Icon && <Icon className={`h-5 w-5 ${tone === "expense" ? "text-expense" : tone === "income" ? "text-income" : "text-muted-foreground"}`} />}</div></CardContent></Card>;
+function CashFlowTooltip({
+  active,
+  payload,
+  currency,
+  privacy,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: CashFlowDay & { label: string; actualExpenseBar: number } }>;
+  currency: string;
+  privacy: boolean;
+}) {
+  const day = payload?.[0]?.payload;
+  if (!active || !day) return null;
+
+  const dateLabel = new Date(`${day.date}T12:00:00`).toLocaleDateString("pt-BR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "long",
+  });
+
+  return (
+    <div className="w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover p-3 text-popover-foreground shadow-xl">
+      <div className="mb-2 border-b pb-2">
+        <div className="font-semibold capitalize">{dateLabel}</div>
+        <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          <TooltipMetric
+            label="Entradas realizadas"
+            value={day.actualIncome}
+            currency={currency}
+            privacy={privacy}
+            tone="income"
+          />
+          <TooltipMetric
+            label="Saídas realizadas"
+            value={day.actualExpense}
+            currency={currency}
+            privacy={privacy}
+            tone="expense"
+          />
+          <TooltipMetric
+            label="Saldo previsto"
+            value={day.projectedBalance}
+            currency={currency}
+            privacy={privacy}
+          />
+          <TooltipMetric
+            label="Saldo com realizado"
+            value={day.actualForecastBalance}
+            currency={currency}
+            privacy={privacy}
+          />
+        </div>
+      </div>
+
+      <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
+        <TooltipEventList
+          title="Transações realizadas"
+          events={day.actualEvents}
+          emptyMessage="Nenhuma transação realizada neste dia."
+          currency={currency}
+          privacy={privacy}
+        />
+        {day.projectedEvents.length > 0 && (
+          <TooltipEventList
+            title="Eventos previstos"
+            events={day.projectedEvents}
+            currency={currency}
+            privacy={privacy}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TooltipMetric({
+  label,
+  value,
+  currency,
+  privacy,
+  tone,
+}: {
+  label: string;
+  value: number | null;
+  currency: string;
+  privacy: boolean;
+  tone?: "income" | "expense";
+}) {
+  return (
+    <div>
+      <div className="text-muted-foreground">{label}</div>
+      <div
+        className={`font-mono font-semibold ${
+          tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : ""
+        }`}
+      >
+        {value == null ? "—" : formatCurrency(value, currency, privacy)}
+      </div>
+    </div>
+  );
+}
+
+function TooltipEventList({
+  title,
+  events,
+  emptyMessage,
+  currency,
+  privacy,
+}: {
+  title: string;
+  events: CashFlowEvent[];
+  emptyMessage?: string;
+  currency: string;
+  privacy: boolean;
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </div>
+      {events.length === 0 ? (
+        <div className="text-xs text-muted-foreground">{emptyMessage}</div>
+      ) : (
+        <div className="space-y-1.5">
+          {events.map((event) => (
+            <div key={event.id} className="flex items-start justify-between gap-3 text-xs">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{event.description}</div>
+                <div className="truncate text-muted-foreground">{event.category}</div>
+              </div>
+              <div
+                className={`shrink-0 font-mono font-semibold ${
+                  event.type === "income" ? "text-income" : "text-expense"
+                }`}
+              >
+                {event.type === "income" ? "+" : "-"}
+                {formatCurrency(event.amount, currency, privacy)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+  tone,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "income" | "expense";
+  icon?: typeof Wallet;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+            <div
+              className={`mt-1 font-mono text-xl ${tone === "income" ? "text-income" : tone === "expense" ? "text-expense" : ""}`}
+            >
+              {value}
+            </div>
+            {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
+          </div>
+          {Icon && (
+            <Icon
+              className={`h-5 w-5 ${tone === "expense" ? "text-expense" : tone === "income" ? "text-income" : "text-muted-foreground"}`}
+            />
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
