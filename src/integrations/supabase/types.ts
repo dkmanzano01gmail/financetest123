@@ -475,59 +475,158 @@ export type Database = {
           },
         ]
       }
+      class_material_settings: {
+        Row: {
+          fixed_monthly_fee: number
+          kiln_firing_profit_percent: number
+          margin_percent: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          fixed_monthly_fee?: number
+          kiln_firing_profit_percent?: number
+          margin_percent?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          fixed_monthly_fee?: number
+          kiln_firing_profit_percent?: number
+          margin_percent?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_material_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       class_materials_usage: {
         Row: {
           amount_charged: number
+          amount_paid: number
+          amount_pending: number
+          biscuit_firing_cost: number
+          charge_biscuit: boolean
+          charge_glaze: boolean
+          clay_cost: number
+          clay_type: string | null
+          clay_weight_kg: number
           comments: string | null
           created_at: string
+          depth_cm: number
+          glaze_cone: string | null
+          glaze_cost: number
+          glaze_firing_cost: number
+          glaze_name: string | null
+          glaze_quantity: number
           grams: number
+          height_cm: number
           id: string
+          kiln_id: string | null
           legacy_source_id: string | null
+          length_cm: number
           material: string
+          other_cost: number
           payment_date: string | null
+          payment_notes: string | null
           payment_status: string
           piece_name: string | null
           quantity: number
           student_name: string
+          total_cost: number
           updated_at: string
           usage_date: string
           workspace_id: string
         }
         Insert: {
           amount_charged?: number
+          amount_paid?: number
+          amount_pending?: number
+          biscuit_firing_cost?: number
+          charge_biscuit?: boolean
+          charge_glaze?: boolean
+          clay_cost?: number
+          clay_type?: string | null
+          clay_weight_kg?: number
           comments?: string | null
           created_at?: string
+          depth_cm?: number
+          glaze_cone?: string | null
+          glaze_cost?: number
+          glaze_firing_cost?: number
+          glaze_name?: string | null
+          glaze_quantity?: number
           grams?: number
+          height_cm?: number
           id?: string
+          kiln_id?: string | null
           legacy_source_id?: string | null
+          length_cm?: number
           material: string
+          other_cost?: number
           payment_date?: string | null
+          payment_notes?: string | null
           payment_status?: string
           piece_name?: string | null
           quantity?: number
           student_name: string
+          total_cost?: number
           updated_at?: string
           usage_date?: string
           workspace_id: string
         }
         Update: {
           amount_charged?: number
+          amount_paid?: number
+          amount_pending?: number
+          biscuit_firing_cost?: number
+          charge_biscuit?: boolean
+          charge_glaze?: boolean
+          clay_cost?: number
+          clay_type?: string | null
+          clay_weight_kg?: number
           comments?: string | null
           created_at?: string
+          depth_cm?: number
+          glaze_cone?: string | null
+          glaze_cost?: number
+          glaze_firing_cost?: number
+          glaze_name?: string | null
+          glaze_quantity?: number
           grams?: number
+          height_cm?: number
           id?: string
+          kiln_id?: string | null
           legacy_source_id?: string | null
+          length_cm?: number
           material?: string
+          other_cost?: number
           payment_date?: string | null
+          payment_notes?: string | null
           payment_status?: string
           piece_name?: string | null
           quantity?: number
           student_name?: string
+          total_cost?: number
           updated_at?: string
           usage_date?: string
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "class_materials_usage_kiln_id_fkey"
+            columns: ["kiln_id"]
+            isOneToOne: false
+            referencedRelation: "kilns"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "class_materials_usage_workspace_id_fkey"
             columns: ["workspace_id"]
@@ -819,6 +918,53 @@ export type Database = {
           },
         ]
       }
+      feedback_comments: {
+        Row: {
+          comment: string
+          created_at: string
+          created_by: string | null
+          device: string | null
+          id: string
+          page: string
+          status: string
+          type: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          comment: string
+          created_at?: string
+          created_by?: string | null
+          device?: string | null
+          id?: string
+          page?: string
+          status?: string
+          type?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          comment?: string
+          created_at?: string
+          created_by?: string | null
+          device?: string | null
+          id?: string
+          page?: string
+          status?: string
+          type?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_comments_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       firing_pieces: {
         Row: {
           charge_amount: number
@@ -890,10 +1036,12 @@ export type Database = {
       }
       firing_pricing: {
         Row: {
+          cone: string | null
           created_at: string
           firing_date: string | null
           firing_type: string
           id: string
+          kiln_id: string | null
           notes: string | null
           profit: number
           reference: string
@@ -903,10 +1051,12 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          cone?: string | null
           created_at?: string
           firing_date?: string | null
           firing_type?: string
           id?: string
+          kiln_id?: string | null
           notes?: string | null
           profit?: number
           reference?: string
@@ -916,10 +1066,12 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          cone?: string | null
           created_at?: string
           firing_date?: string | null
           firing_type?: string
           id?: string
+          kiln_id?: string | null
           notes?: string | null
           profit?: number
           reference?: string
@@ -930,9 +1082,105 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "firing_pricing_kiln_id_fkey"
+            columns: ["kiln_id"]
+            isOneToOne: false
+            referencedRelation: "kilns"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "firing_pricing_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      firing_settings: {
+        Row: {
+          area_adjustment: number
+          biscuit_hours: number
+          biscuit_resistance_burns: number
+          biscuit_utilization: number
+          customer_margin_percent: number
+          final_buffer: number
+          glaze_hours: number
+          glaze10_hours: number
+          glaze10_resistance_burns: number
+          glaze10_utilization: number
+          glaze6_hours: number
+          glaze6_resistance_burns: number
+          glaze6_utilization: number
+          glaze7_hours: number
+          glaze7_resistance_burns: number
+          glaze7_utilization: number
+          kwh_cost: number
+          oven_diameter_cm: number
+          power_kw: number
+          resistance_burns: number
+          resistance_cost: number
+          updated_at: string
+          utilization: number
+          workspace_id: string
+        }
+        Insert: {
+          area_adjustment?: number
+          biscuit_hours?: number
+          biscuit_resistance_burns?: number
+          biscuit_utilization?: number
+          customer_margin_percent?: number
+          final_buffer?: number
+          glaze_hours?: number
+          glaze10_hours?: number
+          glaze10_resistance_burns?: number
+          glaze10_utilization?: number
+          glaze6_hours?: number
+          glaze6_resistance_burns?: number
+          glaze6_utilization?: number
+          glaze7_hours?: number
+          glaze7_resistance_burns?: number
+          glaze7_utilization?: number
+          kwh_cost?: number
+          oven_diameter_cm?: number
+          power_kw?: number
+          resistance_burns?: number
+          resistance_cost?: number
+          updated_at?: string
+          utilization?: number
+          workspace_id: string
+        }
+        Update: {
+          area_adjustment?: number
+          biscuit_hours?: number
+          biscuit_resistance_burns?: number
+          biscuit_utilization?: number
+          customer_margin_percent?: number
+          final_buffer?: number
+          glaze_hours?: number
+          glaze10_hours?: number
+          glaze10_resistance_burns?: number
+          glaze10_utilization?: number
+          glaze6_hours?: number
+          glaze6_resistance_burns?: number
+          glaze6_utilization?: number
+          glaze7_hours?: number
+          glaze7_resistance_burns?: number
+          glaze7_utilization?: number
+          kwh_cost?: number
+          oven_diameter_cm?: number
+          power_kw?: number
+          resistance_burns?: number
+          resistance_cost?: number
+          updated_at?: string
+          utilization?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "firing_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
@@ -1040,6 +1288,122 @@ export type Database = {
           },
         ]
       }
+      kilns: {
+        Row: {
+          area_adjustment: number
+          biscuit_hours: number
+          biscuit_resistance_burns: number
+          biscuit_utilization: number
+          brand: string | null
+          created_at: string
+          customer_margin_percent: number
+          final_buffer: number
+          glaze_hours: number
+          glaze10_hours: number
+          glaze10_resistance_burns: number
+          glaze10_utilization: number
+          glaze6_hours: number
+          glaze6_resistance_burns: number
+          glaze6_utilization: number
+          glaze7_hours: number
+          glaze7_resistance_burns: number
+          glaze7_utilization: number
+          id: string
+          is_active: boolean
+          is_default: boolean
+          kwh_cost: number
+          model: string | null
+          name: string
+          notes: string | null
+          oven_diameter_cm: number
+          power_kw: number
+          resistance_burns: number
+          resistance_cost: number
+          serial_number: string | null
+          updated_at: string
+          utilization: number
+          workspace_id: string
+        }
+        Insert: {
+          area_adjustment?: number
+          biscuit_hours?: number
+          biscuit_resistance_burns?: number
+          biscuit_utilization?: number
+          brand?: string | null
+          created_at?: string
+          customer_margin_percent?: number
+          final_buffer?: number
+          glaze_hours?: number
+          glaze10_hours?: number
+          glaze10_resistance_burns?: number
+          glaze10_utilization?: number
+          glaze6_hours?: number
+          glaze6_resistance_burns?: number
+          glaze6_utilization?: number
+          glaze7_hours?: number
+          glaze7_resistance_burns?: number
+          glaze7_utilization?: number
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          kwh_cost?: number
+          model?: string | null
+          name: string
+          notes?: string | null
+          oven_diameter_cm?: number
+          power_kw?: number
+          resistance_burns?: number
+          resistance_cost?: number
+          serial_number?: string | null
+          updated_at?: string
+          utilization?: number
+          workspace_id: string
+        }
+        Update: {
+          area_adjustment?: number
+          biscuit_hours?: number
+          biscuit_resistance_burns?: number
+          biscuit_utilization?: number
+          brand?: string | null
+          created_at?: string
+          customer_margin_percent?: number
+          final_buffer?: number
+          glaze_hours?: number
+          glaze10_hours?: number
+          glaze10_resistance_burns?: number
+          glaze10_utilization?: number
+          glaze6_hours?: number
+          glaze6_resistance_burns?: number
+          glaze6_utilization?: number
+          glaze7_hours?: number
+          glaze7_resistance_burns?: number
+          glaze7_utilization?: number
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          kwh_cost?: number
+          model?: string | null
+          name?: string
+          notes?: string | null
+          oven_diameter_cm?: number
+          power_kw?: number
+          resistance_burns?: number
+          resistance_cost?: number
+          serial_number?: string | null
+          updated_at?: string
+          utilization?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kilns_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       legacy_import_archive: {
         Row: {
           id: string
@@ -1081,20 +1445,31 @@ export type Database = {
           clay_cost: number
           clay_grams: number
           created_at: string
+          customization_cost: number
           depth_cm: number
+          expected_discount_percent: number
+          fixed_allocation: number
+          glaze_cone: string
           glaze_cost: number
           glaze_firing_cost: number
           glaze_grams: number
           height_cm: number
           id: string
+          kiln_firing_profit_percent: number
           labor_cost: number
           length_cm: number
+          loss_percent: number
           margin_percent: number
           name: string
+          net_margin_percent: number
+          net_profit: number
           notes: string | null
           other_cost: number
           packaging_cost: number
+          payment_fee_percent: number
+          quantity: number
           suggested_price: number
+          tax_percent: number
           total_cost: number
           updated_at: string
           workspace_id: string
@@ -1104,20 +1479,31 @@ export type Database = {
           clay_cost?: number
           clay_grams?: number
           created_at?: string
+          customization_cost?: number
           depth_cm?: number
+          expected_discount_percent?: number
+          fixed_allocation?: number
+          glaze_cone?: string
           glaze_cost?: number
           glaze_firing_cost?: number
           glaze_grams?: number
           height_cm?: number
           id?: string
+          kiln_firing_profit_percent?: number
           labor_cost?: number
           length_cm?: number
+          loss_percent?: number
           margin_percent?: number
           name: string
+          net_margin_percent?: number
+          net_profit?: number
           notes?: string | null
           other_cost?: number
           packaging_cost?: number
+          payment_fee_percent?: number
+          quantity?: number
           suggested_price?: number
+          tax_percent?: number
           total_cost?: number
           updated_at?: string
           workspace_id: string
@@ -1127,20 +1513,31 @@ export type Database = {
           clay_cost?: number
           clay_grams?: number
           created_at?: string
+          customization_cost?: number
           depth_cm?: number
+          expected_discount_percent?: number
+          fixed_allocation?: number
+          glaze_cone?: string
           glaze_cost?: number
           glaze_firing_cost?: number
           glaze_grams?: number
           height_cm?: number
           id?: string
+          kiln_firing_profit_percent?: number
           labor_cost?: number
           length_cm?: number
+          loss_percent?: number
           margin_percent?: number
           name?: string
+          net_margin_percent?: number
+          net_profit?: number
           notes?: string | null
           other_cost?: number
           packaging_cost?: number
+          payment_fee_percent?: number
+          quantity?: number
           suggested_price?: number
+          tax_percent?: number
           total_cost?: number
           updated_at?: string
           workspace_id?: string
@@ -1162,8 +1559,13 @@ export type Database = {
           default_labor: number
           default_margin_percent: number
           default_packaging: number
+          expected_discount_percent: number
           glaze_firing_coeff: number
           glaze_gram_price: number
+          kiln_firing_profit_percent: number
+          loss_percent: number
+          payment_fee_percent: number
+          tax_percent: number
           updated_at: string
           workspace_id: string
         }
@@ -1173,8 +1575,13 @@ export type Database = {
           default_labor?: number
           default_margin_percent?: number
           default_packaging?: number
+          expected_discount_percent?: number
           glaze_firing_coeff?: number
           glaze_gram_price?: number
+          kiln_firing_profit_percent?: number
+          loss_percent?: number
+          payment_fee_percent?: number
+          tax_percent?: number
           updated_at?: string
           workspace_id: string
         }
@@ -1184,8 +1591,13 @@ export type Database = {
           default_labor?: number
           default_margin_percent?: number
           default_packaging?: number
+          expected_discount_percent?: number
           glaze_firing_coeff?: number
           glaze_gram_price?: number
+          kiln_firing_profit_percent?: number
+          loss_percent?: number
+          payment_fee_percent?: number
+          tax_percent?: number
           updated_at?: string
           workspace_id?: string
         }
@@ -1225,11 +1637,17 @@ export type Database = {
       }
       raw_materials: {
         Row: {
+          batch: string | null
+          color: string | null
+          compatibility: string | null
           created_at: string
+          expiration_date: string | null
+          finish: string | null
           id: string
           is_active: boolean
           legacy_source_id: string | null
           material_type: string | null
+          max_cone: string | null
           min_stock: number
           name: string
           notes: string | null
@@ -1237,19 +1655,31 @@ export type Database = {
           purchase_link: string | null
           quantity_available: number
           quantity_purchased: number
+          recommended_cone: string | null
+          sku: string | null
+          stock_location: string | null
           supplier: string | null
           supplier_url: string | null
+          temperature_max_c: number | null
+          temperature_min_c: number | null
           unit: string
           unit_cost: number
           updated_at: string
+          use_case: string | null
           workspace_id: string
         }
         Insert: {
+          batch?: string | null
+          color?: string | null
+          compatibility?: string | null
           created_at?: string
+          expiration_date?: string | null
+          finish?: string | null
           id?: string
           is_active?: boolean
           legacy_source_id?: string | null
           material_type?: string | null
+          max_cone?: string | null
           min_stock?: number
           name: string
           notes?: string | null
@@ -1257,19 +1687,31 @@ export type Database = {
           purchase_link?: string | null
           quantity_available?: number
           quantity_purchased?: number
+          recommended_cone?: string | null
+          sku?: string | null
+          stock_location?: string | null
           supplier?: string | null
           supplier_url?: string | null
+          temperature_max_c?: number | null
+          temperature_min_c?: number | null
           unit?: string
           unit_cost?: number
           updated_at?: string
+          use_case?: string | null
           workspace_id: string
         }
         Update: {
+          batch?: string | null
+          color?: string | null
+          compatibility?: string | null
           created_at?: string
+          expiration_date?: string | null
+          finish?: string | null
           id?: string
           is_active?: boolean
           legacy_source_id?: string | null
           material_type?: string | null
+          max_cone?: string | null
           min_stock?: number
           name?: string
           notes?: string | null
@@ -1277,11 +1719,17 @@ export type Database = {
           purchase_link?: string | null
           quantity_available?: number
           quantity_purchased?: number
+          recommended_cone?: string | null
+          sku?: string | null
+          stock_location?: string | null
           supplier?: string | null
           supplier_url?: string | null
+          temperature_max_c?: number | null
+          temperature_min_c?: number | null
           unit?: string
           unit_cost?: number
           updated_at?: string
+          use_case?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -1297,14 +1745,19 @@ export type Database = {
       renovation_items: {
         Row: {
           actual_amount: number
+          area: string | null
           budget_amount: number
           category: string | null
           created_at: string
           due_date: string | null
+          expense_date: string
           id: string
           notes: string | null
           payment_date: string | null
+          payment_method: string | null
           payment_status: string
+          priority: string
+          responsible: string | null
           status: string
           supplier: string | null
           title: string
@@ -1313,14 +1766,19 @@ export type Database = {
         }
         Insert: {
           actual_amount?: number
+          area?: string | null
           budget_amount?: number
           category?: string | null
           created_at?: string
           due_date?: string | null
+          expense_date?: string
           id?: string
           notes?: string | null
           payment_date?: string | null
+          payment_method?: string | null
           payment_status?: string
+          priority?: string
+          responsible?: string | null
           status?: string
           supplier?: string | null
           title: string
@@ -1329,14 +1787,19 @@ export type Database = {
         }
         Update: {
           actual_amount?: number
+          area?: string | null
           budget_amount?: number
           category?: string | null
           created_at?: string
           due_date?: string | null
+          expense_date?: string
           id?: string
           notes?: string | null
           payment_date?: string | null
+          payment_method?: string | null
           payment_status?: string
+          priority?: string
+          responsible?: string | null
           status?: string
           supplier?: string | null
           title?: string
@@ -1565,65 +2028,113 @@ export type Database = {
       workshop_pricing: {
         Row: {
           attendees: number
+          biscuit_per_person: number
+          break_even_attendees: number | null
+          clay_10kg_price: number
           clay_cost: number
+          clay_kg_per_person: number
           created_at: string
           event_date: string | null
+          extra_variable_cost_per_person: number
           firing_cost: number
+          fixed_cost: number
           food_cost: number
+          food_per_person: number
           glaze_cost: number
+          glaze_firing_per_person: number
+          glaze_per_person: number
           id: string
           labor_cost: number
           margin_percent: number
           name: string
           notes: string | null
           other_cost: number
+          packaging_per_person: number
+          payment_fee_percent: number
           price_per_person: number
           profit: number
+          space_cost_per_hour: number
+          space_hours: number
+          surprise_percent: number
+          tax_percent: number
           total_cost: number
           total_revenue: number
           updated_at: string
+          variable_cost_per_person: number
           workspace_id: string
         }
         Insert: {
           attendees?: number
+          biscuit_per_person?: number
+          break_even_attendees?: number | null
+          clay_10kg_price?: number
           clay_cost?: number
+          clay_kg_per_person?: number
           created_at?: string
           event_date?: string | null
+          extra_variable_cost_per_person?: number
           firing_cost?: number
+          fixed_cost?: number
           food_cost?: number
+          food_per_person?: number
           glaze_cost?: number
+          glaze_firing_per_person?: number
+          glaze_per_person?: number
           id?: string
           labor_cost?: number
           margin_percent?: number
           name: string
           notes?: string | null
           other_cost?: number
+          packaging_per_person?: number
+          payment_fee_percent?: number
           price_per_person?: number
           profit?: number
+          space_cost_per_hour?: number
+          space_hours?: number
+          surprise_percent?: number
+          tax_percent?: number
           total_cost?: number
           total_revenue?: number
           updated_at?: string
+          variable_cost_per_person?: number
           workspace_id: string
         }
         Update: {
           attendees?: number
+          biscuit_per_person?: number
+          break_even_attendees?: number | null
+          clay_10kg_price?: number
           clay_cost?: number
+          clay_kg_per_person?: number
           created_at?: string
           event_date?: string | null
+          extra_variable_cost_per_person?: number
           firing_cost?: number
+          fixed_cost?: number
           food_cost?: number
+          food_per_person?: number
           glaze_cost?: number
+          glaze_firing_per_person?: number
+          glaze_per_person?: number
           id?: string
           labor_cost?: number
           margin_percent?: number
           name?: string
           notes?: string | null
           other_cost?: number
+          packaging_per_person?: number
+          payment_fee_percent?: number
           price_per_person?: number
           profit?: number
+          space_cost_per_hour?: number
+          space_hours?: number
+          surprise_percent?: number
+          tax_percent?: number
           total_cost?: number
           total_revenue?: number
           updated_at?: string
+          variable_cost_per_person?: number
           workspace_id?: string
         }
         Relationships: [
