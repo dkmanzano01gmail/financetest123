@@ -31,6 +31,7 @@ import { Route as AuthenticatedAtelierStudentsRouteImport } from './routes/_auth
 import { Route as AuthenticatedAtelierRenovationRouteImport } from './routes/_authenticated/atelier.renovation'
 import { Route as AuthenticatedAtelierRawMaterialsRouteImport } from './routes/_authenticated/atelier.raw-materials'
 import { Route as AuthenticatedAtelierPiecePricingRouteImport } from './routes/_authenticated/atelier.piece-pricing'
+import { Route as AuthenticatedAtelierKilnsRouteImport } from './routes/_authenticated/atelier.kilns'
 import { Route as AuthenticatedAtelierFiringPricingRouteImport } from './routes/_authenticated/atelier.firing-pricing'
 import { Route as AuthenticatedAtelierClassMaterialsRouteImport } from './routes/_authenticated/atelier.class-materials'
 import { Route as AuthenticatedAtelierCashFlowRouteImport } from './routes/_authenticated/atelier.cash-flow'
@@ -155,6 +156,12 @@ const AuthenticatedAtelierPiecePricingRoute =
     path: '/atelier/piece-pricing',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAtelierKilnsRoute =
+  AuthenticatedAtelierKilnsRouteImport.update({
+    id: '/atelier/kilns',
+    path: '/atelier/kilns',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAtelierFiringPricingRoute =
   AuthenticatedAtelierFiringPricingRouteImport.update({
     id: '/atelier/firing-pricing',
@@ -200,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
   '/atelier/class-materials': typeof AuthenticatedAtelierClassMaterialsRoute
   '/atelier/firing-pricing': typeof AuthenticatedAtelierFiringPricingRoute
+  '/atelier/kilns': typeof AuthenticatedAtelierKilnsRoute
   '/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
   '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
@@ -227,6 +235,7 @@ export interface FileRoutesByTo {
   '/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
   '/atelier/class-materials': typeof AuthenticatedAtelierClassMaterialsRoute
   '/atelier/firing-pricing': typeof AuthenticatedAtelierFiringPricingRoute
+  '/atelier/kilns': typeof AuthenticatedAtelierKilnsRoute
   '/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
   '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
@@ -256,6 +265,7 @@ export interface FileRoutesById {
   '/_authenticated/atelier/cash-flow': typeof AuthenticatedAtelierCashFlowRoute
   '/_authenticated/atelier/class-materials': typeof AuthenticatedAtelierClassMaterialsRoute
   '/_authenticated/atelier/firing-pricing': typeof AuthenticatedAtelierFiringPricingRoute
+  '/_authenticated/atelier/kilns': typeof AuthenticatedAtelierKilnsRoute
   '/_authenticated/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
   '/_authenticated/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/_authenticated/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
@@ -285,6 +295,7 @@ export interface FileRouteTypes {
     | '/atelier/cash-flow'
     | '/atelier/class-materials'
     | '/atelier/firing-pricing'
+    | '/atelier/kilns'
     | '/atelier/piece-pricing'
     | '/atelier/raw-materials'
     | '/atelier/renovation'
@@ -312,6 +323,7 @@ export interface FileRouteTypes {
     | '/atelier/cash-flow'
     | '/atelier/class-materials'
     | '/atelier/firing-pricing'
+    | '/atelier/kilns'
     | '/atelier/piece-pricing'
     | '/atelier/raw-materials'
     | '/atelier/renovation'
@@ -340,6 +352,7 @@ export interface FileRouteTypes {
     | '/_authenticated/atelier/cash-flow'
     | '/_authenticated/atelier/class-materials'
     | '/_authenticated/atelier/firing-pricing'
+    | '/_authenticated/atelier/kilns'
     | '/_authenticated/atelier/piece-pricing'
     | '/_authenticated/atelier/raw-materials'
     | '/_authenticated/atelier/renovation'
@@ -510,6 +523,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAtelierPiecePricingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/atelier/kilns': {
+      id: '/_authenticated/atelier/kilns'
+      path: '/atelier/kilns'
+      fullPath: '/atelier/kilns'
+      preLoaderRoute: typeof AuthenticatedAtelierKilnsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/atelier/firing-pricing': {
       id: '/_authenticated/atelier/firing-pricing'
       path: '/atelier/firing-pricing'
@@ -558,6 +578,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAtelierCashFlowRoute: typeof AuthenticatedAtelierCashFlowRoute
   AuthenticatedAtelierClassMaterialsRoute: typeof AuthenticatedAtelierClassMaterialsRoute
   AuthenticatedAtelierFiringPricingRoute: typeof AuthenticatedAtelierFiringPricingRoute
+  AuthenticatedAtelierKilnsRoute: typeof AuthenticatedAtelierKilnsRoute
   AuthenticatedAtelierPiecePricingRoute: typeof AuthenticatedAtelierPiecePricingRoute
   AuthenticatedAtelierRawMaterialsRoute: typeof AuthenticatedAtelierRawMaterialsRoute
   AuthenticatedAtelierRenovationRoute: typeof AuthenticatedAtelierRenovationRoute
@@ -585,6 +606,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedAtelierClassMaterialsRoute,
   AuthenticatedAtelierFiringPricingRoute:
     AuthenticatedAtelierFiringPricingRoute,
+  AuthenticatedAtelierKilnsRoute: AuthenticatedAtelierKilnsRoute,
   AuthenticatedAtelierPiecePricingRoute: AuthenticatedAtelierPiecePricingRoute,
   AuthenticatedAtelierRawMaterialsRoute: AuthenticatedAtelierRawMaterialsRoute,
   AuthenticatedAtelierRenovationRoute: AuthenticatedAtelierRenovationRoute,
