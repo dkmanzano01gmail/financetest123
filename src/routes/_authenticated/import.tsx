@@ -517,7 +517,9 @@ function ImportPage() {
               {lastSummary.skipped} duplicadas puladas
             </Badge>
             <Badge variant="destructive">{lastSummary.invalid} inválidas</Badge>
-            <Badge variant="outline">{lastSummary.duplicates} duplicidades detectadas</Badge>
+            <Badge variant="outline">
+              {lastSummary.duplicates} duplicadas excluídas da importação
+            </Badge>
           </CardContent>
         </Card>
       )}
