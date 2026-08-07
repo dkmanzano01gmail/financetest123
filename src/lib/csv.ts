@@ -181,3 +181,26 @@ export function buildImportHashSource(input: {
   const desc = (description ?? "").trim().toLowerCase();
   return `${workspaceId}|${target}|${targetId}|${date ?? ""}|${absAmount}|${desc}`;
 }
+
+/**
+ * Normalize a description for content-based duplicate matching:
+ * accent-free, lowercase, punctuation-free, single-spaced.
+ */
+export function normalizeDescriptionKey(raw: string | null | undefined): string {
+  return (raw ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Deterministic content key: date + amount in cents + normalized description. */
+export function buildContentKey(
+  date: string | null | undefined,
+  amount: number | null | undefined,
+  description: string | null | undefined,
+): string {
+  const cents = amount == null ? "" : String(Math.round(Math.abs(amount) * 100));
+  return `${date ?? ""}|${cents}|${normalizeDescriptionKey(description)}`;
+}
