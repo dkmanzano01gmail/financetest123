@@ -543,7 +543,7 @@ function ImportPage() {
               </Badge>
               <Badge className="bg-amber-500/10 text-amber-700 hover:bg-amber-500/10">
                 <AlertTriangle className="w-3 h-3 mr-1" />
-                {summary.duplicates} duplicadas
+                {summary.duplicates} duplicadas excluídas
               </Badge>
               <Badge variant="outline">{summary.selected} selecionadas</Badge>
               <div className="ml-auto flex gap-2">
@@ -582,7 +582,7 @@ function ImportPage() {
                       <TableCell>
                         <Checkbox
                           checked={p.selected}
-                          disabled={!p.valid}
+                          disabled={!p.valid || p.duplicate || p.duplicateInBatch}
                           onCheckedChange={(v) =>
                             setPrepared((prev) =>
                               prev.map((x) => (x.index === p.index ? { ...x, selected: !!v } : x)),
@@ -614,11 +614,11 @@ function ImportPage() {
                       <TableCell>
                         {p.duplicate ? (
                           <Badge className="bg-amber-500/15 text-amber-700 hover:bg-amber-500/15">
-                            Já existe
+                            Já existe · excluída
                           </Badge>
                         ) : p.duplicateInBatch ? (
                           <Badge className="bg-amber-500/15 text-amber-700 hover:bg-amber-500/15">
-                            Repetida no arquivo
+                            Repetida no arquivo · excluída
                           </Badge>
                         ) : !p.valid ? (
                           <Badge variant="destructive" title={p.invalidReasons.join("; ")}>
