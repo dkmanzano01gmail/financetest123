@@ -37,6 +37,7 @@ import {
   guessColumn,
   decodeCsvBuffer,
   buildImportHashSource,
+  buildContentKey,
   type CsvRow,
 } from "@/lib/csv";
 import { formatCurrency } from "@/lib/format";
@@ -56,6 +57,7 @@ type PreparedRow = {
   hash: string;
   duplicate: boolean;
   duplicateInBatch: boolean;
+  contentKey: string;
   valid: boolean;
   selected: boolean;
   raw: CsvRow;
@@ -211,8 +213,11 @@ function ImportPage() {
         description,
       });
       const hash = await sha256Hex(hashSrc);
-      const duplicateInBatch = seen.has(hash);
+      const contentKey = buildContentKey(date, absAmount, description);
+      const batchKey = externalId ? `ext:${externalId}` : contentKey;
+      const duplicateInBatch = seen.has(hash) || seen.has(batchKey);
       seen.add(hash);
+      seen.add(batchKey);
       const valid = reasons.length === 0;
       items.push({
         index: i,
@@ -223,6 +228,7 @@ function ImportPage() {
         hash,
         duplicate: false,
         duplicateInBatch,
+        contentKey,
         valid,
         selected: valid && !duplicateInBatch,
         raw: r,
@@ -254,8 +260,54 @@ function ImportPage() {
         it.selected = false;
       }
     }
+
+    // Content-based check against transactions already registered without an
+    // import_hash (legacy or manual entries), restricted to this workspace and
+    // to the destination account/card, within the file's date range.
+    const dates = items.map((p) => p.date).filter((d): d is string => !!d).sort();
+    if (dates.length > 0) {
+      const minDate = dates[0];
+      const maxDate = dates[dates.length - 1];
+      const existingKeys = new Set<string>();
+      const pageSize = 1000;
+      for (let from = 0; ; from += pageSize) {
+        let q = supabase
+          .from("transactions")
+          .select("date,amount,description")
+          .eq("workspace_id", wsId!)
+          .gte("date", minDate)
+          .lte("date", maxDate)
+          .order("date", { ascending: true })
+          .range(from, from + pageSize - 1);
+        q =
+          target === "account"
+            ? q.eq("account_id", targetId)
+            : q.eq("credit_card_id", targetId);
+        const { data, error } = await q;
+        if (error) {
+          toast.error(error.message);
+          return;
+        }
+        for (const row of data ?? []) {
+          existingKeys.add(
+            buildContentKey((row as any).date, Number((row as any).amount), (row as any).description),
+          );
+        }
+        if (!data || data.length < pageSize) break;
+      }
+      for (const it of items) {
+        if (!it.duplicate && existingKeys.has(it.contentKey)) {
+          it.duplicate = true;
+          it.selected = false;
+        }
+      }
+    }
+
     setPrepared(items);
-    toast.success(`Prévia gerada: ${items.length} linhas`);
+    const dupCount = items.filter((p) => p.duplicate || p.duplicateInBatch).length;
+    toast.success(
+      `Prévia gerada: ${items.length} linhas · ${dupCount} duplicadas excluídas da importação`,
+    );
   }
 
   const summary = useMemo(
