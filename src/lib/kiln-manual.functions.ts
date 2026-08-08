@@ -136,9 +136,9 @@ export const analyzeKilnManual = createServerFn({ method: "POST" })
     try {
       resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Lovable-API-Key": apiKey },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: "google/gemini-3.6-flash",
+          model: "google/gemini-3-flash-preview",
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content },
