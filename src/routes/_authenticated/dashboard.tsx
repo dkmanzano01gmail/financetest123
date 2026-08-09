@@ -21,22 +21,12 @@ import { dashboardSummary } from "@/lib/orna-logic";
 import {
   ArrowDownRight,
   ArrowUpRight,
+  CalendarCheck,
   Wallet,
   TrendingUp,
   Receipt,
+  Users,
 } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-  Cell,
-  PieChart,
-  Pie,
-} from "recharts";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
@@ -45,6 +35,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 const NOW = new Date();
 
 function Dashboard() {
+  const navigate = Route.useNavigate();
   const { workspace } = useCurrentWorkspace();
   const [month, setMonth] = useState(NOW.getMonth() + 1);
   const [year, setYear] = useState(NOW.getFullYear());
@@ -62,7 +53,7 @@ function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
-        .select("id,date,type,amount,description,counterparty,status,categories!transactions_category_id_fkey(name,color)")
+        .select("id,date,type,amount,description,counterparty,status,category_id,categories!transactions_category_id_fkey(name,color)")
         .eq("workspace_id", wsId!)
         .in("year", [year, year - 1]);
       if (error) throw error;
@@ -103,21 +94,20 @@ function Dashboard() {
     );
   }, [accounts]);
 
-  const monthlySeries = useMemo(
-    () =>
-      summary.monthly.map((item) => ({
-        month: monthLabel(item.month),
-        income: item.income,
-        expense: item.expense,
-        balance: item.balance,
-      })),
-    [summary.monthly],
-  );
-
   const expenseByCategory = summary.expenseCategories;
   const incomeByCategory = summary.incomeCategories;
-  const byCategory = expenseByCategory;
-  const topCategory = byCategory[0];
+
+  function openCategory(type: "income" | "expense", category: string) {
+    navigate({
+      to: "/transactions",
+      search: {
+        month: String(month),
+        year: String(year),
+        type,
+        category,
+      },
+    });
+  }
 
   if (!workspace)
     return (
@@ -254,106 +244,47 @@ function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Entradas vs Saídas em {year}</CardTitle>
-          </CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlySeries} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="month" stroke="var(--muted-foreground)" fontSize={12} />
-                <YAxis
-                  stroke="var(--muted-foreground)"
-                  fontSize={12}
-                  tickFormatter={(v) =>
-                    privacy ? "•" : Intl.NumberFormat("pt-BR", { notation: "compact" }).format(v)
-                  }
-                />
-                <Tooltip
-                  formatter={(v: number) => formatCurrency(v, currency, privacy)}
-                  contentStyle={{
-                    background: "var(--card)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 12,
-                  }}
-                />
-                <Bar dataKey="income" name={t.income} fill="var(--income)" radius={[6, 6, 0, 0]} />
-                <Bar
-                  dataKey="expense"
-                  name={t.expense}
-                  fill="var(--expense)"
-                  radius={[6, 6, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t.expense} por categoria</CardTitle>
-          </CardHeader>
-          <CardContent className="h-72">
-            <CategoryPie data={expenseByCategory} currency={currency} privacy={privacy} />
-          </CardContent>
-        </Card>
+      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <AudienceCard
+          icon={Users}
+          label="Alunos pagantes — aulas regulares"
+          value={summary.audience.regularPayingStudents}
+          sub={`${summary.audience.regularPayments} recebimento(s) · ${formatCurrency(summary.audience.regularRevenue, currency, privacy)}`}
+          onClick={() => openCategory("income", "Aulas regulares")}
+        />
+        <AudienceCard
+          icon={CalendarCheck}
+          label="Participantes de workshops no mês"
+          value={summary.audience.workshopParticipants}
+          sub={`${summary.audience.workshopPayments} recebimento(s) · estimativa por R$ 290 com até 10% de desconto`}
+          onClick={() => openCategory("income", "Workshops")}
+        />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t.income} por categoria</CardTitle>
-          </CardHeader>
-          <CardContent className="h-64">
-            <CategoryPie data={incomeByCategory} currency={currency} privacy={privacy} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Maior categoria de {t.expense.toLowerCase()}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {topCategory ? (
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full" style={{ background: topCategory.color }} />
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{topCategory.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {((topCategory.value / totals.expense) * 100 || 0).toFixed(1)}% do total
-                  </div>
-                </div>
-                <div className="font-mono text-xl">
-                  {formatCurrency(topCategory.value, currency, privacy)}
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground">Sem dados.</div>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Despesas do mês × média dos outros meses</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {summary.expenseBenchmarks.slice(0, 6).map((item) => (
-              <div key={item.name} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-border/60 pb-2 text-sm last:border-0">
-                <span className="truncate">{item.name}</span>
-                <span className="font-mono">{formatCurrency(item.current, currency, privacy)}</span>
-                <span className={`min-w-20 text-right text-xs ${item.difference > 0 ? "text-expense" : "text-income"}`}>
-                  {item.average ? `${item.differencePct >= 0 ? "+" : ""}${(item.differencePct * 100).toFixed(0)}%` : "sem média"}
-                </span>
-              </div>
-            ))}
-            {!summary.expenseBenchmarks.length && (
-              <div className="text-sm text-muted-foreground">Sem histórico suficiente para comparação.</div>
-            )}
-          </CardContent>
-        </Card>
+      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <CategoryComparison
+          title={`${t.income} por categoria`}
+          description="Valor do mês comparado com a média dos meses anteriores."
+          tone="income"
+          data={summary.incomeBenchmarks}
+          colors={incomeByCategory}
+          currency={currency}
+          privacy={privacy}
+          onSelect={(category) => openCategory("income", category)}
+        />
+        <CategoryComparison
+          title={`${t.expense} por categoria`}
+          description="Valor do mês comparado com a média dos meses anteriores."
+          tone="expense"
+          data={summary.expenseBenchmarks}
+          colors={expenseByCategory}
+          currency={currency}
+          privacy={privacy}
+          onSelect={(category) => openCategory("expense", category)}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -463,45 +394,156 @@ function MetricCard({
   );
 }
 
-function CategoryPie({
+function AudienceCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  onClick,
+}: {
+  icon: any;
+  label: string;
+  value: number;
+  sub: string;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className="text-left" onClick={onClick}>
+      <Card className="h-full transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md">
+        <CardContent className="flex h-full items-center gap-4 p-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+            <div className="mt-1 font-mono text-2xl">{value}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{sub}</div>
+          </div>
+          <span className="text-xs font-medium text-primary">Ver transações</span>
+        </CardContent>
+      </Card>
+    </button>
+  );
+}
+
+type CategoryBenchmark = {
+  name: string;
+  current: number;
+  average: number;
+  difference: number;
+  differencePct: number;
+};
+
+function CategoryComparison({
+  title,
+  description,
+  tone,
   data,
+  colors,
   currency,
   privacy,
+  onSelect,
 }: {
-  data: Array<{ name: string; color: string; value: number }>;
+  title: string;
+  description: string;
+  tone: "income" | "expense";
+  data: CategoryBenchmark[];
+  colors: Array<{ name: string; color: string; value: number }>;
   currency: string;
   privacy: boolean;
+  onSelect: (category: string) => void;
 }) {
-  if (data.length === 0)
-    return (
-      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-        Sem dados no período.
-      </div>
-    );
+  const maxValue = Math.max(1, ...data.map((item) => Math.max(item.current, item.average)));
+  const colorMap = new Map(colors.map((item) => [item.name, item.color]));
+  const toneClass = tone === "income" ? "bg-income" : "bg-expense";
+
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <PieChart>
-        <Pie
-          data={data}
-          dataKey="value"
-          nameKey="name"
-          innerRadius={40}
-          outerRadius={75}
-          paddingAngle={2}
-        >
-          {data.map((c, i) => (
-            <Cell key={i} fill={c.color} />
-          ))}
-        </Pie>
-        <Tooltip
-          formatter={(v: number) => formatCurrency(v, currency, privacy)}
-          contentStyle={{
-            background: "var(--card)",
-            border: "1px solid var(--border)",
-            borderRadius: 12,
-          }}
-        />
-      </PieChart>
-    </ResponsiveContainer>
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">{title}</CardTitle>
+        <p className="text-xs text-muted-foreground">{description}</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className={`h-2.5 w-2.5 rounded-full ${toneClass}`} /> Mês selecionado
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/55" /> Média dos meses anteriores
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        {data.map((item) => {
+          const currentWidth = item.current ? Math.max(2, (item.current / maxValue) * 100) : 0;
+          const averageWidth = item.average ? Math.max(2, (item.average / maxValue) * 100) : 0;
+          const differenceTone =
+            item.difference === 0
+              ? "text-muted-foreground"
+              : tone === "income"
+                ? item.difference > 0
+                  ? "text-income"
+                  : "text-expense"
+                : item.difference > 0
+                  ? "text-expense"
+                  : "text-income";
+          return (
+            <button
+              key={item.name}
+              type="button"
+              onClick={() => onSelect(item.name)}
+              className="group w-full rounded-xl border border-transparent px-2 py-3 text-left transition hover:border-border hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`Abrir transações da categoria ${item.name}`}
+            >
+              <div className="grid gap-2 sm:grid-cols-[minmax(135px,0.7fr)_minmax(180px,1.7fr)_auto] sm:items-center">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor:
+                          colorMap.get(item.name) ||
+                          (tone === "income" ? "var(--income)" : "var(--expense)"),
+                      }}
+                    />
+                    <span className="truncate text-sm font-semibold">{item.name}</span>
+                  </div>
+                  <div className={`mt-1 text-xs ${differenceTone}`}>
+                    {item.average
+                      ? `${item.difference >= 0 ? "+" : "−"}${formatCurrency(Math.abs(item.difference), currency, privacy)} vs média`
+                      : "Sem histórico anterior"}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-full rounded-full ${toneClass}`}
+                      style={{ width: `${currentWidth}%` }}
+                    />
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-muted-foreground/55"
+                      style={{ width: `${averageWidth}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="font-mono text-sm font-semibold">
+                    {formatCurrency(item.current, currency, privacy)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    média {formatCurrency(item.average, currency, privacy)}
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+        {!data.length && (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            Sem dados no período e sem histórico anterior.
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

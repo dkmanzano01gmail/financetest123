@@ -266,6 +266,35 @@ export function dashboardSummary(
 
   const currentSummary = summarize(current);
   const previousSummary = summarize(previous);
+
+  const normalizeCategory = (value: string | null | undefined) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  const regularPayments = current.filter(
+    (transaction) =>
+      transaction.type === "income" &&
+      normalizeCategory(transaction.categories?.name) === "aulas regulares",
+  );
+  const regularPayers = new Set(
+    regularPayments.map((transaction) => {
+      const identifiedPayer = transaction.counterparty || transaction.description;
+      return identifiedPayer ? normalizeCategory(identifiedPayer) : transaction.id;
+    }),
+  );
+  const workshopPayments = current.filter(
+    (transaction) =>
+      transaction.type === "income" &&
+      normalizeCategory(transaction.categories?.name).replace(/s$/, "") === "workshop",
+  );
+  const workshopParticipants = workshopPayments.reduce((total, transaction) => {
+    const amount = Math.abs(numberValue(transaction.amount));
+    if (!amount) return total;
+    return total + Math.max(1, Math.round(amount / 290));
+  }, 0);
+
   const categoryBenchmarks = (type: MoneyFlowType) => {
     const currentMap = new Map<string, number>();
     const historyMap = new Map<string, number>();
@@ -275,14 +304,15 @@ export function dashboardSummary(
       const category = transaction.categories?.name || "Sem categoria";
       currentMap.set(category, (currentMap.get(category) || 0) + Math.abs(numberValue(transaction.amount)));
     }
+    const selectedPeriod = selectedYear * 12 + selectedMonth;
     for (const transaction of active) {
       const date = parseDateKey(transaction.date);
+      const transactionPeriod = date.getFullYear() * 12 + (date.getMonth() + 1);
       if (
         transaction.type !== type ||
-        date.getFullYear() !== selectedYear ||
-        date.getMonth() + 1 === selectedMonth
+        transactionPeriod >= selectedPeriod
       ) continue;
-      months.add(date.getMonth() + 1);
+      months.add(transactionPeriod);
       const category = transaction.categories?.name || "Sem categoria";
       historyMap.set(category, (historyMap.get(category) || 0) + Math.abs(numberValue(transaction.amount)));
     }
@@ -339,6 +369,20 @@ export function dashboardSummary(
     },
     incomeBenchmarks: categoryBenchmarks("income"),
     expenseBenchmarks: categoryBenchmarks("expense"),
+    audience: {
+      regularPayingStudents: regularPayers.size,
+      regularPayments: regularPayments.length,
+      regularRevenue: regularPayments.reduce(
+        (sum, transaction) => sum + Math.abs(numberValue(transaction.amount)),
+        0,
+      ),
+      workshopParticipants,
+      workshopPayments: workshopPayments.length,
+      workshopRevenue: workshopPayments.reduce(
+        (sum, transaction) => sum + Math.abs(numberValue(transaction.amount)),
+        0,
+      ),
+    },
     topIncome: [...current]
       .filter((tx) => tx.type === "income")
       .sort((a, b) => numberValue(b.amount) - numberValue(a.amount))

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { useCustomizedUI } from "@/hooks/use-customized-ui";
@@ -44,20 +44,51 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+type TransactionSearch = {
+  month?: string;
+  year?: string;
+  type?: "income" | "expense";
+  category?: string;
+};
+
 export const Route = createFileRoute("/_authenticated/transactions")({
+  validateSearch: (search: Record<string, unknown>): TransactionSearch => ({
+    month:
+      typeof search.month === "string" && /^(?:[1-9]|1[0-2])$/.test(search.month)
+        ? search.month
+        : undefined,
+    year:
+      typeof search.year === "string" && /^\d{4}$/.test(search.year)
+        ? search.year
+        : undefined,
+    type:
+      search.type === "income" || search.type === "expense" ? search.type : undefined,
+    category: typeof search.category === "string" ? search.category.slice(0, 120) : undefined,
+  }),
   component: TransactionsPage,
 });
 
 const NOW = new Date();
 
+function normalizeCategoryName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/s$/, "");
+}
+
 function TransactionsPage() {
+  const routeSearch = Route.useSearch();
   const { workspace } = useCurrentWorkspace();
   const qc = useQueryClient();
-  const [month, setMonth] = useState<string>("all");
-  const [year, setYear] = useState<string>("all");
-  const [type, setType] = useState<string>("all");
+  const [month, setMonth] = useState<string>(routeSearch.month ?? "all");
+  const [year, setYear] = useState<string>(routeSearch.year ?? "all");
+  const [type, setType] = useState<string>(routeSearch.type ?? "all");
   const [search, setSearch] = useState("");
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
+  const [requestedCategory, setRequestedCategory] = useState(routeSearch.category ?? null);
   const [open, setOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -118,20 +149,43 @@ function TransactionsPage() {
     [filterableTransactions],
   );
 
+  useEffect(() => {
+    if (!requestedCategory || !categorySummary.length) return;
+    const requested = normalizeCategoryName(requestedCategory);
+    const match = categorySummary.find(
+      (category) => normalizeCategoryName(category.name) === requested,
+    );
+    if (match) {
+      setSelectedCategoryKey(match.key);
+      setRequestedCategory(null);
+    }
+  }, [categorySummary, requestedCategory]);
+
   const filtered = useMemo(
-    () =>
-      selectedCategoryKey
-        ? filterableTransactions.filter(
-            (transaction) => transactionCategoryKey(transaction) === selectedCategoryKey,
-          )
-        : filterableTransactions,
-    [filterableTransactions, selectedCategoryKey],
+    () => {
+      if (selectedCategoryKey) {
+        return filterableTransactions.filter(
+          (transaction) => transactionCategoryKey(transaction) === selectedCategoryKey,
+        );
+      }
+      if (requestedCategory) {
+        const requested = normalizeCategoryName(requestedCategory);
+        return filterableTransactions.filter(
+          (transaction) =>
+            normalizeCategoryName(transaction.categories?.name || "Sem categoria") === requested,
+        );
+      }
+      return filterableTransactions;
+    },
+    [filterableTransactions, requestedCategory, selectedCategoryKey],
   );
 
-  const selectedCategory = useMemo(
-    () => categorySummary.find((category) => category.key === selectedCategoryKey) ?? null,
-    [categorySummary, selectedCategoryKey],
-  );
+  const hasCategoryFilter = Boolean(selectedCategoryKey || requestedCategory);
+
+  function clearCategorySelection() {
+    setSelectedCategoryKey(null);
+    setRequestedCategory(null);
+  }
 
   const filteredTotals = useMemo(
     () =>
@@ -217,7 +271,7 @@ function TransactionsPage() {
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
-              setSelectedCategoryKey(null);
+              clearCategorySelection();
             }}
             className="max-w-xs"
           />
@@ -225,7 +279,7 @@ function TransactionsPage() {
             value={month}
             onValueChange={(value) => {
               setMonth(value);
-              setSelectedCategoryKey(null);
+              clearCategorySelection();
             }}
           >
             <SelectTrigger className="w-32">
@@ -244,7 +298,7 @@ function TransactionsPage() {
             value={year}
             onValueChange={(value) => {
               setYear(value);
-              setSelectedCategoryKey(null);
+              clearCategorySelection();
             }}
           >
             <SelectTrigger className="w-24">
@@ -263,7 +317,7 @@ function TransactionsPage() {
             value={type}
             onValueChange={(value) => {
               setType(value);
-              setSelectedCategoryKey(null);
+              clearCategorySelection();
             }}
           >
             <SelectTrigger className="w-36">
@@ -290,7 +344,7 @@ function TransactionsPage() {
                 if (fc.type) setType(String(fc.type));
                 if (fc.month) setMonth(String(fc.month));
                 if (fc.year) setYear(String(fc.year));
-                setSelectedCategoryKey(null);
+                clearCategorySelection();
                 toast.success(`Filtro "${f.name}" aplicado`);
               }}
               className="text-xs px-2.5 py-1 rounded-full border bg-card hover:bg-accent transition"
@@ -301,7 +355,7 @@ function TransactionsPage() {
         </div>
       )}
 
-      {categorySummary.length > 0 && (
+      {(categorySummary.length > 0 || hasCategoryFilter) && (
         <section className="mb-4" aria-labelledby="category-summary-title">
           <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
             <div>
@@ -314,12 +368,12 @@ function TransactionsPage() {
             </div>
             <div className="flex items-center gap-2">
               <div className="text-xs text-muted-foreground">
-                {selectedCategoryKey
+                {hasCategoryFilter
                   ? `${filtered.length} de ${filterableTransactions.length} transações`
                   : `${filtered.length} ${filtered.length === 1 ? "transação" : "transações"}`}
               </div>
-              {selectedCategory && (
-                <Button variant="ghost" size="sm" onClick={() => setSelectedCategoryKey(null)}>
+              {hasCategoryFilter && (
+                <Button variant="ghost" size="sm" onClick={clearCategorySelection}>
                   Mostrar todas
                 </Button>
               )}
@@ -333,11 +387,12 @@ function TransactionsPage() {
                 type="button"
                 aria-pressed={selectedCategoryKey === category.key}
                 aria-label={`Filtrar por ${category.name}`}
-                onClick={() =>
+                onClick={() => {
+                  setRequestedCategory(null);
                   setSelectedCategoryKey((current) =>
                     current === category.key ? null : category.key,
-                  )
-                }
+                  );
+                }}
                 className={`overflow-hidden rounded-xl border bg-card/80 text-left text-card-foreground shadow transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                   selectedCategoryKey === category.key
                     ? "border-primary bg-primary/5 ring-2 ring-primary/30"
