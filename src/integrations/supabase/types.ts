@@ -519,6 +519,7 @@ export type Database = {
           clay_type: string | null
           clay_weight_kg: number
           comments: string | null
+          completed_at: string | null
           created_at: string
           depth_cm: number
           glaze_cone: string | null
@@ -539,6 +540,8 @@ export type Database = {
           payment_status: string
           piece_name: string | null
           quantity: number
+          production_status: string
+          student_id: string | null
           student_name: string
           total_cost: number
           updated_at: string
@@ -556,6 +559,7 @@ export type Database = {
           clay_type?: string | null
           clay_weight_kg?: number
           comments?: string | null
+          completed_at?: string | null
           created_at?: string
           depth_cm?: number
           glaze_cone?: string | null
@@ -576,6 +580,8 @@ export type Database = {
           payment_status?: string
           piece_name?: string | null
           quantity?: number
+          production_status?: string
+          student_id?: string | null
           student_name: string
           total_cost?: number
           updated_at?: string
@@ -593,6 +599,7 @@ export type Database = {
           clay_type?: string | null
           clay_weight_kg?: number
           comments?: string | null
+          completed_at?: string | null
           created_at?: string
           depth_cm?: number
           glaze_cone?: string | null
@@ -613,6 +620,8 @@ export type Database = {
           payment_status?: string
           piece_name?: string | null
           quantity?: number
+          production_status?: string
+          student_id?: string | null
           student_name?: string
           total_cost?: number
           updated_at?: string
@@ -625,6 +634,13 @@ export type Database = {
             columns: ["kiln_id"]
             isOneToOne: false
             referencedRelation: "kilns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_materials_usage_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
             referencedColumns: ["id"]
           },
           {
