@@ -57,6 +57,8 @@ export const Route = createFileRoute("/_authenticated/atelier/cash-flow")({
 
 const sb = supabase as any;
 const TODAY = new Date();
+type MovementSeriesKey = "actualIncome" | "actualExpense" | "projectedIncome" | "projectedExpense";
+
 const emptyForm = () => ({
   entry_date: new Date().toISOString().slice(0, 10),
   specific_date: new Date().toISOString().slice(0, 10),
@@ -85,6 +87,14 @@ function CashFlowPage() {
   const [form, setForm] = useState(emptyForm());
   const [balOpen, setBalOpen] = useState(false);
   const [balForm, setBalForm] = useState({ starting_balance: "0" });
+  const [visibleMovementSeries, setVisibleMovementSeries] = useState<
+    Record<MovementSeriesKey, boolean>
+  >({
+    actualIncome: true,
+    actualExpense: true,
+    projectedIncome: false,
+    projectedExpense: false,
+  });
   const selectedMonthStart = `${year}-${String(month).padStart(2, "0")}-01`;
 
   const { data: entries = [], isLoading: entriesLoading } = useQuery({
@@ -209,6 +219,7 @@ function CashFlowPage() {
         ...day,
         label: day.dayLabel,
         actualExpenseBar: day.actualExpense ? -day.actualExpense : 0,
+        projectedExpenseBar: day.projectedExpense ? -day.projectedExpense : 0,
         actualForecastBalance: day.actualForecastBalance,
       })),
     [projection],
@@ -328,6 +339,10 @@ function CashFlowPage() {
   }
 
   const busy = entriesLoading || txLoading;
+
+  function toggleMovementSeries(series: MovementSeriesKey) {
+    setVisibleMovementSeries((current) => ({ ...current, [series]: !current[series] }));
+  }
 
   return (
     <PageContainer>
@@ -506,9 +521,56 @@ function CashFlowPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Movimentação e saldo por dia</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Barras mostram entradas e saídas realizadas. Linhas mostram o saldo previsto e o saldo
-            recalculado com o realizado. Passe o mouse em um dia para ver cada transação.
+            Escolha abaixo quais movimentações deseja comparar. A linha azul tracejada representa o
+            saldo previsto; a linha verde contínua mostra o saldo recalculado com o realizado.
           </p>
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <span className="mr-1 text-xs font-medium text-muted-foreground">Exibir:</span>
+            <Button
+              type="button"
+              size="sm"
+              variant={visibleMovementSeries.actualIncome ? "secondary" : "outline"}
+              aria-pressed={visibleMovementSeries.actualIncome}
+              onClick={() => toggleMovementSeries("actualIncome")}
+              className="h-8 gap-2 text-xs"
+            >
+              <span className="h-2.5 w-2.5 rounded-sm bg-income" />
+              Entradas realizadas
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={visibleMovementSeries.actualExpense ? "secondary" : "outline"}
+              aria-pressed={visibleMovementSeries.actualExpense}
+              onClick={() => toggleMovementSeries("actualExpense")}
+              className="h-8 gap-2 text-xs"
+            >
+              <span className="h-2.5 w-2.5 rounded-sm bg-expense" />
+              Saídas realizadas
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={visibleMovementSeries.projectedIncome ? "secondary" : "outline"}
+              aria-pressed={visibleMovementSeries.projectedIncome}
+              onClick={() => toggleMovementSeries("projectedIncome")}
+              className="h-8 gap-2 border-dashed text-xs"
+            >
+              <span className="h-2.5 w-2.5 rounded-sm border border-dashed border-income bg-income/25" />
+              Receitas projetadas
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={visibleMovementSeries.projectedExpense ? "secondary" : "outline"}
+              aria-pressed={visibleMovementSeries.projectedExpense}
+              onClick={() => toggleMovementSeries("projectedExpense")}
+              className="h-8 gap-2 border-dashed text-xs"
+            >
+              <span className="h-2.5 w-2.5 rounded-sm border border-dashed border-expense bg-expense/25" />
+              Despesas projetadas
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="h-[26rem] p-3">
           {busy ? (
@@ -529,32 +591,66 @@ function CashFlowPage() {
                   }
                 />
                 <Tooltip
-                  content={<CashFlowTooltip currency={currency} privacy={privacy} />}
+                  content={
+                    <CashFlowTooltip
+                      currency={currency}
+                      privacy={privacy}
+                      visibleMovementSeries={visibleMovementSeries}
+                    />
+                  }
                   cursor={{ fill: "var(--muted)", opacity: 0.35 }}
                 />
                 <Legend verticalAlign="top" height={36} />
                 <ReferenceLine y={0} stroke="var(--destructive)" strokeDasharray="4 4" />
-                <Bar
-                  dataKey="actualIncome"
-                  name="Entradas realizadas"
-                  fill="var(--income)"
-                  opacity={0.72}
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="actualExpenseBar"
-                  name="Saídas realizadas"
-                  fill="var(--expense)"
-                  opacity={0.72}
-                  radius={[0, 0, 4, 4]}
-                />
+                {visibleMovementSeries.actualIncome && (
+                  <Bar
+                    dataKey="actualIncome"
+                    name="Entradas realizadas"
+                    fill="var(--income)"
+                    opacity={0.76}
+                    radius={[4, 4, 0, 0]}
+                  />
+                )}
+                {visibleMovementSeries.actualExpense && (
+                  <Bar
+                    dataKey="actualExpenseBar"
+                    name="Saídas realizadas"
+                    fill="var(--expense)"
+                    opacity={0.76}
+                    radius={[0, 0, 4, 4]}
+                  />
+                )}
+                {visibleMovementSeries.projectedIncome && (
+                  <Bar
+                    dataKey="projectedIncome"
+                    name="Receitas projetadas"
+                    fill="var(--income)"
+                    stroke="var(--income)"
+                    strokeDasharray="4 3"
+                    opacity={0.28}
+                    radius={[4, 4, 0, 0]}
+                  />
+                )}
+                {visibleMovementSeries.projectedExpense && (
+                  <Bar
+                    dataKey="projectedExpenseBar"
+                    name="Despesas projetadas"
+                    fill="var(--expense)"
+                    stroke="var(--expense)"
+                    strokeDasharray="4 3"
+                    opacity={0.28}
+                    radius={[0, 0, 4, 4]}
+                  />
+                )}
                 <Line
                   type="monotone"
                   dataKey="projectedBalance"
                   name="Saldo previsto"
-                  stroke="var(--primary)"
-                  strokeWidth={2}
+                  stroke="#2563eb"
+                  strokeWidth={3}
+                  strokeDasharray="9 6"
                   dot={false}
+                  activeDot={{ r: 5, fill: "#2563eb", stroke: "white", strokeWidth: 2 }}
                 />
                 <Line
                   type="monotone"
@@ -894,11 +990,19 @@ function CashFlowTooltip({
   payload,
   currency,
   privacy,
+  visibleMovementSeries,
 }: {
   active?: boolean;
-  payload?: Array<{ payload?: CashFlowDay & { label: string; actualExpenseBar: number } }>;
+  payload?: Array<{
+    payload?: CashFlowDay & {
+      label: string;
+      actualExpenseBar: number;
+      projectedExpenseBar: number;
+    };
+  }>;
   currency: string;
   privacy: boolean;
+  visibleMovementSeries: Record<MovementSeriesKey, boolean>;
 }) {
   const day = payload?.[0]?.payload;
   if (!active || !day) return null;
@@ -914,20 +1018,42 @@ function CashFlowTooltip({
       <div className="mb-2 border-b pb-2">
         <div className="font-semibold capitalize">{dateLabel}</div>
         <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <TooltipMetric
-            label="Entradas realizadas"
-            value={day.actualIncome}
-            currency={currency}
-            privacy={privacy}
-            tone="income"
-          />
-          <TooltipMetric
-            label="Saídas realizadas"
-            value={day.actualExpense}
-            currency={currency}
-            privacy={privacy}
-            tone="expense"
-          />
+          {visibleMovementSeries.actualIncome && (
+            <TooltipMetric
+              label="Entradas realizadas"
+              value={day.actualIncome}
+              currency={currency}
+              privacy={privacy}
+              tone="income"
+            />
+          )}
+          {visibleMovementSeries.actualExpense && (
+            <TooltipMetric
+              label="Saídas realizadas"
+              value={day.actualExpense}
+              currency={currency}
+              privacy={privacy}
+              tone="expense"
+            />
+          )}
+          {visibleMovementSeries.projectedIncome && (
+            <TooltipMetric
+              label="Receitas projetadas"
+              value={day.projectedIncome}
+              currency={currency}
+              privacy={privacy}
+              tone="income"
+            />
+          )}
+          {visibleMovementSeries.projectedExpense && (
+            <TooltipMetric
+              label="Despesas projetadas"
+              value={day.projectedExpense}
+              currency={currency}
+              privacy={privacy}
+              tone="expense"
+            />
+          )}
           <TooltipMetric
             label="Saldo previsto"
             value={day.projectedBalance}
@@ -944,21 +1070,24 @@ function CashFlowTooltip({
       </div>
 
       <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
-        <TooltipEventList
-          title="Transações realizadas"
-          events={day.actualEvents}
-          emptyMessage="Nenhuma transação realizada neste dia."
-          currency={currency}
-          privacy={privacy}
-        />
-        {day.projectedEvents.length > 0 && (
+        {(visibleMovementSeries.actualIncome || visibleMovementSeries.actualExpense) && (
           <TooltipEventList
-            title="Eventos previstos"
-            events={day.projectedEvents}
+            title="Transações realizadas"
+            events={day.actualEvents}
+            emptyMessage="Nenhuma transação realizada neste dia."
             currency={currency}
             privacy={privacy}
           />
         )}
+        {(visibleMovementSeries.projectedIncome || visibleMovementSeries.projectedExpense) &&
+          day.projectedEvents.length > 0 && (
+            <TooltipEventList
+              title="Eventos previstos"
+              events={day.projectedEvents}
+              currency={currency}
+              privacy={privacy}
+            />
+          )}
       </div>
     </div>
   );
