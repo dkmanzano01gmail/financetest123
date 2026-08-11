@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { sortByPrecedence } from "@/lib/customization-schema";
+import { resolveVisibility, sortByPrecedence } from "@/lib/customization-schema";
 
 /**
  * Reads runtime customizations and exposes ready-to-consume shapes:
@@ -37,24 +37,9 @@ export function useCustomizedUI(workspaceId?: string) {
   const rows = q.data ?? [];
 
   const hiddenNav = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of rows) {
-      const cfg = r.configuration_json ?? {};
-      // Accept both the canonical shape and a nested { nav_visibility: {...} } shape
-      // that older AI responses produced.
-      const nested = cfg.nav_visibility ?? null;
-      const isNavType =
-        r.type === "nav_visibility" ||
-        (nested && typeof nested === "object") ||
-        (typeof cfg.menu_key === "string" && cfg.card_id == null);
-      if (!isNavType) continue;
-      const payload = nested && typeof nested === "object" ? nested : cfg;
-      if (payload.visible === false && typeof payload.menu_key === "string") {
-        s.add(payload.menu_key);
-      }
-    }
-    return s;
-  }, [rows]);
+    const visibility = resolveVisibility(rows, "nav_visibility", "menu_key", userId);
+    return new Set([...visibility].filter(([, visible]) => !visible).map(([key]) => key));
+  }, [rows, userId]);
 
   const navOrder = useMemo<string[]>(() => {
     const r = rows.find((x) => x.type === "nav_reorder");
@@ -63,15 +48,9 @@ export function useCustomizedUI(workspaceId?: string) {
   }, [rows]);
 
   const hiddenCards = useMemo(() => {
-    const s = new Set<string>();
-    for (const r of rows) {
-      if (r.type === "card_visibility" && r.configuration_json?.visible === false) {
-        const k = r.configuration_json?.card_id;
-        if (typeof k === "string") s.add(k);
-      }
-    }
-    return s;
-  }, [rows]);
+    const visibility = resolveVisibility(rows, "card_visibility", "card_id", userId);
+    return new Set([...visibility].filter(([, visible]) => !visible).map(([key]) => key));
+  }, [rows, userId]);
 
   const cardOrder = useMemo<string[]>(() => {
     const r = rows.find((x) => x.type === "dashboard_widget_order");

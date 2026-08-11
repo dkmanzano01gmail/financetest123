@@ -2,7 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { sortByPrecedence } from "@/lib/customization-schema";
+import {
+  mergeLabelOverrides,
+  resolveVisibility,
+  sortByPrecedence,
+} from "@/lib/customization-schema";
 import type { LabelMap } from "@/lib/labels";
 
 export type Customization = {
@@ -45,25 +49,18 @@ export function useCustomizations(workspaceId: string | undefined) {
   );
 
   const labelOverrides = useMemo<Partial<LabelMap>>(() => {
-    const acc: Partial<LabelMap> = {};
-    for (const c of active) {
-      if (c.type === "label_rename") {
-        const map = c.configuration_json?.labels ?? {};
-        Object.assign(acc, map);
-      }
-    }
-    return acc;
-  }, [active]);
+    return mergeLabelOverrides((query.data ?? []) as any[], userId);
+  }, [query.data, userId]);
 
   const hiddenCards = useMemo(() => {
-    const set = new Set<string>();
-    for (const c of active) {
-      if (c.type === "card_visibility" && c.configuration_json?.visible === false) {
-        set.add(String(c.configuration_json?.card_id ?? ""));
-      }
-    }
-    return set;
-  }, [active]);
+    const visibility = resolveVisibility(
+      (query.data ?? []) as any[],
+      "card_visibility",
+      "card_id",
+      userId,
+    );
+    return new Set([...visibility].filter(([, visible]) => !visible).map(([key]) => key));
+  }, [query.data, userId]);
 
   const savedFilters = useMemo(() => active.filter((c) => c.type === "saved_filter"), [active]);
 

@@ -90,9 +90,7 @@ export const LabelRenameConfig = z
   })
   .strict();
 
-export const NavVisibilityConfig = z
-  .object({ menu_key: navKey, visible: z.boolean() })
-  .strict();
+export const NavVisibilityConfig = z.object({ menu_key: navKey, visible: z.boolean() }).strict();
 
 export const NavReorderConfig = z.object({ order: uniqueArray(navKey) }).strict();
 
@@ -156,7 +154,10 @@ export function validateAutoOperation(input: unknown): ValidationResult {
     configuration_json: obj?.configuration_json ?? {},
   });
   if (!parsed.success) {
-    return { ok: false, reason: `Configuração inválida: ${parsed.error.issues[0]?.message ?? "erro"}` };
+    return {
+      ok: false,
+      reason: `Configuração inválida: ${parsed.error.issues[0]?.message ?? "erro"}`,
+    };
   }
   return {
     ok: true,
@@ -218,4 +219,26 @@ export function mergeLabelOverrides<T extends ScopedRow>(
     }
   }
   return merged;
+}
+
+/** Resolves a boolean visibility operation per target key using the same precedence rules. */
+export function resolveVisibility<T extends ScopedRow>(
+  rows: T[],
+  type: "nav_visibility" | "card_visibility",
+  keyField: "menu_key" | "card_id",
+  userId?: string | null,
+): Map<string, boolean> {
+  const resolved = new Map<string, boolean>();
+  for (const row of sortByPrecedence(rows, userId)) {
+    if (row.type !== type) continue;
+    const config = row.configuration_json ?? {};
+    const nested = type === "nav_visibility" ? config.nav_visibility : null;
+    const payload = nested && typeof nested === "object" ? nested : config;
+    const key = payload?.[keyField];
+    if (typeof key !== "string" || resolved.has(key) || typeof payload.visible !== "boolean") {
+      continue;
+    }
+    resolved.set(key, payload.visible);
+  }
+  return resolved;
 }
