@@ -239,7 +239,7 @@ export function AppShell() {
               <span className="font-medium">Personalizações</span>
             </div>
             <p className="text-xs text-sidebar-foreground/60 mt-1">
-              Em breve: peça mudanças no app em linguagem natural.
+              Ativo: peça mudanças no app em linguagem natural, só para você ou para o workspace.
             </p>
           </div>
           <button
