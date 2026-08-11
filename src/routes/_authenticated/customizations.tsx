@@ -60,6 +60,7 @@ function CustomizationsPage() {
   const reprocess = useServerFn(reprocessPendingRequests);
 
   const [text, setText] = useState("");
+  const [scope, setScope] = useState<"user" | "workspace">("user");
   const [exampleIdx, setExampleIdx] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -128,7 +129,7 @@ function CustomizationsPage() {
   const submitMut = useMutation({
     mutationFn: async () => {
       if (!wsId) throw new Error("Sem workspace");
-      return await submit({ data: { workspace_id: wsId, request_text: text } });
+      return await submit({ data: { workspace_id: wsId, request_text: text, target_scope: scope } });
     },
     onSuccess: (res: any) => {
       setText("");
@@ -266,6 +267,40 @@ function CustomizationsPage() {
               placeholder={EXAMPLES[exampleIdx]}
               rows={5}
             />
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Alcance da mudança
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setScope("user")}
+                  className={`text-left rounded-lg border p-3 transition ${
+                    scope === "user" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <div className="text-sm font-medium">Somente para mim</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    A mudança aparece só na sua conta. Ninguém mais do workspace é afetado.
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  disabled={!isOwner}
+                  onClick={() => setScope("workspace")}
+                  className={`text-left rounded-lg border p-3 transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                    scope === "workspace" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <div className="text-sm font-medium">Todo o workspace</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {isOwner
+                      ? "Todo mundo deste workspace passa a ver a mudança."
+                      : "Só o proprietário pode aplicar para todos — seu pedido iria para análise."}
+                  </div>
+                </button>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <Button
                 onClick={() => submitMut.mutate()}
