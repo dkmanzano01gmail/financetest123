@@ -29,3 +29,17 @@ O build completo não pôde ser executado porque o ambiente do ChatGPT não cons
 - `registry.npmjs.org` não estava acessível por DNS.
 
 O erro ocorreu antes da instalação e não foi causado pelo código. Execute `npm ci && npm run build` no Mac antes do push; os comandos estão em `PUSH-TO-GITHUB.md`.
+
+## Personalizações por escopo (MVP seguro)
+
+Automatizado em `scripts/run-tests.mjs`: isolamento entre usuários, precedência user > workspace,
+compatibilidade dos registros legados, teste > definitivo, member não autoaplica workspace,
+payload de IA inválido/extra rejeitado, dados compartilhados e cálculos nunca autoaplicados.
+
+Cenários manuais:
+1. Usuário A pede "Somente para mim" → banner de teste aparece só para A; usuário B não vê nada.
+2. Owner pede "Todo o workspace" → em teste para todos; member/viewer só consegue pedir para si.
+3. Pedido de novo cálculo → status "Em análise" com a mensagem de validação financeira.
+4. Aprovar teste → créditos cobrados uma única vez (clicar duas vezes não duplica).
+5. Rejeitar teste → customização removida, app volta ao estado anterior, sem cobrança.
+6. Personalizações antigas (sem escopo) continuam visíveis para o workspace todo.
