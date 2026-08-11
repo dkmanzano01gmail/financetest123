@@ -62,6 +62,8 @@ function CustomizationsPage() {
   const [text, setText] = useState("");
   const [scope, setScope] = useState<"user" | "workspace">("user");
   const [exampleIdx, setExampleIdx] = useState(0);
+  const { user } = useAuth();
+  const isOwner = !!user && workspace?.owner_id === user.id;
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
