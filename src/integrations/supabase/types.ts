@@ -1886,36 +1886,51 @@ export type Database = {
         Row: {
           class_name: string | null
           created_at: string
+          enrollment_date: string | null
           id: string
+          instagram: string | null
           is_active: boolean
           legacy_source_id: string | null
           monthly_fee: number
           name: string
           notes: string | null
+          phone: string | null
+          photo_url: string | null
+          social_link: string | null
           updated_at: string
           workspace_id: string
         }
         Insert: {
           class_name?: string | null
           created_at?: string
+          enrollment_date?: string | null
           id?: string
+          instagram?: string | null
           is_active?: boolean
           legacy_source_id?: string | null
           monthly_fee?: number
           name: string
           notes?: string | null
+          phone?: string | null
+          photo_url?: string | null
+          social_link?: string | null
           updated_at?: string
           workspace_id: string
         }
         Update: {
           class_name?: string | null
           created_at?: string
+          enrollment_date?: string | null
           id?: string
+          instagram?: string | null
           is_active?: boolean
           legacy_source_id?: string | null
           monthly_fee?: number
           name?: string
           notes?: string | null
+          phone?: string | null
+          photo_url?: string | null
+          social_link?: string | null
           updated_at?: string
           workspace_id?: string
         }
