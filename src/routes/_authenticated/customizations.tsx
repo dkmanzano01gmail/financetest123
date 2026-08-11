@@ -369,6 +369,9 @@ function CustomizationsPage() {
                         <Badge variant="outline" className="text-xs">
                           {c.type}
                         </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {c.target_scope === "workspace" ? "Workspace" : "Somente para mim"}
+                        </Badge>
                         <span className="text-sm font-medium truncate">{c.name}</span>
                       </div>
                       {c.description && (
