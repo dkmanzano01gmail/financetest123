@@ -142,6 +142,15 @@ function Page() {
     },
   });
 
+  const classOptions = useMemo(() => {
+    const uniqueClasses = new Map<string, string>();
+    for (const student of students as any[]) {
+      const className = String(student.class_name || "").trim();
+      if (className) uniqueClasses.set(className.toLocaleLowerCase("pt-BR"), className);
+    }
+    return [...uniqueClasses.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [students]);
+
   const inSelectedMonth = (value?: string | null) => {
     if (!value) return false;
     const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
@@ -233,6 +242,7 @@ function Page() {
 
   const saveStudent = useMutation({
     mutationFn: async () => {
+      if (!wsId) throw new Error("Workspace não encontrado.");
       if (!form.name.trim()) throw new Error("Informe o nome do aluno.");
       const fee = form.monthly_fee.trim() ? parseLocaleAmount(form.monthly_fee) : 0;
       if (!Number.isFinite(fee)) throw new Error("Mensalidade inválida.");
@@ -247,8 +257,7 @@ function Page() {
         if (uploadError) throw uploadError;
         photoUrl = supabase.storage.from("student-photos").getPublicUrl(path).data.publicUrl;
       }
-      const payload = {
-        workspace_id: wsId,
+      const studentData = {
         name: form.name.trim(),
         class_name: form.class_name.trim() || null,
         monthly_fee: fee,
@@ -260,13 +269,28 @@ function Page() {
         is_active: form.is_active,
         notes: form.notes.trim() || null,
       };
-      const { error } = editId
-        ? await sb.from("students").update(payload).eq("id", editId).eq("workspace_id", wsId)
-        : await sb.from("students").insert(payload);
-      if (error) throw error;
+      if (editId) {
+        const { data, error } = await sb
+          .from("students")
+          .update(studentData)
+          .eq("id", editId)
+          .eq("workspace_id", wsId)
+          .select("id,class_name")
+          .single();
+        if (error) throw error;
+        if (!data?.id || data.class_name !== studentData.class_name) {
+          throw new Error("A turma não foi atualizada. Recarregue a página e tente novamente.");
+        }
+      } else {
+        const { error } = await sb.from("students").insert({
+          workspace_id: wsId,
+          ...studentData,
+        });
+        if (error) throw error;
+      }
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["students"] });
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["students"] });
       setOpen(false);
       setEditId(null);
       setForm(emptyStudent());
@@ -457,7 +481,26 @@ function Page() {
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Nome"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
-            <Field label="Turma"><Input value={form.class_name} onChange={(event) => setForm({ ...form, class_name: event.target.value })} /></Field>
+            <Field label="Turma">
+              <Select
+                value={form.class_name || "none"}
+                onValueChange={(value) =>
+                  setForm({ ...form, class_name: value === "none" ? "" : value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma turma" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem turma</SelectItem>
+                  {classOptions.map((className) => (
+                    <SelectItem key={className} value={className}>
+                      {className}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
             <Field label="Data de início"><Input type="date" value={form.enrollment_date} onChange={(event) => setForm({ ...form, enrollment_date: event.target.value })} /></Field>
             <Field label="Mensalidade"><Input inputMode="decimal" value={form.monthly_fee} onChange={(event) => setForm({ ...form, monthly_fee: event.target.value })} /></Field>
             <Field label="Celular"><Input type="tel" placeholder="(11) 99999-9999" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
