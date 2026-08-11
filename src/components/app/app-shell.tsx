@@ -28,6 +28,10 @@ import {
   UserRound,
   MessageSquare,
   Gauge,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ChevronRight,
 } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,11 +46,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useIsSuperAdmin } from "@/hooks/use-super-admin";
 import { TestingBanner } from "@/components/app/testing-banner";
 import { useLabelOverrides, applyLabel } from "@/hooks/use-label-overrides";
 import { useCustomizedUI, arrangeNav } from "@/hooks/use-customized-ui";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 const baseNavDef = [
   { to: "/dashboard", icon: LayoutDashboard, key: "nav.dashboard", label: "Dashboard" },
@@ -112,6 +125,30 @@ const baseNavDef = [
   { to: "/settings", icon: Settings, key: "nav.settings", label: "Configurações" },
 ];
 
+const financialNavKeys = new Set([
+  "nav.dashboard",
+  "nav.transactions",
+  "nav.accounts",
+  "nav.cards",
+  "nav.budget",
+  "nav.reconciliation",
+  "nav.categories",
+  "nav.import",
+  "nav.atelier.cash_flow",
+]);
+
+const atelierNavKeys = new Set([
+  "nav.atelier.raw_materials",
+  "nav.atelier.class_materials",
+  "nav.atelier.attendance",
+  "nav.atelier.students",
+  "nav.atelier.kilns",
+  "nav.atelier.renovation",
+  "nav.atelier.pieces",
+  "nav.atelier.workshops",
+  "nav.atelier.firings",
+]);
+
 export function AppShell() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -120,6 +157,14 @@ export function AppShell() {
   const { data: isSuperAdmin } = useIsSuperAdmin();
   const { data: labels } = useLabelOverrides(workspace?.id);
   const { hiddenNav, navOrder } = useCustomizedUI(workspace?.id);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () =>
+      typeof window !== "undefined" && window.localStorage.getItem("sela-sidebar") === "compact",
+  );
+  const [atelierExpanded, setAtelierExpanded] = useState(
+    () =>
+      typeof window === "undefined" || window.localStorage.getItem("sela-atelier-nav") !== "closed",
+  );
 
   const baseNav = baseNavDef.map((n) => ({ ...n, label: applyLabel(labels, n.key, n.label) }));
   const navWithAdmin = isSuperAdmin
@@ -134,6 +179,19 @@ export function AppShell() {
       ]
     : baseNav;
   const nav = arrangeNav(navWithAdmin, navOrder, hiddenNav);
+  const financialNav = nav.filter((item) => financialNavKeys.has(item.key));
+  const atelierNav = nav.filter((item) => atelierNavKeys.has(item.key));
+  const systemNav = nav.filter(
+    (item) => !financialNavKeys.has(item.key) && !atelierNavKeys.has(item.key),
+  );
+
+  useEffect(() => {
+    window.localStorage.setItem("sela-sidebar", sidebarCollapsed ? "compact" : "open");
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    window.localStorage.setItem("sela-atelier-nav", atelierExpanded ? "open" : "closed");
+  }, [atelierExpanded]);
 
   // Redirect to onboarding if no workspace
   useEffect(() => {
@@ -160,142 +218,340 @@ export function AppShell() {
     qc.invalidateQueries({ queryKey: ["workspaces"] });
   }
 
+  function desktopNavLink(item: (typeof nav)[number]) {
+    const active = pathname === item.to || pathname.startsWith(item.to + "/");
+    return (
+      <Tooltip key={item.to}>
+        <TooltipTrigger asChild>
+          <Link
+            to={item.to}
+            aria-label={item.label}
+            className={`flex h-10 items-center rounded-lg text-sm transition ${
+              sidebarCollapsed ? "justify-center px-0" : "gap-3 px-3"
+            } ${
+              active
+                ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            }`}
+          >
+            <item.icon className="h-4 w-4 shrink-0" />
+            {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+          </Link>
+        </TooltipTrigger>
+        {sidebarCollapsed && <TooltipContent side="right">{item.label}</TooltipContent>}
+      </Tooltip>
+    );
+  }
+
+  function mobileNavLink(item: (typeof nav)[number]) {
+    const active = pathname === item.to || pathname.startsWith(item.to + "/");
+    return (
+      <SheetClose asChild key={item.to}>
+        <Link
+          to={item.to}
+          className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+            active
+              ? "bg-sidebar-primary text-sidebar-primary-foreground"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent"
+          }`}
+        >
+          <item.icon className="h-4 w-4 shrink-0" />
+          <span>{item.label}</span>
+        </Link>
+      </SheetClose>
+    );
+  }
+
   if (pathname === "/onboarding") return <Outlet />;
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-        <div className="px-5 py-5 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center font-display font-bold text-lg">
-            S
-          </div>
-          <div>
-            <div className="font-display font-bold leading-tight text-base">Selá</div>
-            <div className="text-xs text-sidebar-foreground/60">
-              {workspace?.type === "business" ? "Cerâmica" : "Financeiro"}
-            </div>
-          </div>
-        </div>
+      {/* Desktop sidebar */}
+      <TooltipProvider delayDuration={150}>
+        <aside
+          className={`relative hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:sticky md:top-0 md:flex ${
+            sidebarCollapsed ? "w-[4.5rem]" : "w-64"
+          }`}
+        >
+          <button
+            onClick={() => setSidebarCollapsed((value) => !value)}
+            className="absolute -right-3 top-6 z-20 flex h-7 w-7 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-md transition hover:bg-sidebar-accent"
+            aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            ) : (
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            )}
+          </button>
 
-        {/* Workspace switcher */}
-        <div className="px-3">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 bg-sidebar-accent/40 hover:bg-sidebar-accent text-left transition">
-                <div className="min-w-0">
-                  <div className="text-xs text-sidebar-foreground/60 uppercase tracking-wide">
-                    Workspace
-                  </div>
-                  <div className="truncate font-medium">{workspace?.name ?? "—"}</div>
+          <div
+            className={`flex items-center py-5 ${sidebarCollapsed ? "justify-center px-2" : "gap-3 px-5"}`}
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary font-display text-lg font-bold text-sidebar-primary-foreground">
+              S
+            </div>
+            {!sidebarCollapsed && (
+              <div>
+                <div className="font-display text-base font-bold leading-tight">Selá</div>
+                <div className="text-xs text-sidebar-foreground/60">
+                  {workspace?.type === "business" ? "Cerâmica" : "Financeiro"}
                 </div>
-                <ChevronDown className="w-4 h-4 opacity-60 shrink-0" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-60">
-              <DropdownMenuLabel>Seus workspaces</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {workspaces.map((w) => (
-                <DropdownMenuItem key={w.id} onClick={() => switchTo(w.id)}>
-                  <span className="flex-1 truncate">{w.name}</span>
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {w.type === "personal" ? "Pessoal" : "Negócio"}
-                  </span>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate({ to: "/onboarding" })}>
-                <Plus className="w-4 h-4 mr-2" />
-                Novo workspace
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
-          {nav.map((item) => {
-            const active = pathname === item.to || pathname.startsWith(item.to + "/");
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-                  active
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                }`}
-              >
-                <item.icon className="w-4 h-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="p-3 border-t border-sidebar-border space-y-1">
-          <div className="rounded-lg bg-sidebar-accent/40 p-3 mb-2">
-            <div className="flex items-center gap-2 text-sm">
-              <Sparkles className="w-4 h-4 text-sidebar-primary" />
-              <span className="font-medium">Personalizações</span>
-            </div>
-            <p className="text-xs text-sidebar-foreground/60 mt-1">
-              Ativo: peça mudanças no app em linguagem natural, só para você ou para o workspace.
-            </p>
+              </div>
+            )}
           </div>
-          <button
-            onClick={togglePrivacy}
-            className="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
-          >
-            {workspace?.privacy_mode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            {workspace?.privacy_mode ? "Mostrar valores" : "Modo privacidade"}
-          </button>
-          <button
-            onClick={signOut}
-            className="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
-          >
-            <LogOut className="w-4 h-4" /> Sair
-          </button>
-        </div>
-      </aside>
 
-      {/* Mobile top bar */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="md:hidden sticky top-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
-          <header className="flex items-center justify-between px-4 py-3">
+          <div className={sidebarCollapsed ? "px-3" : "px-3"}>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center font-display font-bold text-sm shrink-0">
-                    S
-                  </div>
-                  <span className="font-display font-semibold truncate">
-                    {workspace?.name ?? "Selá"}
-                  </span>
-                  <ChevronDown className="w-4 h-4 opacity-60 shrink-0" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-60">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      aria-label="Selecionar workspace"
+                      className={`flex w-full items-center rounded-lg bg-sidebar-accent/40 transition hover:bg-sidebar-accent ${
+                        sidebarCollapsed
+                          ? "h-10 justify-center px-0"
+                          : "justify-between gap-2 px-3 py-2.5 text-left"
+                      }`}
+                    >
+                      {sidebarCollapsed ? (
+                        <span className="font-display text-sm font-bold uppercase">
+                          {(workspace?.name ?? "S").slice(0, 1)}
+                        </span>
+                      ) : (
+                        <>
+                          <div className="min-w-0">
+                            <div className="text-xs uppercase tracking-wide text-sidebar-foreground/60">
+                              Workspace
+                            </div>
+                            <div className="truncate font-medium">{workspace?.name ?? "—"}</div>
+                          </div>
+                          <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+                        </>
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                {sidebarCollapsed && (
+                  <TooltipContent side="right">{workspace?.name ?? "Workspace"}</TooltipContent>
+                )}
+              </Tooltip>
+              <DropdownMenuContent className="w-60">
                 <DropdownMenuLabel>Seus workspaces</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {workspaces.map((w) => (
                   <DropdownMenuItem key={w.id} onClick={() => switchTo(w.id)}>
                     <span className="flex-1 truncate">{w.name}</span>
-                    <span className="text-xs text-muted-foreground ml-2">
+                    <span className="ml-2 text-xs text-muted-foreground">
                       {w.type === "personal" ? "Pessoal" : "Negócio"}
                     </span>
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate({ to: "/onboarding" })}>
-                  <Plus className="w-4 h-4 mr-2" />
+                  <Plus className="mr-2 h-4 w-4" />
                   Novo workspace
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={signOut}>
-                  <LogOut className="w-4 h-4 mr-2" /> Sair
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
+
+          <nav className="flex-1 overflow-y-auto px-3 py-4">
+            {!sidebarCollapsed && (
+              <div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                Financeiro
+              </div>
+            )}
+            <div className="space-y-0.5">{financialNav.map(desktopNavLink)}</div>
+
+            <div className="my-3 border-t border-sidebar-border/70" />
+            {!sidebarCollapsed && (
+              <button
+                onClick={() => setAtelierExpanded((value) => !value)}
+                className="mb-1 flex w-full items-center justify-between rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 transition hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              >
+                Ateliê
+                <ChevronRight
+                  className={`h-3.5 w-3.5 transition-transform ${atelierExpanded ? "rotate-90" : ""}`}
+                />
+              </button>
+            )}
+            {atelierExpanded && <div className="space-y-0.5">{atelierNav.map(desktopNavLink)}</div>}
+
+            {systemNav.length > 0 && (
+              <>
+                <div className="my-3 border-t border-sidebar-border/70" />
+                {!sidebarCollapsed && (
+                  <div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                    Mais
+                  </div>
+                )}
+                <div className="space-y-0.5">{systemNav.map(desktopNavLink)}</div>
+              </>
+            )}
+          </nav>
+
+          <div className="space-y-1 border-t border-sidebar-border p-3">
+            {!sidebarCollapsed && (
+              <div className="mb-2 rounded-lg bg-sidebar-accent/40 p-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <Sparkles className="h-4 w-4 text-sidebar-primary" />
+                  <span className="font-medium">Personalizações</span>
+                </div>
+                <p className="mt-1 text-xs text-sidebar-foreground/60">
+                  Peça mudanças no app em linguagem natural, só para você ou para o workspace.
+                </p>
+              </div>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={togglePrivacy}
+                  aria-label={workspace?.privacy_mode ? "Mostrar valores" : "Modo privacidade"}
+                  className={`flex h-10 w-full items-center rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent ${
+                    sidebarCollapsed ? "justify-center" : "gap-3 px-3"
+                  }`}
+                >
+                  {workspace?.privacy_mode ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                  {!sidebarCollapsed &&
+                    (workspace?.privacy_mode ? "Mostrar valores" : "Modo privacidade")}
+                </button>
+              </TooltipTrigger>
+              {sidebarCollapsed && (
+                <TooltipContent side="right">
+                  {workspace?.privacy_mode ? "Mostrar valores" : "Modo privacidade"}
+                </TooltipContent>
+              )}
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={signOut}
+                  aria-label="Sair"
+                  className={`flex h-10 w-full items-center rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent ${
+                    sidebarCollapsed ? "justify-center" : "gap-3 px-3"
+                  }`}
+                >
+                  <LogOut className="h-4 w-4" />
+                  {!sidebarCollapsed && "Sair"}
+                </button>
+              </TooltipTrigger>
+              {sidebarCollapsed && <TooltipContent side="right">Sair</TooltipContent>}
+            </Tooltip>
+          </div>
+        </aside>
+      </TooltipProvider>
+
+      {/* Mobile top bar */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="md:hidden sticky top-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
+          <header className="flex items-center justify-between px-4 py-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 text-sidebar-foreground"
+                    aria-label="Abrir menu"
+                  >
+                    <Menu className="h-5 w-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  side="left"
+                  className="flex w-[19rem] flex-col border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
+                >
+                  <SheetHeader className="border-b border-sidebar-border px-5 py-5 text-left">
+                    <SheetTitle className="flex items-center gap-3 text-sidebar-foreground">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sidebar-primary font-display font-bold text-sidebar-primary-foreground">
+                        S
+                      </span>
+                      <span>
+                        <span className="block font-display leading-tight">Selá</span>
+                        <span className="block text-xs font-normal text-sidebar-foreground/60">
+                          {workspace?.type === "business" ? "Cerâmica" : "Financeiro"}
+                        </span>
+                      </span>
+                    </SheetTitle>
+                  </SheetHeader>
+                  <nav className="flex-1 overflow-y-auto px-3 py-4">
+                    <div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                      Financeiro
+                    </div>
+                    <div className="space-y-0.5">{financialNav.map(mobileNavLink)}</div>
+                    <div className="my-3 border-t border-sidebar-border/70" />
+                    <div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                      Ateliê
+                    </div>
+                    <div className="space-y-0.5">{atelierNav.map(mobileNavLink)}</div>
+                    {systemNav.length > 0 && (
+                      <>
+                        <div className="my-3 border-t border-sidebar-border/70" />
+                        <div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                          Mais
+                        </div>
+                        <div className="space-y-0.5">{systemNav.map(mobileNavLink)}</div>
+                      </>
+                    )}
+                  </nav>
+                  <div className="space-y-1 border-t border-sidebar-border p-3">
+                    <button
+                      onClick={togglePrivacy}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
+                    >
+                      {workspace?.privacy_mode ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                      {workspace?.privacy_mode ? "Mostrar valores" : "Modo privacidade"}
+                    </button>
+                    <button
+                      onClick={signOut}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
+                    >
+                      <LogOut className="h-4 w-4" /> Sair
+                    </button>
+                  </div>
+                </SheetContent>
+              </Sheet>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex min-w-0 items-center gap-2">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary font-display text-sm font-bold text-sidebar-primary-foreground">
+                      S
+                    </div>
+                    <span className="truncate font-display font-semibold">
+                      {workspace?.name ?? "Selá"}
+                    </span>
+                    <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-60">
+                  <DropdownMenuLabel>Seus workspaces</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {workspaces.map((w) => (
+                    <DropdownMenuItem key={w.id} onClick={() => switchTo(w.id)}>
+                      <span className="flex-1 truncate">{w.name}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {w.type === "personal" ? "Pessoal" : "Negócio"}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate({ to: "/onboarding" })}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Novo workspace
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <Button
               variant="ghost"
               size="icon"
@@ -309,28 +565,6 @@ export function AppShell() {
               )}
             </Button>
           </header>
-          <nav
-            className="flex gap-1 overflow-x-auto px-2 pb-2 scrollbar-none"
-            style={{ scrollbarWidth: "none" }}
-          >
-            {nav.map((item) => {
-              const active = pathname === item.to || pathname.startsWith(item.to + "/");
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition shrink-0 ${
-                    active
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                      : "bg-sidebar-accent/40 text-sidebar-foreground/80 hover:bg-sidebar-accent"
-                  }`}
-                >
-                  <item.icon className="w-3.5 h-3.5" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
         </div>
 
         <main className="flex-1 min-w-0 overflow-auto">
