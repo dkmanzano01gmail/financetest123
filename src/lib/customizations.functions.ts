@@ -150,6 +150,18 @@ function extractNewName(text: string): string | null {
 function classifyLocally(text: string): LocalClassification {
   const t = text.toLowerCase().trim();
 
+  // Financial calculations always require human validation.
+  if (/c[aá]lculo|calcular|f[oó]rmula|formula|card calculado|indicador novo|nova m[eé]trica/i.test(t)) {
+    return {
+      type: "calculation",
+      complexity: "advanced",
+      summary: text.slice(0, 80),
+      reason: CALCULATION_REVIEW_MESSAGE,
+      estimated_credits: 8,
+      configuration_json: {},
+    };
+  }
+
   // Advanced detection
   if (ADVANCED_KEYWORDS.some((k) => t.includes(k))) {
     return {
