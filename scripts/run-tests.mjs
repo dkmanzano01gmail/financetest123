@@ -13,6 +13,12 @@ import {
   expandCashFlowEntries,
   resolveFiringProfile,
 } from "../src/lib/orna-logic.ts";
+import {
+  CALCULATION_REVIEW_MESSAGE,
+  canAutoApply,
+  mergeLabelOverrides,
+  validateAutoOperation,
+} from "../src/lib/customization-schema.ts";
 
 let passed = 0,
   failed = 0;
@@ -279,6 +285,60 @@ async function main() {
     });
     eq(result.glazeProfile.cone, "10");
     if (!(result.chargeAmount > result.clayCost)) throw new Error("firing charge was not added");
+  });
+
+
+  t("scope isolation: user customization is invisible to other users", () => {
+    const rows = [
+      { type: "label_rename", target_scope: "user", target_user_id: "samuel", is_active: true, updated_at: "2026-01-02", configuration_json: { labels: { "nav.accounts": "Contas Samuel" } } },
+    ];
+    eq(JSON.stringify(mergeLabelOverrides(rows, "samuel")), JSON.stringify({ "nav.accounts": "Contas Samuel" }));
+    eq(JSON.stringify(mergeLabelOverrides(rows, "outro")), "{}");
+  });
+
+  t("precedence: user scope wins over workspace scope", () => {
+    const rows = [
+      { type: "label_rename", target_scope: "workspace", is_active: true, updated_at: "2026-02-01", configuration_json: { labels: { "nav.accounts": "Contas" } } },
+      { type: "label_rename", target_scope: "user", target_user_id: "u1", is_active: true, updated_at: "2026-01-01", configuration_json: { labels: { "nav.accounts": "Minhas contas" } } },
+    ];
+    eq(mergeLabelOverrides(rows, "u1")["nav.accounts"], "Minhas contas");
+    eq(mergeLabelOverrides(rows, "u2")["nav.accounts"], "Contas");
+  });
+
+  t("legacy rows without target_scope keep working as workspace", () => {
+    const rows = [
+      { type: "label_rename", is_active: true, updated_at: "2025-12-01", configuration_json: { labels: { "nav.dashboard": "Painel" } } },
+    ];
+    eq(mergeLabelOverrides(rows, "qualquer")["nav.dashboard"], "Painel");
+  });
+
+  t("testing rows win over definitive within same scope", () => {
+    const rows = [
+      { type: "label_rename", target_scope: "workspace", is_active: true, is_testing: false, updated_at: "2026-03-01", configuration_json: { labels: { "nav.cards": "Cartões" } } },
+      { type: "label_rename", target_scope: "workspace", is_active: true, is_testing: true, updated_at: "2026-01-01", configuration_json: { labels: { "nav.cards": "Cartões em teste" } } },
+    ];
+    eq(mergeLabelOverrides(rows, "u1")["nav.cards"], "Cartões em teste");
+  });
+
+  t("member cannot auto-apply workspace scope", () => {
+    eq(canAutoApply("workspace", "member"), false);
+    eq(canAutoApply("workspace", "viewer"), false);
+    eq(canAutoApply("workspace", "owner"), true);
+    eq(canAutoApply("user", "member"), true);
+  });
+
+  t("invalid or extra AI payload is rejected", () => {
+    eq(validateAutoOperation({ type: "label_rename", configuration_json: { labels: { "nav.inexistente": "X" } } }).ok, false);
+    eq(validateAutoOperation({ type: "nav_visibility", configuration_json: { menu_key: "nav.accounts", visible: true, extra: 1 } }).ok, false);
+    eq(validateAutoOperation({ type: "nav_reorder", configuration_json: { order: ["nav.accounts", "nav.accounts"] } }).ok, false);
+    eq(validateAutoOperation({ type: "label_rename", configuration_json: { labels: { "nav.accounts": "Contas pessoais" } } }).ok, true);
+  });
+
+  t("shared data and calculations never auto-apply", () => {
+    eq(validateAutoOperation({ type: "new_category", configuration_json: { name: "X", type: "expense" } }).ok, false);
+    eq(validateAutoOperation({ type: "category_rule", configuration_json: { rule: {} } }).ok, false);
+    eq(validateAutoOperation({ type: "calculation", configuration_json: {} }).ok, false);
+    eq(typeof CALCULATION_REVIEW_MESSAGE, "string");
   });
 
   for (const test of tests) {

@@ -42,6 +42,8 @@ export function TestingBanner() {
 
   if (!test) return null;
   const summary = test.ai_interpretation?.summary ?? test.request_text;
+  const scopeLabel =
+    test.target_scope === "workspace" ? "Todo o workspace" : "Somente para você";
   const busy = approve.isPending || reject.isPending;
 
   return (
@@ -49,7 +51,10 @@ export function TestingBanner() {
       <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-start gap-3 flex-wrap">
         <FlaskConical className="w-4 h-4 mt-0.5 shrink-0" />
         <div className="flex-1 min-w-[200px] text-sm">
-          <span className="font-semibold">Testando personalização:</span> <span>{summary}</span>
+          <span className="font-semibold">Testando personalização:</span> <span>{summary}</span>{" "}
+          <span className="text-xs rounded border border-amber-300 px-1.5 py-0.5">
+            {scopeLabel}
+          </span>
           <div className="text-xs text-amber-800/80 mt-0.5">
             Navegue pelo app para conferir. Aprove para manter ou rejeite para reverter.
           </div>

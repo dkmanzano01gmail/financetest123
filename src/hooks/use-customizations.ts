@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
+import { sortByPrecedence } from "@/lib/customization-schema";
 import type { LabelMap } from "@/lib/labels";
 
 export type Customization = {
@@ -15,11 +17,16 @@ export type Customization = {
   request_id: string | null;
   created_at: string;
   updated_at: string;
+  is_testing?: boolean;
+  target_scope?: "user" | "workspace";
+  target_user_id?: string | null;
 };
 
 export function useCustomizations(workspaceId: string | undefined) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const query = useQuery({
-    queryKey: ["customizations", workspaceId],
+    queryKey: ["customizations", workspaceId, userId],
     enabled: !!workspaceId,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
@@ -32,7 +39,10 @@ export function useCustomizations(workspaceId: string | undefined) {
     },
   });
 
-  const active = useMemo(() => (query.data ?? []).filter((c) => c.is_active), [query.data]);
+  const active = useMemo(
+    () => sortByPrecedence((query.data ?? []) as any[], userId) as Customization[],
+    [query.data, userId],
+  );
 
   const labelOverrides = useMemo<Partial<LabelMap>>(() => {
     const acc: Partial<LabelMap> = {};
