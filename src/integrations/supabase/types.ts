@@ -528,6 +528,8 @@ export type Database = {
           glaze_name: string | null
           glaze_quantity: number
           grams: number
+          freight_cost: number
+          freight_rate: number
           height_cm: number
           id: string
           kiln_id: string | null
@@ -540,6 +542,7 @@ export type Database = {
           payment_status: string
           piece_name: string | null
           quantity: number
+          resistance_only: boolean
           production_status: string
           student_id: string | null
           student_name: string
@@ -568,6 +571,8 @@ export type Database = {
           glaze_name?: string | null
           glaze_quantity?: number
           grams?: number
+          freight_cost?: number
+          freight_rate?: number
           height_cm?: number
           id?: string
           kiln_id?: string | null
@@ -580,6 +585,7 @@ export type Database = {
           payment_status?: string
           piece_name?: string | null
           quantity?: number
+          resistance_only?: boolean
           production_status?: string
           student_id?: string | null
           student_name: string
@@ -608,6 +614,8 @@ export type Database = {
           glaze_name?: string | null
           glaze_quantity?: number
           grams?: number
+          freight_cost?: number
+          freight_rate?: number
           height_cm?: number
           id?: string
           kiln_id?: string | null
@@ -620,6 +628,7 @@ export type Database = {
           payment_status?: string
           piece_name?: string | null
           quantity?: number
+          resistance_only?: boolean
           production_status?: string
           student_id?: string | null
           student_name?: string

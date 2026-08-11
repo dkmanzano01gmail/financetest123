@@ -24,9 +24,9 @@ import {
 } from "@/components/ui/select";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
-import { formatCurrency, monthLabel, parseLocaleAmount } from "@/lib/format";
+import { formatCurrency, formatDate, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { calculateClassPieceCost } from "@/lib/orna-logic";
-import { Package, Pencil, Plus, Settings2, Trash2, Users } from "lucide-react";
+import { Calculator, Package, Pencil, Plus, Printer, Settings2, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/atelier/class-materials")({ component: Page });
@@ -55,6 +55,7 @@ const empty = () => ({
   other_cost: "0",
   charge_biscuit: true,
   charge_glaze: true,
+  resistance_only: false,
   amount_charged: "",
   amount_paid: "0",
   payment_status: "pending",
@@ -77,6 +78,7 @@ function Page() {
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [printStudent, setPrintStudent] = useState<string | null>(null);
   const [form, setForm] = useState(empty());
   const [settingsForm, setSettingsForm] = useState({
     margin_percent: "0",
@@ -150,6 +152,22 @@ function Page() {
       kiln_firing_profit_percent: String(classSettings.kiln_firing_profit_percent ?? 100),
     });
   }, [classSettings]);
+
+  useEffect(() => {
+    if (!printStudent) return;
+    document.body.classList.add("printing-student-materials");
+    const finish = () => {
+      document.body.classList.remove("printing-student-materials");
+      setPrintStudent(null);
+    };
+    window.addEventListener("afterprint", finish, { once: true });
+    const timer = window.setTimeout(() => window.print(), 100);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", finish);
+      document.body.classList.remove("printing-student-materials");
+    };
+  }, [printStudent]);
 
   const { data: firingSettings } = useQuery({
     queryKey: ["firing_settings", wsId, "class-materials"],
@@ -227,9 +245,11 @@ function Page() {
       firingSettings: selectedKiln,
       chargeBisque: form.charge_biscuit,
       chargeGlaze: form.charge_glaze,
+      resistanceOnly: form.resistance_only,
       kilnFiringProfitRate: Number(classSettings?.kiln_firing_profit_percent ?? 100) / 100,
       otherCosts: n(form.other_cost),
       marginRate: Number(classSettings?.margin_percent ?? 0) / 100,
+      freightRate: 0.1,
     });
   }, [form, materials, selectedKiln, classSettings]);
 
@@ -295,6 +315,81 @@ function Page() {
     return [...map.values()].sort((a, b) => b.pending - a.pending || a.student.localeCompare(b.student, "pt-BR"));
   }, [filtered, students, studentFilter, classSettings]);
 
+  const studentStatements = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const row of filtered as any[]) {
+      const quantity = Math.max(1, Number(row.quantity || 1));
+      const clay = Number(row.clay_cost || 0) * quantity;
+      const glaze = Number(row.glaze_cost || 0) * quantity;
+      const firing =
+        (Number(row.biscuit_firing_cost || 0) + Number(row.glaze_firing_cost || 0)) *
+        quantity;
+      const other = Number(row.other_cost || 0) * quantity;
+      const unitBase =
+        Number(row.clay_cost || 0) +
+        Number(row.glaze_cost || 0) +
+        Number(row.biscuit_firing_cost || 0) +
+        Number(row.glaze_firing_cost || 0) +
+        Number(row.other_cost || 0);
+      const freightRate = Number(row.freight_rate ?? 0.1);
+      const savedFreight = Number(row.freight_cost || 0);
+      const freightPerUnit = savedFreight > 0 ? savedFreight : unitBase * freightRate;
+      const freight = freightPerUnit * quantity;
+      const calculated = clay + glaze + firing + other + freight;
+      const charged = Number(row.amount_charged ?? calculated);
+      const paid = Number(
+        row.amount_paid ?? (row.payment_status === "paid" ? charged : 0),
+      );
+      const pending = Math.max(0, Number(row.amount_pending ?? charged - paid));
+      const piece = {
+        ...row,
+        quantity,
+        clay,
+        glaze,
+        firing,
+        other,
+        freight,
+        freightRate,
+        calculated,
+        charged,
+        paid,
+        pending,
+      };
+      const item = map.get(row.student_name) ?? {
+        student: row.student_name,
+        group:
+          (students as any[]).find((student) => student.name === row.student_name)?.class_name ||
+          "",
+        quantity: 0,
+        clay: 0,
+        glaze: 0,
+        firing: 0,
+        other: 0,
+        freight: 0,
+        calculated: 0,
+        charged: 0,
+        paid: 0,
+        pending: 0,
+        pieces: [],
+      };
+      item.quantity += quantity;
+      item.clay += clay;
+      item.glaze += glaze;
+      item.firing += firing;
+      item.other += other;
+      item.freight += freight;
+      item.calculated += calculated;
+      item.charged += charged;
+      item.paid += paid;
+      item.pending += pending;
+      item.pieces.push(piece);
+      map.set(row.student_name, item);
+    }
+    return [...map.values()].sort((a, b) =>
+      a.student.localeCompare(b.student, "pt-BR"),
+    );
+  }, [filtered, students]);
+
   const save = useMutation({
     mutationFn: async () => {
       if (!form.student_name) throw new Error("Selecione o aluno.");
@@ -339,6 +434,9 @@ function Page() {
         total_cost: calculation.totalCost,
         charge_biscuit: form.charge_biscuit,
         charge_glaze: form.charge_glaze,
+        resistance_only: form.resistance_only,
+        freight_rate: calculation.freightRate,
+        freight_cost: calculation.freightCost,
         amount_charged: chargedInput,
         amount_paid: paidInput,
         amount_pending: pending,
@@ -434,6 +532,7 @@ function Page() {
       other_cost: String(row.other_cost ?? 0),
       charge_biscuit: row.charge_biscuit !== false,
       charge_glaze: row.charge_glaze !== false,
+      resistance_only: row.resistance_only === true,
       amount_charged: String(row.amount_charged ?? ""),
       amount_paid: String(row.amount_paid ?? 0),
       payment_status: row.payment_status ?? "pending",
@@ -446,6 +545,16 @@ function Page() {
 
   return (
     <PageContainer>
+      <style>{`@media print {
+        body.printing-student-materials * { visibility: hidden !important; }
+        body.printing-student-materials [data-print-statement="selected"],
+        body.printing-student-materials [data-print-statement="selected"] * { visibility: visible !important; }
+        body.printing-student-materials [data-print-statement="selected"] {
+          position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important;
+          box-shadow: none !important; border: 0 !important; background: white !important;
+        }
+        body.printing-student-materials [data-print-hide="true"] { display: none !important; }
+      }`}</style>
       <PageHeader
         title="Material Aulas Regulares"
         description="Custo completo da peça, cobrança e acompanhamento por aluno"
@@ -499,14 +608,25 @@ function Page() {
         <Stat label="Alunos" value={String(byStudent.length)} />
       </div>
 
-      <Card className="mb-4">
-        <CardHeader><CardTitle className="text-base">Resumo por aluno</CardTitle></CardHeader>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm"><thead className="bg-muted/40"><tr className="text-left"><th className="p-3">Aluno</th><th className="p-3">Turma</th><th className="p-3">Peças</th><th className="p-3 text-right">Custo</th><th className="p-3 text-right">Materiais</th><th className="p-3 text-right">A receber</th><th className="p-3 text-right">Mensalidade + materiais</th></tr></thead>
-            <tbody>{byStudent.map((item) => <tr key={item.student} className="border-t"><td className="p-3 font-medium">{item.student}</td><td className="p-3">{item.group || "—"}</td><td className="p-3">{item.pieces}</td><td className="p-3 text-right font-mono">{formatCurrency(item.cost, currency, privacy)}</td><td className="p-3 text-right font-mono">{formatCurrency(item.charged, currency, privacy)}</td><td className="p-3 text-right font-mono text-expense">{formatCurrency(item.pending, currency, privacy)}</td><td className="p-3 text-right font-mono">{formatCurrency(item.monthlyFee + item.charged, currency, privacy)}</td></tr>)}</tbody>
-          </table>
-        </CardContent>
-      </Card>
+      {studentStatements.length > 0 && (
+        <section className="mb-4 space-y-4" aria-labelledby="student-statements-title">
+          <div>
+            <h2 id="student-statements-title" className="text-lg font-semibold">Demonstrativos de materiais por aluno</h2>
+            <p className="text-sm text-muted-foreground">Visão executiva pronta para imprimir ou salvar em PDF e enviar ao aluno.</p>
+          </div>
+          {studentStatements.map((item) => (
+            <StudentStatement
+              key={item.student}
+              item={item}
+              period={periodMode === "month" ? `${monthLabel(month)} de ${year}` : periodMode === "year" ? String(year) : "Histórico completo"}
+              currency={currency}
+              privacy={privacy}
+              selectedForPrint={printStudent === item.student}
+              onPrint={() => setPrintStudent(item.student)}
+            />
+          ))}
+        </section>
+      )}
 
       {filtered.length === 0 ? (
         <EmptyState icon={Users} title="Sem registros neste período" />
@@ -543,8 +663,28 @@ function Page() {
             <Field label="Outros custos"><Input inputMode="decimal" value={form.other_cost} onChange={(event) => setForm({ ...form, other_cost: event.target.value })} /></Field>
             <div className="flex items-center gap-2 pt-6"><Switch checked={form.charge_biscuit} onCheckedChange={(value) => setForm({ ...form, charge_biscuit: value })} /><Label>Cobrar biscoito</Label></div>
             <div className="flex items-center gap-2 pt-6"><Switch checked={form.charge_glaze} onCheckedChange={(value) => setForm({ ...form, charge_glaze: value })} /><Label>Cobrar esmaltação</Label></div>
+            <div className="col-span-2 rounded-xl border bg-muted/30 p-3 md:col-span-3">
+              <div className="flex items-start gap-3">
+                <Switch checked={form.resistance_only} onCheckedChange={(value) => setForm({ ...form, resistance_only: value })} />
+                <div>
+                  <Label>Considerar somente o custo das resistências</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">Exclui energia e buffer do custo da queima. A ocupação da peça no forno e o percentual de cobrança configurado continuam sendo aplicados.</p>
+                </div>
+              </div>
+            </div>
           </div>
-          <Card><CardContent className="grid grid-cols-2 gap-x-6 gap-y-1 p-4 text-sm md:grid-cols-3"><Cost label="Argila" value={calculation.clayCost} currency={currency} privacy={privacy} /><Cost label="Esmalte" value={calculation.glazeCost} currency={currency} privacy={privacy} /><Cost label="Biscoito" value={calculation.bisqueBillingCost} currency={currency} privacy={privacy} /><Cost label="Queima esmalte" value={calculation.glazeBillingCost} currency={currency} privacy={privacy} /><Cost label="Custo total" value={calculation.totalCost} currency={currency} privacy={privacy} /><Cost label="Cobrança sugerida" value={calculation.chargeAmount} currency={currency} privacy={privacy} /></CardContent></Card>
+          <Card><CardContent className="grid grid-cols-2 gap-x-6 gap-y-1 p-4 text-sm md:grid-cols-4"><Cost label="Argila" value={calculation.clayCost} currency={currency} privacy={privacy} /><Cost label="Esmalte" value={calculation.glazeCost} currency={currency} privacy={privacy} /><Cost label="Biscoito" value={calculation.bisqueBillingCost} currency={currency} privacy={privacy} /><Cost label="Queima esmalte" value={calculation.glazeBillingCost} currency={currency} privacy={privacy} /><Cost label="Outros" value={calculation.otherCosts} currency={currency} privacy={privacy} /><Cost label="Base da peça" value={calculation.unitBase} currency={currency} privacy={privacy} /><Cost label="Frete (10%)" value={calculation.freightCost} currency={currency} privacy={privacy} /><Cost label="Cobrança sugerida" value={calculation.chargeAmount} currency={currency} privacy={privacy} /></CardContent></Card>
+          <Card className="border-dashed">
+            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm"><Calculator className="h-4 w-4" />Memória de cálculo auditável</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-xs text-muted-foreground">
+              <p><strong className="text-foreground">Ocupação:</strong> área elíptica da peça com 1 cm de folga em cada lado ÷ área útil do forno = {(calculation.kilnUsePercent * 100).toFixed(3)}%.</p>
+              <p><strong className="text-foreground">Biscoito — resistência:</strong> {formatCurrency(calculation.bisqueProfile.resistanceCost, currency, privacy)} ÷ {calculation.bisqueProfile.resistanceBurns} queimas × ocupação = {formatCurrency(calculation.bisqueResistanceCost, currency, privacy)}.</p>
+              <p><strong className="text-foreground">Esmalte — resistência:</strong> {formatCurrency(calculation.glazeProfile.resistanceCost, currency, privacy)} ÷ {calculation.glazeProfile.resistanceBurns} queimas × ocupação = {formatCurrency(calculation.glazeResistanceCost, currency, privacy)}.</p>
+              {!calculation.resistanceOnly && <p><strong className="text-foreground">Modo completo:</strong> soma energia ({formatCurrency(calculation.bisqueEnergyCost + calculation.glazeEnergyCost, currency, privacy)}), resistências e buffer ({formatCurrency(calculation.bisqueBufferCost + calculation.glazeBufferCost, currency, privacy)}).</p>}
+              {calculation.resistanceOnly && <p><strong className="text-foreground">Modo selecionado:</strong> somente a parcela das resistências entra na base das queimas; energia e buffer são R$ 0,00 para esta cobrança.</p>}
+              <p><strong className="text-foreground">Cobrança das queimas:</strong> custo selecionado × (1 + {Number(classSettings?.kiln_firing_profit_percent ?? 100).toFixed(0)}%). <strong className="text-foreground">Frete:</strong> base da peça × 10% = {formatCurrency(calculation.freightCost, currency, privacy)} por unidade.</p>
+            </CardContent>
+          </Card>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <Field label="Valor cobrado"><div className="flex gap-2"><Input inputMode="decimal" placeholder={calculation.chargeAmount.toFixed(2)} value={form.amount_charged} onChange={(event) => setForm({ ...form, amount_charged: event.target.value })} /><Button type="button" variant="outline" onClick={() => setForm({ ...form, amount_charged: calculation.chargeAmount.toFixed(2) })}>Usar</Button></div></Field>
             <Field label="Status"><Select value={form.payment_status} onValueChange={(value) => setForm({ ...form, payment_status: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">Pendente</SelectItem><SelectItem value="partial">Parcial</SelectItem><SelectItem value="paid">Pago</SelectItem><SelectItem value="waived">Cortesia</SelectItem></SelectContent></Select></Field>
@@ -562,6 +702,103 @@ function Page() {
       </Dialog>
     </PageContainer>
   );
+}
+
+function StudentStatement({
+  item,
+  period,
+  currency,
+  privacy,
+  selectedForPrint,
+  onPrint,
+}: {
+  item: any;
+  period: string;
+  currency: string;
+  privacy: boolean;
+  selectedForPrint: boolean;
+  onPrint: () => void;
+}) {
+  return (
+    <Card data-print-statement={selectedForPrint ? "selected" : "idle"} className="overflow-hidden">
+      <CardHeader className="border-b bg-muted/20 pb-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-xl">{item.student}</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">{item.group || "Aulas regulares"} · {period} · {item.quantity} {item.quantity === 1 ? "peça" : "peças"}</p>
+          </div>
+          <Button data-print-hide="true" type="button" variant="outline" size="sm" onClick={onPrint}>
+            <Printer className="mr-1 h-4 w-4" />Imprimir / salvar PDF
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5 p-4 md:p-5">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl bg-primary p-4 text-primary-foreground">
+            <div className="text-xs uppercase tracking-wide opacity-80">Total de materiais</div>
+            <div className="mt-1 font-mono text-2xl font-bold">{formatCurrency(item.charged, currency, privacy)}</div>
+          </div>
+          <div className="rounded-xl border bg-card p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Já pago</div>
+            <div className="mt-1 font-mono text-2xl font-bold text-income">{formatCurrency(item.paid, currency, privacy)}</div>
+          </div>
+          <div className="rounded-xl border bg-card p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Falta pagar</div>
+            <div className="mt-1 font-mono text-2xl font-bold text-expense">{formatCurrency(item.pending, currency, privacy)}</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+          <Breakdown label="Argila" value={item.clay} currency={currency} privacy={privacy} />
+          <Breakdown label="Esmalte" value={item.glaze} currency={currency} privacy={privacy} />
+          <Breakdown label="Queimas" value={item.firing} currency={currency} privacy={privacy} />
+          <Breakdown label="Outros custos" value={item.other} currency={currency} privacy={privacy} />
+          <Breakdown label="Frete (10%)" value={item.freight} currency={currency} privacy={privacy} />
+        </div>
+
+        <div className="space-y-3">
+          {item.pieces.map((piece: any) => {
+            const unitCalculated = piece.calculated / piece.quantity;
+            return (
+              <div key={piece.id} className="rounded-xl border bg-card p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold">{piece.piece_name || "Peça sem nome"}</h3>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${piece.payment_status === "paid" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}>{statusLabel(piece.payment_status)}</span>
+                      {piece.resistance_only && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Somente resistências</span>}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {piece.quantity} {piece.quantity === 1 ? "unidade" : "unidades"} · {Number(piece.clay_weight_kg || 0) * 1000} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-muted-foreground">Custo calculado por peça</div>
+                    <div className="font-mono text-xl font-bold text-primary">{formatCurrency(unitCalculated, currency, privacy)}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-5 gap-y-2 py-3 text-sm md:grid-cols-5">
+                  <Cost label="Argila" value={piece.clay / piece.quantity} currency={currency} privacy={privacy} />
+                  <Cost label="Esmalte" value={piece.glaze / piece.quantity} currency={currency} privacy={privacy} />
+                  <Cost label="Queimas" value={piece.firing / piece.quantity} currency={currency} privacy={privacy} />
+                  <Cost label="Outros" value={piece.other / piece.quantity} currency={currency} privacy={privacy} />
+                  <Cost label={`Frete (${(piece.freightRate * 100).toFixed(0)}%)`} value={piece.freight / piece.quantity} currency={currency} privacy={privacy} />
+                </div>
+                <div className="flex flex-wrap justify-end gap-x-5 gap-y-1 border-t pt-3 text-sm">
+                  <span className="text-muted-foreground">Calculado: <strong className="font-mono text-foreground">{formatCurrency(piece.calculated, currency, privacy)}</strong></span>
+                  <span className="text-muted-foreground">Cobrado: <strong className="font-mono text-foreground">{formatCurrency(piece.charged, currency, privacy)}</strong></span>
+                  <span className="text-muted-foreground">Pago: <strong className="font-mono text-income">{formatCurrency(piece.paid, currency, privacy)}</strong></span>
+                  <span className="text-muted-foreground">Pendente: <strong className="font-mono text-expense">{formatCurrency(piece.pending, currency, privacy)}</strong></span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Breakdown({ label, value, currency, privacy }: { label: string; value: number; currency: string; privacy: boolean }) {
+  return <div className="rounded-xl bg-muted/60 p-3"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 font-mono font-semibold">{formatCurrency(value, currency, privacy)}</div></div>;
 }
 
 function statusLabel(value: string) {

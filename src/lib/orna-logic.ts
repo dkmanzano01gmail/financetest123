@@ -866,9 +866,11 @@ export function calculateClassPieceCost(args: {
   firingSettings?: FiringSettingsLike | null;
   chargeBisque?: boolean;
   chargeGlaze?: boolean;
+  resistanceOnly?: boolean;
   kilnFiringProfitRate?: number;
   otherCosts?: number;
   marginRate?: number;
+  freightRate?: number;
 }) {
   const quantity = Math.max(1, Math.trunc(numberValue(args.quantity || 1)));
   const bisqueProfile = resolveFiringProfile(args.firingSettings, "biscuit", "Biscoito");
@@ -901,23 +903,42 @@ export function calculateClassPieceCost(args: {
     kwhCost: glazeProfile.kwhCost,
     finalBuffer: glazeProfile.finalBuffer,
   });
+  const resistanceOnly = args.resistanceOnly === true;
+  const bisqueInternalCost = resistanceOnly ? bisque.resistanceCost : bisque.unitCost;
+  const glazeInternalCost = resistanceOnly ? glaze.resistanceCost : glaze.unitCost;
   const kilnProfit = Math.max(0, numberValue(args.kilnFiringProfitRate ?? 1));
-  const bisqueBillingCost = args.chargeBisque === false ? 0 : bisque.unitCost * (1 + kilnProfit);
-  const glazeBillingCost = args.chargeGlaze === false ? 0 : glaze.unitCost * (1 + kilnProfit);
+  const bisqueBillingCost =
+    args.chargeBisque === false ? 0 : bisqueInternalCost * (1 + kilnProfit);
+  const glazeBillingCost =
+    args.chargeGlaze === false ? 0 : glazeInternalCost * (1 + kilnProfit);
   const clayCost = Math.max(0, numberValue(args.clayWeightKg)) * Math.max(0, numberValue(args.clayUnitCost));
   const glazeCost = Math.max(0, numberValue(args.glazeAmount)) * Math.max(0, numberValue(args.glazeUnitCost));
-  const unitTotal = clayCost + glazeCost + bisqueBillingCost + glazeBillingCost + Math.max(0, numberValue(args.otherCosts));
+  const otherCosts = Math.max(0, numberValue(args.otherCosts));
+  const unitBase = clayCost + glazeCost + bisqueBillingCost + glazeBillingCost + otherCosts;
+  const freightRate = Math.max(0, numberValue(args.freightRate ?? 0.1));
+  const freightCost = unitBase * freightRate;
+  const unitTotal = unitBase + freightCost;
   const totalCost = unitTotal * quantity;
   const chargeAmount = totalCost * (1 + Math.max(0, numberValue(args.marginRate)));
   return {
     quantity,
     clayCost,
     glazeCost,
-    bisqueInternalCost: bisque.unitCost,
-    glazeInternalCost: glaze.unitCost,
+    resistanceOnly,
+    bisqueInternalCost,
+    glazeInternalCost,
+    bisqueEnergyCost: bisque.energyCost,
+    glazeEnergyCost: glaze.energyCost,
+    bisqueResistanceCost: bisque.resistanceCost,
+    glazeResistanceCost: glaze.resistanceCost,
+    bisqueBufferCost: bisque.bufferCost,
+    glazeBufferCost: glaze.bufferCost,
     bisqueBillingCost,
     glazeBillingCost,
-    otherCosts: Math.max(0, numberValue(args.otherCosts)),
+    otherCosts,
+    unitBase,
+    freightRate,
+    freightCost,
     unitTotal,
     totalCost,
     chargeAmount,
