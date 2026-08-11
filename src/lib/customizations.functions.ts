@@ -6,10 +6,17 @@ import {
   type CategoryRule,
   type RuleCondition,
 } from "@/lib/customization-registry";
+import {
+  CALCULATION_REVIEW_MESSAGE,
+  canAutoApply,
+  validateAutoOperation,
+  type TargetScope,
+} from "@/lib/customization-schema";
 
 const InterpretInput = z.object({
   workspace_id: z.string().uuid(),
   request_text: z.string().min(3).max(2000),
+  target_scope: z.enum(["user", "workspace"]).default("user"),
 });
 
 const SYSTEM_PROMPT = `Você é o motor de personalizações do app financeiro Selá.
@@ -96,6 +103,22 @@ const NAV_LABEL_MAP: Record<string, string> = {
   configuraç: "nav.settings",
   configurac: "nav.settings",
   ajuste: "nav.settings",
+  "fluxo de caixa": "nav.atelier.cash_flow",
+  "matéria-prima": "nav.atelier.raw_materials",
+  "materia-prima": "nav.atelier.raw_materials",
+  "matérias-primas": "nav.atelier.raw_materials",
+  "materiais de aula": "nav.atelier.class_materials",
+  presenç: "nav.atelier.attendance",
+  presenc: "nav.atelier.attendance",
+  aluno: "nav.atelier.students",
+  forno: "nav.atelier.kilns",
+  reforma: "nav.atelier.renovation",
+  "precificação de peça": "nav.atelier.pieces",
+  peça: "nav.atelier.pieces",
+  peca: "nav.atelier.pieces",
+  workshop: "nav.atelier.workshops",
+  queima: "nav.atelier.firings",
+  feedback: "nav.feedback",
 };
 
 function detectNavKey(text: string): string | null {
