@@ -522,14 +522,14 @@ export type Database = {
           completed_at: string | null
           created_at: string
           depth_cm: number
+          freight_cost: number
+          freight_rate: number
           glaze_cone: string | null
           glaze_cost: number
           glaze_firing_cost: number
           glaze_name: string | null
           glaze_quantity: number
           grams: number
-          freight_cost: number
-          freight_rate: number
           height_cm: number
           id: string
           kiln_id: string | null
@@ -541,9 +541,9 @@ export type Database = {
           payment_notes: string | null
           payment_status: string
           piece_name: string | null
+          production_status: string
           quantity: number
           resistance_only: boolean
-          production_status: string
           student_id: string | null
           student_name: string
           total_cost: number
@@ -565,14 +565,14 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           depth_cm?: number
+          freight_cost?: number
+          freight_rate?: number
           glaze_cone?: string | null
           glaze_cost?: number
           glaze_firing_cost?: number
           glaze_name?: string | null
           glaze_quantity?: number
           grams?: number
-          freight_cost?: number
-          freight_rate?: number
           height_cm?: number
           id?: string
           kiln_id?: string | null
@@ -584,9 +584,9 @@ export type Database = {
           payment_notes?: string | null
           payment_status?: string
           piece_name?: string | null
+          production_status?: string
           quantity?: number
           resistance_only?: boolean
-          production_status?: string
           student_id?: string | null
           student_name: string
           total_cost?: number
@@ -608,14 +608,14 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           depth_cm?: number
+          freight_cost?: number
+          freight_rate?: number
           glaze_cone?: string | null
           glaze_cost?: number
           glaze_firing_cost?: number
           glaze_name?: string | null
           glaze_quantity?: number
           grams?: number
-          freight_cost?: number
-          freight_rate?: number
           height_cm?: number
           id?: string
           kiln_id?: string | null
@@ -627,9 +627,9 @@ export type Database = {
           payment_notes?: string | null
           payment_status?: string
           piece_name?: string | null
+          production_status?: string
           quantity?: number
           resistance_only?: boolean
-          production_status?: string
           student_id?: string | null
           student_name?: string
           total_cost?: number
@@ -771,6 +771,8 @@ export type Database = {
           request_type: string
           rollback_payload: Json | null
           status: string
+          target_scope: string
+          target_user_id: string | null
           tested_at: string | null
           updated_at: string
           user_id: string
@@ -794,6 +796,8 @@ export type Database = {
           request_type?: string
           rollback_payload?: Json | null
           status?: string
+          target_scope?: string
+          target_user_id?: string | null
           tested_at?: string | null
           updated_at?: string
           user_id: string
@@ -817,6 +821,8 @@ export type Database = {
           request_type?: string
           rollback_payload?: Json | null
           status?: string
+          target_scope?: string
+          target_user_id?: string | null
           tested_at?: string | null
           updated_at?: string
           user_id?: string
@@ -888,6 +894,8 @@ export type Database = {
           operation_payload: Json | null
           operation_type: string | null
           request_id: string | null
+          target_scope: string
+          target_user_id: string | null
           type: string
           updated_at: string
           workspace_id: string
@@ -905,6 +913,8 @@ export type Database = {
           operation_payload?: Json | null
           operation_type?: string | null
           request_id?: string | null
+          target_scope?: string
+          target_user_id?: string | null
           type: string
           updated_at?: string
           workspace_id: string
@@ -922,6 +932,8 @@ export type Database = {
           operation_payload?: Json | null
           operation_type?: string | null
           request_id?: string | null
+          target_scope?: string
+          target_user_id?: string | null
           type?: string
           updated_at?: string
           workspace_id?: string
@@ -2265,6 +2277,8 @@ export type Database = {
           request_type: string
           rollback_payload: Json | null
           status: string
+          target_scope: string
+          target_user_id: string | null
           tested_at: string | null
           updated_at: string
           user_id: string
@@ -2297,6 +2311,8 @@ export type Database = {
           request_type: string
           rollback_payload: Json | null
           status: string
+          target_scope: string
+          target_user_id: string | null
           tested_at: string | null
           updated_at: string
           user_id: string
@@ -2308,6 +2324,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      charge_request_credits: {
+        Args: { _request_id: string }
+        Returns: boolean
       }
       consume_credits: {
         Args: {
@@ -2364,6 +2384,8 @@ export type Database = {
           request_type: string
           rollback_payload: Json | null
           status: string
+          target_scope: string
+          target_user_id: string | null
           tested_at: string | null
           updated_at: string
           user_id: string
@@ -2396,6 +2418,8 @@ export type Database = {
           request_type: string
           rollback_payload: Json | null
           status: string
+          target_scope: string
+          target_user_id: string | null
           tested_at: string | null
           updated_at: string
           user_id: string

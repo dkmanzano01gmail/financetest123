@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
+import { sortByPrecedence } from "@/lib/customization-schema";
 
 /**
  * Reads runtime customizations and exposes ready-to-consume shapes:
@@ -12,21 +14,23 @@ import { supabase } from "@/integrations/supabase/client";
  * Testing rows take precedence over definitive rows (sorted is_testing desc).
  */
 export function useCustomizedUI(workspaceId?: string) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const q = useQuery({
-    queryKey: ["customizations-ui", workspaceId],
+    queryKey: ["customizations-ui", workspaceId, userId],
     enabled: !!workspaceId,
     staleTime: 5_000,
     refetchInterval: 10_000,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("customizations")
-        .select("id,type,name,configuration_json,is_active,is_testing,updated_at")
+        .select(
+          "id,type,name,configuration_json,is_active,is_testing,updated_at,target_scope,target_user_id",
+        )
         .eq("workspace_id", workspaceId!)
-        .eq("is_active", true)
-        .order("is_testing", { ascending: false })
-        .order("updated_at", { ascending: false });
+        .eq("is_active", true);
       if (error) return [] as any[];
-      return (data ?? []) as any[];
+      return sortByPrecedence((data ?? []) as any[], userId);
     },
   });
 

@@ -410,222 +410,84 @@ async function tryAiInterpret(
   }
 }
 
-const APPLICABLE_TYPES = new Set([
-  "label_rename",
-  "card_visibility",
-  "nav_visibility",
-  "nav_reorder",
-  "dashboard_widget_order",
-  "category_rule",
-  "saved_filter",
-  "new_category",
-]);
+// ============================================================
+// Security matrix + persistence
+// ============================================================
 
-/**
- * Persists a CategoryRule as importance_rules rows and applies it
- * retroactively to existing transactions. Returns the new rule id +
- * number of transactions affected.
- */
-async function applyCategoryRule(
+/** Reads the caller's role in the workspace (never trusted from the client). */
+async function getMemberRole(
   supabase: any,
   workspaceId: string,
-  rule: CategoryRule,
-): Promise<{
-  rule_id: string | null;
-  category_id: string | null;
-  affected: number;
-  created_category: boolean;
-}> {
-  // 1) Resolve category — create if missing
-  let { data: cat } = await supabase
-    .from("categories")
-    .select("id,name,type,importance_level")
+  userId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("workspace_members")
+    .select("role")
     .eq("workspace_id", workspaceId)
-    .ilike("name", rule.category_name)
+    .eq("user_id", userId)
     .maybeSingle();
-  let createdCategory = false;
-  if (!cat) {
-    const { data: newCat, error: cErr } = await supabase
-      .from("categories")
-      .insert({
-        workspace_id: workspaceId,
-        name: rule.category_name,
-        type: rule.transaction_type ?? "expense",
-        color: rule.transaction_type === "income" ? "#16a34a" : "#c2410c",
-        importance_level: rule.importance_level ?? "flexible",
-      })
-      .select("id,name,type,importance_level")
-      .single();
-    if (cErr) throw new Error(cErr.message);
-    cat = newCat;
-    createdCategory = true;
+  return (data?.role as string | undefined) ?? null;
+}
+
+type ApplyDecision = {
+  applicable: boolean;
+  reason: string;
+  type: string;
+  configuration_json: Record<string, any>;
+};
+
+/**
+ * Decides whether an interpretation can be applied automatically.
+ * Validation is strict (Zod, whitelist only); anything else is queued.
+ */
+function decideApplication(
+  interp: LocalClassification,
+  scope: TargetScope,
+  role: string | null,
+): ApplyDecision {
+  if (interp.type === "calculation" || interp.type === "new_calculation") {
+    return {
+      applicable: false,
+      reason: CALCULATION_REVIEW_MESSAGE,
+      type: interp.type,
+      configuration_json: {},
+    };
   }
-
-  // 2) Build importance_rules row from conditions (AND)
-  const desc = rule.conditions.find((c) => c.kind === "descriptor") as
-    | Extract<RuleCondition, { kind: "descriptor" }>
-    | undefined;
-  const cp = rule.conditions.find((c) => c.kind === "counterparty") as
-    | Extract<RuleCondition, { kind: "counterparty" }>
-    | undefined;
-  const amt = rule.conditions.find((c) => c.kind === "amount") as
-    | Extract<RuleCondition, { kind: "amount" }>
-    | undefined;
-  const rec = rule.conditions.find((c) => c.kind === "recurrence") as
-    | Extract<RuleCondition, { kind: "recurrence" }>
-    | undefined;
-
-  const ruleRow: Record<string, any> = {
-    workspace_id: workspaceId,
-    rule_kind:
-      rule.conditions.length > 1 ? "composite" : (rule.conditions[0]?.kind ?? "descriptor"),
-    match_text: desc?.match_text ?? "",
-    match_mode: desc?.match_mode ?? "contains",
-    category_hint: cat?.name ?? rule.category_name,
-    category_id: cat?.id ?? null,
-    importance_level: rule.importance_level ?? cat?.importance_level ?? "flexible",
-    transaction_type: rule.transaction_type ?? null,
-    source_type: "user",
-    confidence: 0.95,
-    is_active: true,
-    amount_operator: amt?.operator ?? null,
-    amount_value: amt?.value ?? null,
-    amount_value_2: amt?.value2 ?? null,
-    counterparty_match: cp?.match_text ?? null,
-    counterparty_match_mode: cp?.match_mode ?? (cp ? "contains" : null),
-    recurrence_min_count: rec?.min_count ?? null,
-    recurrence_window_days: rec?.window_days ?? null,
-    priority: rule.priority ?? 50,
-    notes: rule.notes ?? null,
-  };
-
-  const { data: insertedRule, error: rErr } = await supabase
-    .from("importance_rules")
-    .insert(ruleRow)
-    .select("id")
-    .single();
-  if (rErr) throw new Error(rErr.message);
-
-  // 3) Retroactive apply — fetch matching transactions and update.
-  //    We re-evaluate in JS so the same matcher used by the suggestion
-  //    engine governs both new and historical txns.
-  const { data: txs } = await supabase
-    .from("transactions")
-    .select("id,description,counterparty,amount,date,type,category_id")
-    .eq("workspace_id", workspaceId)
-    .limit(5000);
-  const matched: string[] = [];
-  for (const tx of txs ?? []) {
-    if (rule.transaction_type && tx.type !== rule.transaction_type) continue;
-    if (!matchesRuleLocally(tx, ruleRow, txs ?? [])) continue;
-    matched.push(tx.id);
+  const validation = validateAutoOperation({
+    type: interp.type,
+    configuration_json: interp.configuration_json,
+  });
+  if (!validation.ok) {
+    return {
+      applicable: false,
+      reason: validation.reason,
+      type: interp.type,
+      configuration_json: interp.configuration_json ?? {},
+    };
   }
-  if (matched.length > 0 && cat?.id) {
-    // Update in chunks of 200 to avoid huge IN clauses
-    for (let i = 0; i < matched.length; i += 200) {
-      const chunk = matched.slice(i, i + 200);
-      await supabase
-        .from("transactions")
-        .update({
-          category_id: cat.id,
-          importance_level: ruleRow.importance_level,
-          importance_suggestion_reason: `Regra "${rule.category_name}" aplicada automaticamente.`,
-          importance_status: "suggested",
-        })
-        .in("id", chunk);
-    }
+  if (interp.complexity !== "easy") {
+    return {
+      applicable: false,
+      reason: interp.reason || "Pedido classificado como avançado.",
+      type: validation.type,
+      configuration_json: validation.configuration_json,
+    };
   }
-
+  if (!canAutoApply(scope, role)) {
+    return {
+      applicable: false,
+      reason:
+        "Mudanças para todo o workspace só podem ser aplicadas pelo proprietário — enviado para revisão.",
+      type: validation.type,
+      configuration_json: validation.configuration_json,
+    };
+  }
   return {
-    rule_id: insertedRule?.id ?? null,
-    category_id: cat?.id ?? null,
-    affected: matched.length,
-    created_category: createdCategory,
+    applicable: true,
+    reason: interp.reason,
+    type: validation.type,
+    configuration_json: validation.configuration_json,
   };
-}
-
-function normalizeStr(s: string | null | undefined): string {
-  return (s || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function matchesRuleLocally(tx: any, r: any, allTxs: any[]): boolean {
-  // descriptor
-  if (r.match_text && String(r.match_text).trim()) {
-    const txt = normalizeStr(`${tx.description ?? ""} ${tx.counterparty ?? ""}`);
-    const m = normalizeStr(r.match_text);
-    let ok = false;
-    if (r.match_mode === "equals") ok = txt === m;
-    else if (r.match_mode === "starts_with") ok = txt.startsWith(m);
-    else if (r.match_mode === "regex") {
-      try {
-        ok = new RegExp(m, "i").test(txt);
-      } catch {
-        ok = false;
-      }
-    } else ok = txt.includes(m);
-    if (!ok) return false;
-  }
-  // counterparty
-  if (r.counterparty_match) {
-    const cp = normalizeStr(tx.counterparty);
-    const m = normalizeStr(r.counterparty_match);
-    const mode = r.counterparty_match_mode ?? "contains";
-    let ok = false;
-    if (mode === "equals") ok = cp === m;
-    else if (mode === "starts_with") ok = cp.startsWith(m);
-    else ok = cp.includes(m);
-    if (!ok) return false;
-  }
-  // amount
-  if (r.amount_operator && r.amount_value != null) {
-    const a = Math.abs(Number(tx.amount));
-    const v = Math.abs(Number(r.amount_value));
-    let ok = false;
-    if (r.amount_operator === "equals") ok = Math.abs(a - v) < 0.005;
-    else if (r.amount_operator === "multiple_of")
-      ok = v > 0 && Math.abs(a / v - Math.round(a / v)) < 0.005;
-    else if (r.amount_operator === "greater_than") ok = a > v;
-    else if (r.amount_operator === "less_than") ok = a < v;
-    else if (r.amount_operator === "between") {
-      const v2 = Math.abs(Number(r.amount_value_2 ?? v));
-      const lo = Math.min(v, v2),
-        hi = Math.max(v, v2);
-      ok = a >= lo && a <= hi;
-    }
-    if (!ok) return false;
-  }
-  // recurrence
-  if (r.recurrence_min_count) {
-    const basisDescriptor = !r.counterparty_match;
-    const windowDays = r.recurrence_window_days ?? 90;
-    const cutoff = Date.now() - windowDays * 86_400_000;
-    const subjectText = normalizeStr(tx.description);
-    const subjectCp = normalizeStr(tx.counterparty);
-    let count = 0;
-    for (const other of allTxs) {
-      if (other.id === tx.id) continue;
-      if (other.date) {
-        const d = Date.parse(other.date);
-        if (!Number.isNaN(d) && d < cutoff) continue;
-      }
-      if (basisDescriptor) {
-        const od = normalizeStr(other.description);
-        if (od && (od === subjectText || od.includes(subjectText) || subjectText.includes(od)))
-          count++;
-      } else {
-        const oc = normalizeStr(other.counterparty);
-        if (oc && (oc === subjectCp || oc.includes(subjectCp) || subjectCp.includes(oc))) count++;
-      }
-      if (count + 1 >= r.recurrence_min_count) return true;
-    }
-    return false;
-  }
-  return true;
 }
 
 async function applyAndPersist(
@@ -634,11 +496,19 @@ async function applyAndPersist(
   userId: string,
   requestText: string,
   interp: LocalClassification,
+  scope: TargetScope,
+  role: string | null,
 ) {
-  const isApplicable = interp.complexity === "easy" && APPLICABLE_TYPES.has(interp.type);
+  const decision = decideApplication(interp, scope, role);
+  const isApplicable = decision.applicable;
+  const safeInterp: LocalClassification = {
+    ...interp,
+    type: decision.type,
+    reason: decision.reason,
+    configuration_json: decision.configuration_json,
+    complexity: isApplicable ? "easy" : "advanced",
+  };
 
-  // Easy changes go to "testing" so the user must approve via banner before
-  // they become definitive. Advanced ones still queue for super-admin.
   const finalStatus = isApplicable ? "testing" : "needs_admin_review";
   const { data: inserted, error } = await supabase
     .from("customization_requests")
@@ -646,102 +516,50 @@ async function applyAndPersist(
       workspace_id: workspaceId,
       user_id: userId,
       request_text: requestText,
-      request_type: interp.complexity === "easy" ? "simple" : "advanced",
-      complexity: interp.complexity,
-      ai_classification_reason: interp.reason,
-      estimated_credits: interp.estimated_credits,
+      request_type: isApplicable ? "simple" : "advanced",
+      complexity: safeInterp.complexity,
+      ai_classification_reason: decision.reason,
+      estimated_credits: safeInterp.estimated_credits,
       status: finalStatus,
-      ai_interpretation: interp,
+      ai_interpretation: safeInterp,
       auto_applied: isApplicable,
+      target_scope: scope,
+      target_user_id: scope === "user" ? userId : null,
     })
     .select()
     .single();
   if (error) throw new Error(error.message);
 
-  // Best-effort credit logging — never let RPC failures break the flow.
-  try {
-    const { error: rpcErr } = await supabase.rpc("consume_credits", {
-      _workspace_id: workspaceId,
-      _request_id: inserted.id,
-      _credits: interp.estimated_credits,
-      _reason: interp.summary || "Personalização",
-    });
-    if (rpcErr) console.error("consume_credits error:", rpcErr);
-  } catch (err) {
-    console.error("consume_credits threw:", err);
-  }
-
+  // Credits are NOT consumed here — they are charged once, on approval.
   if (!isApplicable) {
-    return { request: inserted, autoApplied: false as const };
-  }
-
-  // Side-effects
-  let createdCategoryId: string | null = null;
-  if (interp.type === "new_category") {
-    const { data: newCat } = await supabase
-      .from("categories")
-      .insert({
-        workspace_id: workspaceId,
-        name: interp.configuration_json?.name ?? "Nova categoria",
-        type: interp.configuration_json?.type ?? "expense",
-        color: interp.configuration_json?.color ?? "#c2410c",
-        importance_level: interp.configuration_json?.importance_level ?? "flexible",
-      })
-      .select("id")
-      .single();
-    createdCategoryId = newCat?.id ?? null;
-  }
-
-  // category_rule: persist as importance_rules + apply retroactively
-  let ruleResult: {
-    rule_id: string | null;
-    category_id: string | null;
-    affected: number;
-    created_category: boolean;
-  } | null = null;
-  if (interp.type === "category_rule") {
-    const rule = (interp.configuration_json as any)?.rule as CategoryRule | undefined;
-    if (rule && Array.isArray(rule.conditions) && rule.conditions.length > 0) {
-      try {
-        ruleResult = await applyCategoryRule(supabase, workspaceId, rule);
-        if (ruleResult.created_category && ruleResult.category_id)
-          createdCategoryId = ruleResult.category_id;
-      } catch (err) {
-        console.error("applyCategoryRule failed:", err);
-      }
-    }
+    return { request: inserted, autoApplied: false as const, reason: decision.reason };
   }
 
   const { data: cust, error: cErr } = await supabase
     .from("customizations")
     .insert({
       workspace_id: workspaceId,
-      type: interp.type,
-      name: (interp.summary || requestText).slice(0, 80) || "Personalização",
-      description: interp.summary || null,
-      configuration_json: interp.configuration_json ?? {},
+      type: safeInterp.type,
+      name: (safeInterp.summary || requestText).slice(0, 80) || "Personalização",
+      description: safeInterp.summary || null,
+      configuration_json: safeInterp.configuration_json,
       created_by: userId,
       request_id: inserted.id,
       is_active: true,
       is_testing: true,
+      target_scope: scope,
+      target_user_id: scope === "user" ? userId : null,
       menu_key:
-        interp.type === "label_rename"
-          ? (Object.keys(interp.configuration_json?.labels ?? {})[0] ?? null)
+        safeInterp.type === "label_rename"
+          ? (Object.keys(safeInterp.configuration_json?.labels ?? {})[0] ?? null)
           : null,
-      operation_type: interp.type,
-      operation_payload: ruleResult
-        ? {
-            ...interp.configuration_json,
-            applied_rule_id: ruleResult.rule_id,
-            affected_transactions: ruleResult.affected,
-          }
-        : interp.configuration_json,
+      operation_type: safeInterp.type,
+      operation_payload: safeInterp.configuration_json,
     })
     .select()
     .single();
 
   if (cErr) {
-    // Don't leave the request orphaned — mark as needing review
     await supabase
       .from("customization_requests")
       .update({
@@ -753,28 +571,18 @@ async function applyAndPersist(
     return { request: { ...inserted, status: "needs_admin_review" }, autoApplied: false as const };
   }
 
-  const now = new Date().toISOString();
-  const rollback: Record<string, any> = {
-    kind: "delete_customization",
-    customization_id: cust.id,
-  };
-  if (createdCategoryId) rollback.category_id = createdCategoryId;
-  if (ruleResult?.rule_id) rollback.importance_rule_id = ruleResult.rule_id;
-
   await supabase
     .from("customization_requests")
     .update({
       applied_customization_id: cust.id,
-      approved_credits: interp.estimated_credits,
-      tested_at: now,
-      rollback_payload: rollback,
+      tested_at: new Date().toISOString(),
+      rollback_payload: { kind: "delete_customization", customization_id: cust.id },
     })
     .eq("id", inserted.id);
 
   return {
     request: { ...inserted, applied_customization_id: cust.id, status: "testing" },
     autoApplied: true as const,
-    affected_transactions: ruleResult?.affected ?? 0,
   };
 }
 
@@ -790,25 +598,30 @@ export const submitCustomizationRequest = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    const { data: member } = await supabase
-      .from("workspace_members")
-      .select("workspace_id")
-      .eq("workspace_id", data.workspace_id)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!member) throw new Error("Forbidden");
+    const role = await getMemberRole(supabase as any, data.workspace_id, userId);
+    if (!role) throw new Error("Forbidden");
+    const scope: TargetScope = data.target_scope === "workspace" ? "workspace" : "user";
 
     // 1) Local classification (always works)
     const local = classifyLocally(data.request_text);
 
-    // 2) Try AI enhancement with 8s timeout — best effort, never blocks
+    // 2) Try AI enhancement with 8s timeout — best effort, never blocks.
+    //    The AI output is only a suggestion; it is validated before use.
     let interp = local;
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 8000);
       const ai = await tryAiInterpret(data.request_text, ctrl.signal);
       clearTimeout(timer);
-      if (ai) interp = ai;
+      if (ai) {
+        const aiValid = validateAutoOperation({
+          type: ai.type,
+          configuration_json: ai.configuration_json,
+        });
+        // Prefer the AI reading only when it is strictly valid; otherwise keep
+        // the deterministic local result (which may itself route to review).
+        if (aiValid.ok) interp = ai;
+      }
     } catch {
       // keep local
     }
@@ -819,6 +632,8 @@ export const submitCustomizationRequest = createServerFn({ method: "POST" })
       userId,
       data.request_text,
       interp,
+      scope,
+      role,
     );
   });
 
@@ -834,16 +649,9 @@ export const reprocessPendingRequests = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    const { data: member } = await supabase
-      .from("workspace_members")
-      .select("workspace_id")
-      .eq("workspace_id", data.workspace_id)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!member) throw new Error("Forbidden");
+    const role = await getMemberRole(supabase as any, data.workspace_id, userId);
+    if (!role) throw new Error("Forbidden");
 
-    // Pick up: stuck-in-interpreting AND approved requests that never
-    // produced a customization row (silent insert failure recovery).
     const { data: stuckRaw } = await (supabase as any)
       .from("customization_requests")
       .select("*, customizations(id)")
@@ -873,43 +681,50 @@ export const reprocessPendingRequests = createServerFn({ method: "POST" })
         interp = classifyLocally(row.request_text);
       }
 
-      const isApplicable = interp.complexity === "easy" && APPLICABLE_TYPES.has(interp.type);
+      const rowScope: TargetScope = row.target_scope === "user" ? "user" : "workspace";
+      const rowRole =
+        row.user_id === userId ? role : await getMemberRole(supabase as any, row.workspace_id, row.user_id);
+      const decision = decideApplication(interp, rowScope, rowRole);
+      const isApplicable = decision.applicable;
+      const safeInterp: LocalClassification = {
+        ...interp,
+        type: decision.type,
+        reason: decision.reason,
+        configuration_json: decision.configuration_json,
+        complexity: isApplicable ? "easy" : "advanced",
+      };
       const finalStatus = isApplicable ? "testing" : "needs_admin_review";
 
-      // Side-effect
-      let createdCategoryId: string | null = null;
-      if (isApplicable && interp.type === "new_category") {
-        const { data: newCat } = await (supabase as any)
-          .from("categories")
-          .insert({
-            workspace_id: row.workspace_id,
-            name: interp.configuration_json?.name ?? "Nova categoria",
-            type: interp.configuration_json?.type ?? "expense",
-            color: interp.configuration_json?.color ?? "#c2410c",
-            importance_level: interp.configuration_json?.importance_level ?? "flexible",
-          })
+      // Idempotency: never create a second customization for the same request.
+      let appliedCustId: string | null = row.applied_customization_id ?? null;
+      if (!appliedCustId) {
+        const { data: prior } = await (supabase as any)
+          .from("customizations")
           .select("id")
-          .single();
-        createdCategoryId = newCat?.id ?? null;
+          .eq("request_id", row.id)
+          .maybeSingle();
+        appliedCustId = prior?.id ?? null;
       }
-
-      let appliedCustId: string | null = null;
-      if (isApplicable) {
+      if (isApplicable && !appliedCustId) {
         const { data: cust } = await (supabase as any)
           .from("customizations")
           .insert({
             workspace_id: row.workspace_id,
-            type: interp.type,
-            name: (interp.summary || row.request_text).slice(0, 80) || "Personalização",
-            description: interp.summary || null,
-            configuration_json: interp.configuration_json ?? {},
+            type: safeInterp.type,
+            name: (safeInterp.summary || row.request_text).slice(0, 80) || "Personalização",
+            description: safeInterp.summary || null,
+            configuration_json: safeInterp.configuration_json,
             created_by: row.user_id,
             request_id: row.id,
             is_active: true,
             is_testing: true,
+            target_scope: rowScope,
+            target_user_id: rowScope === "user" ? row.target_user_id || row.user_id : null,
+            operation_type: safeInterp.type,
+            operation_payload: safeInterp.configuration_json,
             menu_key:
-              interp.type === "label_rename"
-                ? (Object.keys(interp.configuration_json?.labels ?? {})[0] ?? null)
+              safeInterp.type === "label_rename"
+                ? (Object.keys(safeInterp.configuration_json?.labels ?? {})[0] ?? null)
                 : null,
           })
           .select()
@@ -918,26 +733,21 @@ export const reprocessPendingRequests = createServerFn({ method: "POST" })
       }
 
       const now = new Date().toISOString();
-      const rollback: Record<string, any> | null =
-        isApplicable && appliedCustId
-          ? {
-              kind: "delete_customization",
-              customization_id: appliedCustId,
-              ...(createdCategoryId ? { category_id: createdCategoryId } : {}),
-            }
-          : null;
       await (supabase as any)
         .from("customization_requests")
         .update({
           status: finalStatus,
-          complexity: interp.complexity,
-          request_type: interp.complexity === "easy" ? "simple" : "advanced",
-          ai_classification_reason: interp.reason,
-          ai_interpretation: interp,
+          complexity: safeInterp.complexity,
+          request_type: isApplicable ? "simple" : "advanced",
+          ai_classification_reason: decision.reason,
+          ai_interpretation: safeInterp,
           auto_applied: isApplicable,
-          applied_customization_id: appliedCustId,
+          applied_customization_id: isApplicable ? appliedCustId : null,
           tested_at: isApplicable ? now : null,
-          rollback_payload: rollback,
+          rollback_payload:
+            isApplicable && appliedCustId
+              ? { kind: "delete_customization", customization_id: appliedCustId }
+              : null,
           approved_at: null,
           completed_at: null,
         })
