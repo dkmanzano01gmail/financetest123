@@ -811,7 +811,7 @@ function Page() {
                           row.include ? "bg-card" : "bg-muted/25 opacity-65"
                         }`}
                       >
-                        <div className="grid items-center gap-3 lg:grid-cols-[28px_minmax(150px,1fr)_150px_210px_170px_minmax(170px,1.2fr)]">
+                        <div className="grid items-center gap-3 lg:grid-cols-[28px_minmax(140px,1fr)_150px_200px_155px]">
                           <div className="flex items-center gap-2 lg:block">
                             <Checkbox
                               checked={row.include}
@@ -881,14 +881,18 @@ function Page() {
                             />
                             <Label className="text-xs">Gera reposição</Label>
                           </div>
-                          <Input
-                            value={row.comments}
-                            disabled={!row.include}
-                            placeholder="Observação rápida"
-                            onChange={(event) =>
-                              updateQuickRow(row.key, { comments: event.target.value })
-                            }
-                          />
+                          <div className="space-y-1.5 lg:col-span-4 lg:col-start-2">
+                            <Label className="text-xs text-muted-foreground">Observação</Label>
+                            <Input
+                              className="w-full"
+                              value={row.comments}
+                              disabled={!row.include}
+                              placeholder="Inclua uma observação sobre esta aula, se necessário"
+                              onChange={(event) =>
+                                updateQuickRow(row.key, { comments: event.target.value })
+                              }
+                            />
+                          </div>
                         </div>
                       </div>
                     ))}
