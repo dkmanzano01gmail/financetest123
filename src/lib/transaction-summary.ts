@@ -9,6 +9,22 @@ export type TransactionCategorySummary = {
   value: number;
 };
 
+export type TransactionSourceFilter = "all" | "account" | "credit_card";
+
+type TransactionSourceReference = {
+  account_id?: string | null;
+  credit_card_id?: string | null;
+};
+
+export function matchesTransactionSource(
+  transaction: TransactionSourceReference,
+  source: TransactionSourceFilter,
+): boolean {
+  if (source === "account") return Boolean(transaction.account_id);
+  if (source === "credit_card") return Boolean(transaction.credit_card_id);
+  return true;
+}
+
 export function transactionCategoryKey(transaction: OrnaTransaction): string {
   const name = transaction.categories?.name || "Sem categoria";
   return `${transaction.type}:${transaction.category_id || name}`;

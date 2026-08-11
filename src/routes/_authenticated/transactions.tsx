@@ -30,7 +30,12 @@ import { Badge } from "@/components/ui/badge";
 import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
 import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
-import { summarizeTransactionsByCategory, transactionCategoryKey } from "@/lib/transaction-summary";
+import {
+  matchesTransactionSource,
+  summarizeTransactionsByCategory,
+  transactionCategoryKey,
+  type TransactionSourceFilter,
+} from "@/lib/transaction-summary";
 import { Plus, Receipt, Trash2, Sparkles, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -86,6 +91,7 @@ function TransactionsPage() {
   const [month, setMonth] = useState<string>(routeSearch.month ?? "all");
   const [year, setYear] = useState<string>(routeSearch.year ?? "all");
   const [type, setType] = useState<string>(routeSearch.type ?? "all");
+  const [source, setSource] = useState<TransactionSourceFilter>("all");
   const [search, setSearch] = useState("");
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
   const [requestedCategory, setRequestedCategory] = useState(routeSearch.category ?? null);
@@ -139,10 +145,11 @@ function TransactionsPage() {
   const filterableTransactions = useMemo(() => {
     return (txs ?? []).filter((tx) => {
       if (type !== "all" && tx.type !== type) return false;
+      if (!matchesTransactionSource(tx, source)) return false;
       if (search && !tx.description?.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [txs, type, search]);
+  }, [txs, type, source, search]);
 
   const categorySummary = useMemo(
     () => summarizeTransactionsByCategory(filterableTransactions),
@@ -327,6 +334,22 @@ function TransactionsPage() {
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="income">{t.incomeSingular}</SelectItem>
               <SelectItem value="expense">{t.expenseSingular}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={source}
+            onValueChange={(value) => {
+              setSource(value as TransactionSourceFilter);
+              clearCategorySelection();
+            }}
+          >
+            <SelectTrigger className="w-48" aria-label="Filtrar por conta ou cartão">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Conta e cartão</SelectItem>
+              <SelectItem value="account">Conta corrente</SelectItem>
+              <SelectItem value="credit_card">Cartão de crédito</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
