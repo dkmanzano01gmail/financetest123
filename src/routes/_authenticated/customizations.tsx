@@ -452,6 +452,9 @@ function RequestRow({ req }: { req: any }) {
       </div>
       <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
         <Badge variant="outline">{interp.type ?? req.request_type}</Badge>
+        <Badge variant="outline">
+          {req.target_scope === "workspace" ? "Todo o workspace" : "Somente para mim"}
+        </Badge>
         <span>
           ~{req.estimated_credits} crédito{req.estimated_credits === 1 ? "" : "s"}
         </span>
