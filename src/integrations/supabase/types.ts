@@ -390,6 +390,35 @@ export type Database = {
           },
         ]
       }
+      cash_flow_monthly_balances: {
+        Row: {
+          balance_month: string
+          starting_balance: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          balance_month: string
+          starting_balance?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          balance_month?: string
+          starting_balance?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_flow_monthly_balances_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cash_flow_settings: {
         Row: {
           notes: string | null

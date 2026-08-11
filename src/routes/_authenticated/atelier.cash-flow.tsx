@@ -84,10 +84,8 @@ function CashFlowPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [balOpen, setBalOpen] = useState(false);
-  const [balForm, setBalForm] = useState({
-    starting_balance: "0",
-    starting_balance_date: new Date().toISOString().slice(0, 10),
-  });
+  const [balForm, setBalForm] = useState({ starting_balance: "0" });
+  const selectedMonthStart = `${year}-${String(month).padStart(2, "0")}-01`;
 
   const { data: entries = [], isLoading: entriesLoading } = useQuery({
     queryKey: ["cash_flow_entries", wsId],
@@ -102,14 +100,15 @@ function CashFlowPage() {
       return data ?? [];
     },
   });
-  const { data: settings } = useQuery({
-    queryKey: ["cash_flow_settings", wsId],
+  const { data: monthlyBalance } = useQuery({
+    queryKey: ["cash_flow_monthly_balances", wsId, selectedMonthStart],
     enabled: !!wsId,
     queryFn: async () => {
       const { data, error } = await sb
-        .from("cash_flow_settings")
+        .from("cash_flow_monthly_balances")
         .select("*")
         .eq("workspace_id", wsId)
+        .eq("balance_month", selectedMonthStart)
         .maybeSingle();
       if (error) throw error;
       return data;
@@ -129,15 +128,10 @@ function CashFlowPage() {
       year,
       month,
       monthsCount,
-      settings?.starting_balance_date,
     ],
     enabled: !!wsId,
     queryFn: async () => {
-      const selectedStart = `${year}-${String(month).padStart(2, "0")}-01`;
-      const start =
-        settings?.starting_balance_date && settings.starting_balance_date < selectedStart
-          ? settings.starting_balance_date
-          : selectedStart;
+      const start = `${year}-${String(month).padStart(2, "0")}-01`;
       const endDate = new Date(year, month - 1 + monthsCount, 0);
       const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
       const { data, error } = await sb
@@ -194,21 +188,7 @@ function CashFlowPage() {
     },
   });
 
-  const projectionStartCash = useMemo(() => {
-    const selectedStart = `${year}-${String(month).padStart(2, "0")}-01`;
-    const referenceDate = settings?.starting_balance_date ?? selectedStart;
-    return (transactions as any[])
-      .filter(
-        (transaction) => transaction.date >= referenceDate && transaction.date < selectedStart,
-      )
-      .reduce(
-        (balance, transaction) => {
-          const amount = Math.abs(Number(transaction.amount || 0));
-          return balance + (transaction.type === "income" ? amount : -amount);
-        },
-        Number(settings?.starting_balance ?? 0),
-      );
-  }, [transactions, settings, month, year]);
+  const projectionStartCash = Number(monthlyBalance?.starting_balance ?? 0);
 
   const projection = useMemo(
     () =>
@@ -311,18 +291,20 @@ function CashFlowPage() {
     mutationFn: async () => {
       const balance = parseLocaleAmount(balForm.starting_balance);
       if (!Number.isFinite(balance)) throw new Error("Saldo inicial inválido.");
-      if (!balForm.starting_balance_date) throw new Error("Informe a data do saldo inicial.");
-      const { error } = await sb.from("cash_flow_settings").upsert({
-        workspace_id: wsId,
-        starting_balance: balance,
-        starting_balance_date: balForm.starting_balance_date,
-      });
+      const { error } = await sb.from("cash_flow_monthly_balances").upsert(
+        {
+          workspace_id: wsId,
+          balance_month: selectedMonthStart,
+          starting_balance: balance,
+        },
+        { onConflict: "workspace_id,balance_month" },
+      );
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cash_flow_settings"] });
+      qc.invalidateQueries({ queryKey: ["cash_flow_monthly_balances"] });
       setBalOpen(false);
-      toast.success("Saldo inicial atualizado");
+      toast.success("Saldo inicial do mês atualizado");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -358,9 +340,7 @@ function CashFlowPage() {
               variant="outline"
               onClick={() => {
                 setBalForm({
-                  starting_balance: String(settings?.starting_balance ?? "0"),
-                  starting_balance_date:
-                    settings?.starting_balance_date ?? new Date().toISOString().slice(0, 10),
+                  starting_balance: String(monthlyBalance?.starting_balance ?? "0"),
                 });
                 setBalOpen(true);
               }}
@@ -461,7 +441,7 @@ function CashFlowPage() {
         <StatCard
           label="Saldo inicial"
           value={formatCurrency(projection.startingCash, currency, privacy)}
-          sub={settings?.starting_balance_date ?? "—"}
+          sub={`${monthLabel(month)} de ${year}`}
         />
         <StatCard
           label="Entradas realizadas"
@@ -865,19 +845,9 @@ function CashFlowPage() {
       <Dialog open={balOpen} onOpenChange={setBalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Saldo inicial da projeção</DialogTitle>
+            <DialogTitle>Saldo inicial de {monthLabel(month)} de {year}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label>Data de referência</Label>
-              <Input
-                type="date"
-                value={balForm.starting_balance_date}
-                onChange={(event) =>
-                  setBalForm({ ...balForm, starting_balance_date: event.target.value })
-                }
-              />
-            </div>
             <div className="space-y-1.5">
               <Label>Saldo</Label>
               <Input
@@ -887,6 +857,9 @@ function CashFlowPage() {
                   setBalForm({ ...balForm, starting_balance: event.target.value })
                 }
               />
+              <p className="text-xs text-muted-foreground">
+                Se você não informar outro valor, este mês começa em R$ 0,00.
+              </p>
             </div>
           </div>
           <DialogFooter>
