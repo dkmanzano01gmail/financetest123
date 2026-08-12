@@ -121,6 +121,7 @@ function CardsPage() {
         categories: Map<string, number>;
       }
     >();
+    const nearbyInvoices = new Map<string, { count: number; total: number }>();
     for (const card of cards as any[]) {
       byCard.set(card.id, {
         spend: 0,
@@ -135,8 +136,16 @@ function CardsPage() {
       if (tx.status === "ignored" || tx.status === "cancelled") continue;
       if (tx.credit_card_id) {
         const card = (cards as any[]).find((item) => item.id === tx.credit_card_id);
-        if (!card || billingMonthForPurchase(tx.date, card.closing_day) !== selectedInvoiceMonth)
+        if (!card) continue;
+        const billingMonth = billingMonthForPurchase(tx.date, card.closing_day);
+        if (billingMonth !== selectedInvoiceMonth) {
+          const nearby = nearbyInvoices.get(billingMonth) ?? { count: 0, total: 0 };
+          const value = Math.abs(Number(tx.amount || 0));
+          nearby.count += 1;
+          nearby.total += tx.type === "income" ? -value : value;
+          nearbyInvoices.set(billingMonth, nearby);
           continue;
+        }
         const item = byCard.get(card.id)!;
         const value = Math.abs(Number(tx.amount || 0));
         const signedValue = tx.type === "income" ? -value : value;
@@ -186,6 +195,7 @@ function CardsPage() {
       suggestions,
       duplicates,
       exactMatches,
+      nearbyInvoices,
       totalSpend: [...byCard.values()].reduce((sum, item) => sum + item.spend, 0),
       totalPaid: [...byCard.values()].reduce((sum, item) => sum + item.paid, 0),
       purchaseCount: [...byCard.values()].reduce((sum, item) => sum + item.purchases.length, 0),
@@ -357,6 +367,12 @@ function CardsPage() {
   }
 
   const totalDifference = analytics.totalSpend - analytics.totalPaid;
+  const nextInvoiceDate = new Date(year, month, 1, 12);
+  const nextInvoiceMonth = invoiceMonthKey(
+    nextInvoiceDate.getFullYear(),
+    nextInvoiceDate.getMonth() + 1,
+  );
+  const nextInvoicePurchases = analytics.nearbyInvoices.get(nextInvoiceMonth);
 
   return (
     <PageContainer>
@@ -435,6 +451,28 @@ function CardsPage() {
         />
         <Stat label="Compras detalhadas" value={String(analytics.purchaseCount)} />
       </div>
+
+      {analytics.purchaseCount === 0 && nextInvoicePurchases && nextInvoicePurchases.count > 0 && (
+        <Card className="mb-4 border-sky-200 bg-sky-50/50">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+            <div className="flex-1 text-sm text-sky-950">
+              Encontramos <strong>{nextInvoicePurchases.count} compras</strong>, somando{" "}
+              <strong>{formatCurrency(nextInvoicePurchases.total, currency, privacy)}</strong>. Pelas
+              datas de fechamento cadastradas, elas pertencem à fatura de{" "}
+              <strong>{monthLabel(nextInvoiceDate.getMonth() + 1)} de {nextInvoiceDate.getFullYear()}</strong>.
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setMonth(nextInvoiceDate.getMonth() + 1);
+                setYear(nextInvoiceDate.getFullYear());
+              }}
+            >
+              Ver fatura de {monthLabel(nextInvoiceDate.getMonth() + 1)}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {analytics.candidates.length > 0 && (
         <Card className="mb-4 border-amber-300/70 bg-amber-50/30">

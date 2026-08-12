@@ -113,7 +113,7 @@ function TransactionsPage() {
       let q = supabase
         .from("transactions")
         .select(
-          "*, categories!transactions_category_id_fkey(name,color), accounts(name), credit_cards(name)",
+          "*, categories!transactions_category_id_fkey(name,color), accounts(name), purchase_card:credit_cards!transactions_credit_card_id_fkey(name), linked_card:credit_cards!transactions_linked_credit_card_id_fkey(name)",
         )
         .eq("workspace_id", wsId!)
         .order("date", { ascending: false });
@@ -555,7 +555,7 @@ function TransactionsPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {tx.accounts?.name ?? tx.credit_cards?.name ?? "—"}
+                      {tx.accounts?.name ?? tx.purchase_card?.name ?? tx.linked_card?.name ?? "—"}
                     </TableCell>
                     <TableCell
                       className={`text-right font-medium tabular-nums ${tx.type === "income" ? "text-[var(--income)]" : "text-[var(--expense)]"}`}
