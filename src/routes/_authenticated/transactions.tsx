@@ -112,9 +112,7 @@ function TransactionsPage() {
     queryFn: async () => {
       let q = supabase
         .from("transactions")
-        .select(
-          "*, categories!transactions_category_id_fkey(name,color), accounts(name), purchase_card:credit_cards!transactions_credit_card_id_fkey(name), linked_card:credit_cards!transactions_linked_credit_card_id_fkey(name)",
-        )
+        .select("*, categories!transactions_category_id_fkey(name,color), accounts(name)")
         .eq("workspace_id", wsId!)
         .order("date", { ascending: false });
       if (year !== "all") q = q.eq("year", Number(year));
@@ -124,6 +122,27 @@ function TransactionsPage() {
       return data ?? [];
     },
   });
+
+  // `transactions` has two foreign keys to `credit_cards`. Fetching card names
+  // separately avoids PostgREST trying to infer which relationship to embed.
+  const { data: transactionCards } = useQuery({
+    queryKey: ["credit-cards", "transaction-names", wsId],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("credit_cards")
+        .select("id,name")
+        .eq("workspace_id", wsId!)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const transactionCardNames = useMemo(
+    () => new Map((transactionCards ?? []).map((card) => [card.id, card.name])),
+    [transactionCards],
+  );
 
   const { data: categories } = useQuery({
     queryKey: ["categories", wsId],
@@ -555,7 +574,10 @@ function TransactionsPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {tx.accounts?.name ?? tx.purchase_card?.name ?? tx.linked_card?.name ?? "—"}
+                      {tx.accounts?.name ??
+                        transactionCardNames.get(tx.credit_card_id) ??
+                        transactionCardNames.get(tx.linked_credit_card_id) ??
+                        "—"}
                     </TableCell>
                     <TableCell
                       className={`text-right font-medium tabular-nums ${tx.type === "income" ? "text-[var(--income)]" : "text-[var(--expense)]"}`}
