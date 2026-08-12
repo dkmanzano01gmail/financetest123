@@ -109,6 +109,19 @@ export function parseAmount(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Bank-account exports use positive values as money coming in. Credit-card
+ * exports (including Nubank) use the opposite convention: positive values are
+ * purchases and negative values are payments, refunds or other credits.
+ */
+export function importTypeFromAmount(
+  amount: number,
+  target: "account" | "credit_card",
+): "income" | "expense" {
+  if (target === "credit_card") return amount >= 0 ? "expense" : "income";
+  return amount >= 0 ? "income" : "expense";
+}
+
 export function parseDateBR(raw: string): string | null {
   if (!raw) return null;
   const s = raw.trim();

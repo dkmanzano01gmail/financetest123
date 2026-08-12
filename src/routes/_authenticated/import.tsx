@@ -38,6 +38,7 @@ import {
   decodeCsvBuffer,
   buildImportHashSource,
   buildContentKey,
+  importTypeFromAmount,
   type CsvRow,
 } from "@/lib/csv";
 import { formatCurrency } from "@/lib/format";
@@ -199,7 +200,7 @@ function ImportPage() {
         if (/(receita|income|credito|crédito|entrada|c|credit)/i.test(v)) type = "income";
         else if (/(despesa|expense|debito|débito|saida|saída|d|debit)/i.test(v)) type = "expense";
       } else if (amount !== null) {
-        type = amount >= 0 ? "income" : "expense";
+        type = importTypeFromAmount(amount, target);
       }
       const absAmount = amount === null ? null : Math.abs(amount);
       // Prefer external identifier (e.g. Nubank "Identificador") when present — stable across re-imports.
@@ -537,6 +538,12 @@ function ImportPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
+            {target === "credit_card" && (
+              <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                <strong>Regra do CSV de cartão:</strong> valor positivo é compra/despesa; valor
+                negativo é pagamento, estorno ou crédito.
+              </div>
+            )}
             <div className="p-4 flex flex-wrap items-center gap-3 border-b">
               <Badge variant="secondary">{summary.total} linhas</Badge>
               <Badge className="bg-[var(--income)]/10 text-[var(--income)] hover:bg-[var(--income)]/10">
@@ -607,7 +614,13 @@ function ImportPage() {
                               : "text-[var(--expense)] border-[var(--expense)]/30"
                           }
                         >
-                          {p.type === "income" ? "Entrada" : "Saída"}
+                          {target === "credit_card"
+                            ? p.type === "income"
+                              ? "Pagamento/crédito"
+                              : "Compra/despesa"
+                            : p.type === "income"
+                              ? "Entrada"
+                              : "Saída"}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
