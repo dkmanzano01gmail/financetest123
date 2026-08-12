@@ -1,40 +1,5 @@
-CREATE TABLE IF NOT EXISTS public.credit_card_payment_removals (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
-  credit_card_id uuid NOT NULL REFERENCES public.credit_cards(id) ON DELETE CASCADE,
-  invoice_month date NOT NULL,
-  original_transaction_id uuid NOT NULL,
-  account_id uuid REFERENCES public.accounts(id) ON DELETE SET NULL,
-  payment_date date NOT NULL,
-  payment_description text NOT NULL,
-  payment_amount numeric(14, 2) NOT NULL,
-  payment_source text,
-  purchase_total numeric(14, 2) NOT NULL,
-  purchase_count integer NOT NULL,
-  removed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  removed_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT credit_card_payment_removals_invoice_month_check
-    CHECK (invoice_month = date_trunc('month', invoice_month)::date),
-  CONSTRAINT credit_card_payment_removals_exact_match_check
-    CHECK (abs(payment_amount - purchase_total) <= 0.01),
-  UNIQUE (workspace_id, original_transaction_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_card_payment_removals_invoice
-  ON public.credit_card_payment_removals(workspace_id, credit_card_id, invoice_month);
-
-ALTER TABLE public.credit_card_payment_removals ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Members read card payment removals" ON public.credit_card_payment_removals;
-CREATE POLICY "Members read card payment removals"
-ON public.credit_card_payment_removals
-FOR SELECT TO authenticated
-USING (public.is_workspace_member(workspace_id, auth.uid()));
-
-GRANT SELECT ON public.credit_card_payment_removals TO authenticated;
-GRANT ALL ON public.credit_card_payment_removals TO service_role;
-
-DROP FUNCTION IF EXISTS public.archive_and_delete_card_payment(uuid);
+-- transaction_status is a PostgreSQL enum with confirmed, pending and ignored.
+-- Cast it to text before also checking legacy values such as cancelled.
 CREATE OR REPLACE FUNCTION public.archive_and_delete_card_payment(
   payment_transaction_id uuid,
   target_credit_card_id uuid,
