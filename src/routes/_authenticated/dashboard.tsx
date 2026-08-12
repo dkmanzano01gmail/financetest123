@@ -18,7 +18,10 @@ import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
 import { dashboardSummary } from "@/lib/orna-logic";
-import { isConsumptionTransaction } from "@/lib/credit-card-reconciliation";
+import {
+  financialDateForTransaction,
+  isConsumptionTransaction,
+} from "@/lib/credit-card-reconciliation";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -79,7 +82,17 @@ function Dashboard() {
   });
 
   const summary = useMemo(
-    () => dashboardSummary(((yearTxs ?? []) as any[]).filter(isConsumptionTransaction), month, year),
+    () =>
+      dashboardSummary(
+        ((yearTxs ?? []) as any[])
+          .filter(isConsumptionTransaction)
+          .map((transaction) => ({
+            ...transaction,
+            date: financialDateForTransaction(transaction),
+          })),
+        month,
+        year,
+      ),
     [yearTxs, month, year],
   );
   const totals = {

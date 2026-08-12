@@ -13,7 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/format";
 import { L } from "@/lib/labels";
 import { PieChart, TrendingDown, Sparkles, Repeat, AlertTriangle } from "lucide-react";
-import { isConsumptionTransaction } from "@/lib/credit-card-reconciliation";
+import {
+  financialMonthKey,
+  isConsumptionTransaction,
+} from "@/lib/credit-card-reconciliation";
 
 export const Route = createFileRoute("/_authenticated/budget-analysis")({
   component: BudgetAnalysisPage,
@@ -84,11 +87,10 @@ function BudgetAnalysisPage() {
       }),
     );
     const now = new Date();
-    const monthKey = (d: string) => d.slice(0, 7);
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
     const expenses = txs.filter((t) => t.type === "expense" && isConsumptionTransaction(t));
-    const monthExpenses = expenses.filter((t) => monthKey(t.date) === currentMonth);
+    const monthExpenses = expenses.filter((t) => financialMonthKey(t) === currentMonth);
 
     let totalMonth = 0;
     const byImportance: Record<Importance, number> = {
@@ -125,7 +127,7 @@ function BudgetAnalysisPage() {
       };
       const amt = Math.abs(Number(t.amount));
       cur.total6m += amt;
-      if (monthKey(t.date) === currentMonth) {
+      if (financialMonthKey(t) === currentMonth) {
         cur.monthAmount += amt;
         cur.count += 1;
       }

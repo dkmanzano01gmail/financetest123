@@ -527,7 +527,13 @@ function TransactionsPage() {
                 {filtered.map((tx: any) => (
                   <TableRow key={tx.id}>
                     <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                      {formatDate(tx.date)}
+                      <div>{formatDate(tx.date)}</div>
+                      {tx.credit_card_id && tx.invoice_month && (
+                        <div className="text-xs">
+                          Fatura {monthLabel(Number(tx.invoice_month.slice(5, 7))).toLowerCase()}/
+                          {tx.invoice_month.slice(0, 4)}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="font-medium">{tx.description}</div>

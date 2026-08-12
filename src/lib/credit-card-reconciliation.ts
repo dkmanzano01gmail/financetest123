@@ -17,6 +17,7 @@ export type ReconciliationCard = {
   id: string;
   name: string;
   closing_day: number;
+  due_day?: number;
 };
 
 export function normalizeReconciliationText(value: string | null | undefined) {
@@ -32,11 +33,33 @@ export function invoiceMonthKey(year: number, month: number) {
   return `${year}-${String(month).padStart(2, "0")}-01`;
 }
 
-export function billingMonthForPurchase(dateValue: string, closingDay: number) {
+export function billingMonthForPurchase(
+  dateValue: string,
+  closingDay: number,
+  dueDay?: number,
+) {
   const [year, month, day] = dateValue.slice(0, 10).split("-").map(Number);
   const safeClosingDay = Math.min(31, Math.max(1, Number(closingDay) || 1));
-  const invoiceDate = new Date(year, month - 1 + (day > safeClosingDay ? 1 : 0), 1, 12);
-  return invoiceMonthKey(invoiceDate.getFullYear(), invoiceDate.getMonth() + 1);
+  const safeDueDay = Math.min(31, Math.max(1, Number(dueDay) || safeClosingDay));
+  const closingMonthOffset = day >= safeClosingDay ? 1 : 0;
+  const paymentMonthOffset = safeDueDay <= safeClosingDay ? 1 : 0;
+  const paymentDate = new Date(
+    year,
+    month - 1 + closingMonthOffset + paymentMonthOffset,
+    1,
+    12,
+  );
+  return invoiceMonthKey(paymentDate.getFullYear(), paymentDate.getMonth() + 1);
+}
+
+export function financialDateForTransaction(transaction: ReconciliationTransaction) {
+  return transaction.credit_card_id && transaction.invoice_month
+    ? transaction.invoice_month.slice(0, 10)
+    : transaction.date;
+}
+
+export function financialMonthKey(transaction: ReconciliationTransaction) {
+  return financialDateForTransaction(transaction).slice(0, 7);
 }
 
 export function isCreditCardPayment(transaction: ReconciliationTransaction) {

@@ -26,6 +26,7 @@ import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { L } from "@/lib/labels";
 import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
 import { parseLocaleAmount } from "@/lib/format";
+import { billingMonthForPurchase } from "@/lib/credit-card-reconciliation";
 
 export function TransactionDialog({
   open,
@@ -140,8 +141,15 @@ export function TransactionDialog({
       const amt = parseLocaleAmount(amount);
       if (!Number.isFinite(amt) || amt <= 0) throw new Error("Valor inválido.");
       if (accountId && cardId) throw new Error("Escolha conta OU cartão, não os dois.");
-      const monthN = Number(date.slice(5, 7));
-      const yearN = Number(date.slice(0, 4));
+      const selectedCard = (cards ?? []).find((card: any) => card.id === cardId) as
+        | any
+        | undefined;
+      const invoiceMonth = selectedCard
+        ? billingMonthForPurchase(date, selectedCard.closing_day, selectedCard.due_day)
+        : null;
+      const financialDate = invoiceMonth ?? date;
+      const monthN = Number(financialDate.slice(5, 7));
+      const yearN = Number(financialDate.slice(0, 4));
 
       if (editing) {
         // Preserve manual overrides: don't rewrite importance fields on edit.
@@ -155,6 +163,7 @@ export function TransactionDialog({
           category_id: categoryId || null,
           account_id: accountId || null,
           credit_card_id: cardId || null,
+          invoice_month: invoiceMonth,
           counterparty: counterparty || null,
           notes: notes || null,
         };
@@ -176,6 +185,7 @@ export function TransactionDialog({
           category_id: categoryId || null,
           account_id: accountId || null,
           credit_card_id: cardId || null,
+          invoice_month: invoiceMonth,
           counterparty: counterparty || null,
           notes: notes || null,
           source: "manual",
@@ -303,6 +313,19 @@ export function TransactionDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {cardId && date && selectedCardForPreview(cards, cardId) && (
+                <p className="text-xs text-muted-foreground">
+                  Entra no mês financeiro de{" "}
+                  {formatInvoiceMonth(
+                    billingMonthForPurchase(
+                      date,
+                      selectedCardForPreview(cards, cardId)!.closing_day,
+                      selectedCardForPreview(cards, cardId)!.due_day,
+                    ),
+                  )}
+                  .
+                </p>
+              )}
             </div>
           </div>
           <div className="space-y-1.5">
@@ -325,4 +348,16 @@ export function TransactionDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function selectedCardForPreview(cards: any[] | undefined, cardId: string) {
+  return (cards ?? []).find((card: any) => card.id === cardId);
+}
+
+function formatInvoiceMonth(invoiceMonth: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${invoiceMonth}T12:00:00Z`));
 }

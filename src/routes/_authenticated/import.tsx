@@ -42,6 +42,10 @@ import {
   type CsvRow,
 } from "@/lib/csv";
 import { formatCurrency } from "@/lib/format";
+import {
+  billingMonthForPurchase,
+  financialMonthKey,
+} from "@/lib/credit-card-reconciliation";
 
 export const Route = createFileRoute("/_authenticated/import")({
   component: ImportPage,
@@ -64,6 +68,7 @@ type PreparedRow = {
   raw: CsvRow;
   invalidReasons: string[];
   externalId: string | null;
+  invoiceMonth: string | null;
 };
 
 function ImportPage() {
@@ -107,7 +112,7 @@ function ImportPage() {
       (
         await supabase
           .from("credit_cards")
-          .select("id,name")
+          .select("id,name,closing_day,due_day")
           .eq("workspace_id", wsId!)
           .order("name")
       ).data ?? [],
@@ -182,6 +187,8 @@ function ImportPage() {
     }
     const seen = new Set<string>();
     const items: PreparedRow[] = [];
+    const selectedCard =
+      target === "credit_card" ? (cards ?? []).find((card: any) => card.id === targetId) : null;
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const rawDate = r[mapping.date] ?? "";
@@ -220,6 +227,10 @@ function ImportPage() {
       seen.add(hash);
       seen.add(batchKey);
       const valid = reasons.length === 0;
+      const invoiceMonth =
+        target === "credit_card" && date && selectedCard
+          ? billingMonthForPurchase(date, selectedCard.closing_day, selectedCard.due_day)
+          : null;
       items.push({
         index: i,
         date,
@@ -235,6 +246,7 @@ function ImportPage() {
         raw: r,
         invalidReasons: reasons,
         externalId,
+        invoiceMonth,
       });
     }
 
@@ -330,13 +342,28 @@ function ImportPage() {
       const payload = selected.map((p) => ({
         workspace_id: wsId!,
         date: p.date!,
-        month: Number(p.date!.slice(5, 7)),
-        year: Number(p.date!.slice(0, 4)),
+        month: Number(financialMonthKey({
+          id: p.hash,
+          date: p.date!,
+          type: p.type,
+          amount: p.amount!,
+          credit_card_id: target === "credit_card" ? targetId : null,
+          invoice_month: p.invoiceMonth,
+        }).slice(5, 7)),
+        year: Number(financialMonthKey({
+          id: p.hash,
+          date: p.date!,
+          type: p.type,
+          amount: p.amount!,
+          credit_card_id: target === "credit_card" ? targetId : null,
+          invoice_month: p.invoiceMonth,
+        }).slice(0, 4)),
         type: p.type,
         description: p.description || "(sem descrição)",
         amount: p.amount!,
         account_id: target === "account" ? targetId : null,
         credit_card_id: target === "credit_card" ? targetId : null,
+        invoice_month: target === "credit_card" ? p.invoiceMonth : null,
         source: "csv",
         import_hash: p.hash,
         created_by,
@@ -541,7 +568,8 @@ function ImportPage() {
             {target === "credit_card" && (
               <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                 <strong>Regra do CSV de cartão:</strong> valor positivo é compra/despesa; valor
-                negativo é pagamento, estorno ou crédito.
+                negativo é pagamento, estorno ou crédito. A data da compra é preservada, mas o mês
+                financeiro segue o fechamento e o vencimento do cartão.
               </div>
             )}
             <div className="p-4 flex flex-wrap items-center gap-3 border-b">
@@ -578,7 +606,8 @@ function ImportPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10"></TableHead>
-                    <TableHead>Data</TableHead>
+                    <TableHead>Data da compra</TableHead>
+                    {target === "credit_card" && <TableHead>Mês financeiro</TableHead>}
                     <TableHead>Descrição</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
@@ -602,6 +631,17 @@ function ImportPage() {
                       <TableCell className="whitespace-nowrap text-sm">
                         {p.date ?? <span className="text-destructive">inválida</span>}
                       </TableCell>
+                      {target === "credit_card" && (
+                        <TableCell className="whitespace-nowrap text-sm font-medium">
+                          {p.invoiceMonth
+                            ? new Intl.DateTimeFormat("pt-BR", {
+                                month: "long",
+                                year: "numeric",
+                                timeZone: "UTC",
+                              }).format(new Date(`${p.invoiceMonth}T12:00:00Z`))
+                            : "—"}
+                        </TableCell>
+                      )}
                       <TableCell className="max-w-md truncate">
                         {p.description || <span className="text-muted-foreground">—</span>}
                       </TableCell>

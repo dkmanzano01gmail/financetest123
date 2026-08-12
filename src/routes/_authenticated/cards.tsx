@@ -94,7 +94,7 @@ function CardsPage() {
     queryKey: ["card-reconciliation", wsId, month, year],
     enabled: !!wsId,
     queryFn: async () => {
-      const rangeStart = new Date(year, month - 2, 1, 12);
+      const rangeStart = new Date(year, month - 3, 1, 12);
       const rangeEnd = new Date(year, month + 1, 0, 12);
       const { data, error } = await supabase
         .from("transactions")
@@ -137,7 +137,9 @@ function CardsPage() {
       if (tx.credit_card_id) {
         const card = (cards as any[]).find((item) => item.id === tx.credit_card_id);
         if (!card) continue;
-        const billingMonth = billingMonthForPurchase(tx.date, card.closing_day);
+        const billingMonth =
+          tx.invoice_month?.slice(0, 10) ??
+          billingMonthForPurchase(tx.date, card.closing_day, card.due_day);
         if (billingMonth !== selectedInvoiceMonth) {
           const nearby = nearbyInvoices.get(billingMonth) ?? { count: 0, total: 0 };
           const value = Math.abs(Number(tx.amount || 0));
