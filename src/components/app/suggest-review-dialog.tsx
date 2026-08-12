@@ -60,7 +60,7 @@ export function SuggestReviewDialog({
   onOpenChange: (o: boolean) => void;
   workspaceId: string;
   workspaceType: "personal" | "business";
-  transactions: SuggestionInput[] & { current_category_name?: string | null }[];
+  transactions: (SuggestionInput & { current_category_name?: string | null })[];
 }) {
   const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
@@ -181,8 +181,8 @@ export function SuggestReviewDialog({
             <Sparkles className="w-4 h-4 text-primary" /> Revisar sugestões
           </DialogTitle>
           <DialogDescription>
-            Sugestões de categoria e importância financeira. Revise antes de aplicar — nada é
-            alterado sem sua confirmação.
+            Sugestões com base nas transações categorizadas anteriores e futuras do workspace.
+            Revise antes de aplicar — nada é alterado sem sua confirmação.
           </DialogDescription>
         </DialogHeader>
 

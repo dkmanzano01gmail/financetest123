@@ -663,6 +663,7 @@ function TransactionsPage() {
           transactions={
             filtered.map((tx: any) => ({
               id: tx.id,
+              date: tx.date,
               description: tx.description,
               counterparty: tx.counterparty,
               type: tx.type,

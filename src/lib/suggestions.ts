@@ -4,6 +4,7 @@ export type Importance = "essential" | "important" | "flexible" | "superfluous";
 
 export type SuggestionInput = {
   id: string;
+  date?: string | null;
   description: string;
   counterparty?: string | null;
   type: "income" | "expense";
@@ -53,6 +54,8 @@ type Rule = {
 };
 
 type HistoryEntry = {
+  id: string;
+  type: "income" | "expense";
   description: string;
   counterparty?: string | null;
   category_id: string | null;
@@ -130,15 +133,21 @@ function recurrenceMatches(tx: SuggestionInput, r: Rule, history: HistoryEntry[]
   const minCount = r.recurrence_min_count ?? 2;
   const windowDays = r.recurrence_window_days ?? 90;
   const basisDescriptor = !r.counterparty_match;
-  const cutoff = Date.now() - windowDays * 86_400_000;
+  const referenceTime = tx.date ? Date.parse(tx.date) : Date.now();
   const subjectText = normalize(tx.description ?? "");
   const subjectCp = normalize(tx.counterparty ?? "");
   if (!subjectText && !subjectCp) return false;
   let count = 0;
   for (const h of history) {
+    if (h.id === tx.id || h.type !== tx.type) continue;
     if (h.date) {
       const t = Date.parse(h.date);
-      if (!Number.isNaN(t) && t < cutoff) continue;
+      if (
+        !Number.isNaN(t) &&
+        !Number.isNaN(referenceTime) &&
+        Math.abs(t - referenceTime) > windowDays * 86_400_000
+      )
+        continue;
     }
     if (basisDescriptor) {
       const hd = normalize(h.description ?? "");
@@ -153,27 +162,79 @@ function recurrenceMatches(tx: SuggestionInput, r: Rule, history: HistoryEntry[]
   return false;
 }
 
-function similarHistory(text: string, history: HistoryEntry[]): HistoryEntry | null {
-  // Try token overlap to detect e.g. "IFOOD SAO PAULO" vs "IFOOD"
-  const tokens = text.split(" ").filter((t) => t.length >= 3);
+type HistoryMatch = {
+  entry: HistoryEntry;
+  temporal: "past" | "future" | "same_day" | "undated";
+  score: number;
+};
+
+function similarHistory(tx: SuggestionInput, history: HistoryEntry[]): HistoryMatch | null {
+  const description = normalize(tx.description ?? "");
+  const counterparty = normalize(tx.counterparty ?? "");
+  const text = normalize(`${description} ${counterparty}`);
+  // Try token overlap to detect e.g. "IFOOD SAO PAULO" vs "IFOOD".
+  const tokens = [...new Set(text.split(" ").filter((t) => t.length >= 3))];
   if (tokens.length === 0) return null;
-  let best: { entry: HistoryEntry; score: number } | null = null;
+  const txTime = tx.date ? Date.parse(tx.date) : Number.NaN;
+  let best: HistoryMatch | null = null;
   for (const h of history) {
-    if (!h.importance_level || !h.category_id) continue;
-    const hn = normalize(h.description);
+    if (h.id === tx.id || h.type !== tx.type || !h.category_id) continue;
+    const historyDescription = normalize(h.description ?? "");
+    const historyCounterparty = normalize(h.counterparty ?? "");
+    const hn = normalize(`${historyDescription} ${historyCounterparty}`);
     if (!hn) continue;
     let score = 0;
-    for (const t of tokens) if (hn.includes(t)) score += 1;
-    if (score > 0 && (!best || score > best.score)) best = { entry: h, score };
+    for (const t of tokens) if (hn.includes(t)) score += 10;
+    if (description && description === historyDescription) score += 60;
+    if (counterparty && counterparty === historyCounterparty) score += 35;
+    if (h.amount != null && Math.abs(Math.abs(Number(h.amount)) - Math.abs(tx.amount)) < 0.01)
+      score += 5;
+    if (score === 0) continue;
+
+    const historyTime = h.date ? Date.parse(h.date) : Number.NaN;
+    const distanceDays =
+      !Number.isNaN(txTime) && !Number.isNaN(historyTime)
+        ? Math.abs(historyTime - txTime) / 86_400_000
+        : Number.POSITIVE_INFINITY;
+    // Date is only a tie-breaker: familiar descriptions and counterparties remain primary.
+    score += Math.max(0, 3 - distanceDays / 30);
+    const temporal =
+      Number.isNaN(txTime) || Number.isNaN(historyTime)
+        ? "undated"
+        : historyTime > txTime
+          ? "future"
+          : historyTime < txTime
+            ? "past"
+            : "same_day";
+    if (!best || score > best.score) best = { entry: h, score, temporal };
   }
-  return best?.entry ?? null;
+  return best;
+}
+
+async function loadCategorizationHistory(workspaceId: string): Promise<HistoryEntry[]> {
+  const pageSize = 1000;
+  const history: HistoryEntry[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const result = await supabase
+      .from("transactions")
+      .select("id,type,description,counterparty,date,amount,category_id,importance_level" as any)
+      .eq("workspace_id", workspaceId)
+      .not("category_id", "is", null)
+      .order("date", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (result.error) throw result.error;
+    const page = ((result.data as any[]) ?? []) as HistoryEntry[];
+    history.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return history;
 }
 
 export async function loadSuggestionContext(
   workspaceId: string,
   workspaceType: "personal" | "business",
 ) {
-  const [catsRes, rulesRes, histRes] = await Promise.all([
+  const [catsRes, rulesRes, history] = await Promise.all([
     supabase
       .from("categories")
       .select("id,name,type,importance_level,importance_comment" as any)
@@ -187,22 +248,16 @@ export async function loadSuggestionContext(
       .eq("is_active", true)
       .or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
       .order("priority", { ascending: true }),
-    supabase
-      .from("transactions")
-      .select("description,counterparty,date,amount,category_id,importance_level" as any)
-      .eq("workspace_id", workspaceId)
-      .order("date", { ascending: false })
-      .limit(800),
+    loadCategorizationHistory(workspaceId),
   ]);
   if (catsRes.error) throw catsRes.error;
   if (rulesRes.error) throw rulesRes.error;
-  if (histRes.error) throw histRes.error;
   return {
     categories: ((catsRes.data as any[]) ?? []) as Category[],
     rules: (((rulesRes.data as any[]) ?? []) as Rule[]).filter(
       (r) => !r.workspace_type || r.workspace_type === workspaceType,
     ),
-    history: ((histRes.data as any[]) ?? []) as HistoryEntry[],
+    history,
   };
 }
 
@@ -217,17 +272,27 @@ export function suggestForTransaction(
   ctx.categories.forEach((c) => catsById.set(c.id, c));
 
   // 1) History
-  const h = similarHistory(text, ctx.history);
-  if (h && h.category_id && h.importance_level) {
+  const historyMatch = similarHistory(tx, ctx.history);
+  const h = historyMatch?.entry;
+  if (h?.category_id) {
     const cat = catsById.get(h.category_id);
     if (cat && cat.type === tx.type) {
+      const importance = h.importance_level ?? cat.importance_level;
+      const temporalLabel =
+        historyMatch.temporal === "future"
+          ? "uma transação futura já cadastrada"
+          : historyMatch.temporal === "past"
+            ? "uma transação anterior"
+            : historyMatch.temporal === "same_day"
+              ? "outra transação do mesmo dia"
+              : "outra transação já cadastrada";
       return {
         transaction_id: tx.id,
         category_id: cat.id,
         category_name: cat.name,
-        importance: h.importance_level,
+        importance,
         confidence: 0.9,
-        reason: `Descrição parecida com transações anteriores marcadas como ${cat.name} e ${labelImp(h.importance_level)}.`,
+        reason: `Descrição ou favorecido semelhante a ${temporalLabel}, categorizada como ${cat.name} e ${labelImp(importance)}.`,
         source: "history",
       };
     }
