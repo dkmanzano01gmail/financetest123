@@ -64,12 +64,77 @@ type HistoryEntry = {
   amount?: number | null;
 };
 
+const GENERIC_DESCRIPTOR_TOKENS = new Set([
+  "compra",
+  "cartao",
+  "credito",
+  "debito",
+  "pagamento",
+  "pagto",
+  "parcela",
+  "parcelado",
+  "online",
+  "brasil",
+  "ltda",
+  "mastercard",
+  "visa",
+  "nubank",
+]);
+
+/**
+ * Removes installment counters while preserving the merchant/product name.
+ * Examples: "Loja X 01/06", "Loja X parcela 2 de 6" and
+ * "Loja X - parc. 3/6" all become "loja x".
+ */
+export function stripInstallmentCounter(value: string): {
+  value: string;
+  hadInstallmentCounter: boolean;
+} {
+  let hadInstallmentCounter = false;
+  let cleaned = (value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const removeValidCounter = (_match: string, current: string, total?: string) => {
+    const currentNumber = Number(current);
+    const totalNumber = total == null ? null : Number(total);
+    if (
+      currentNumber < 1 ||
+      (totalNumber != null && (totalNumber < 2 || currentNumber > totalNumber))
+    )
+      return _match;
+    hadInstallmentCounter = true;
+    return " ";
+  };
+
+  // Explicit forms can appear anywhere in the descriptor.
+  cleaned = cleaned.replace(
+    /\b(?:parc(?:ela)?|parcelamento|prestacao)\.?\s*(?:n(?:umero)?\.?\s*)?(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\b/gi,
+    removeValidCounter,
+  );
+  // Some statements only expose "parcela 2", without the total count.
+  cleaned = cleaned.replace(
+    /\b(?:parc(?:ela)?|prestacao)\.?\s*(?:n(?:umero)?\.?\s*)?(\d{1,2})\b/gi,
+    (match, current) => removeValidCounter(match, current),
+  );
+  // Bare fractions are accepted only at the end, avoiding dates in the merchant name.
+  cleaned = cleaned.replace(
+    /(?:^|[\s\-–—(])([0-9]{1,2})\s*\/\s*([0-9]{1,2})\)?\s*$/g,
+    (match, current, total) => {
+      const prefix = match.match(/^[\s\-–—(]/)?.[0] ?? "";
+      const removed = removeValidCounter(match.slice(prefix.length), current, total);
+      return removed === match.slice(prefix.length) ? match : prefix;
+    },
+  );
+
+  return { value: cleaned, hadInstallmentCounter };
+}
+
 export function normalize(s: string): string {
+  const installmentNormalized = stripInstallmentCounter(s).value;
   return (
-    (s || "")
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
+    installmentNormalized
       // Common Nubank/bank prefixes that add no signal.
       .replace(
         /\b(compra no debito|compra no débito|pagamento efetuado|pix\s+(enviado|recebido)|transferencia\s+(enviada|recebida)|debito automatico|débito automático)\b/g,
@@ -165,15 +230,27 @@ function recurrenceMatches(tx: SuggestionInput, r: Rule, history: HistoryEntry[]
 type HistoryMatch = {
   entry: HistoryEntry;
   temporal: "past" | "future" | "same_day" | "undated";
+  matchKind: "installment" | "exact" | "counterparty" | "similar";
   score: number;
 };
+
+function meaningfulTokens(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(" ")
+        .filter((token) => token.length >= 3 && !GENERIC_DESCRIPTOR_TOKENS.has(token)),
+    ),
+  ];
+}
 
 function similarHistory(tx: SuggestionInput, history: HistoryEntry[]): HistoryMatch | null {
   const description = normalize(tx.description ?? "");
   const counterparty = normalize(tx.counterparty ?? "");
   const text = normalize(`${description} ${counterparty}`);
-  // Try token overlap to detect e.g. "IFOOD SAO PAULO" vs "IFOOD".
-  const tokens = [...new Set(text.split(" ").filter((t) => t.length >= 3))];
+  const txInstallment = stripInstallmentCounter(tx.description ?? "").hadInstallmentCounter;
+  // Try meaningful token overlap to detect e.g. "IFOOD SAO PAULO" vs "IFOOD".
+  const tokens = meaningfulTokens(text);
   if (tokens.length === 0) return null;
   const txTime = tx.date ? Date.parse(tx.date) : Number.NaN;
   let best: HistoryMatch | null = null;
@@ -183,13 +260,21 @@ function similarHistory(tx: SuggestionInput, history: HistoryEntry[]): HistoryMa
     const historyCounterparty = normalize(h.counterparty ?? "");
     const hn = normalize(`${historyDescription} ${historyCounterparty}`);
     if (!hn) continue;
+    const historyInstallment = stripInstallmentCounter(h.description ?? "").hadInstallmentCounter;
+    const exactDescription = !!description && description === historyDescription;
+    const exactCounterparty = !!counterparty && counterparty === historyCounterparty;
+    const installmentEquivalent = exactDescription && (txInstallment || historyInstallment);
     let score = 0;
-    for (const t of tokens) if (hn.includes(t)) score += 10;
-    if (description && description === historyDescription) score += 60;
-    if (counterparty && counterparty === historyCounterparty) score += 35;
+    const sharedTokens = tokens.filter((token) => hn.split(" ").includes(token));
+    for (const token of sharedTokens) score += 10 + Math.min(token.length, 10);
+    if (exactDescription) score += installmentEquivalent ? 100 : 60;
+    if (exactCounterparty) score += 35;
     if (h.amount != null && Math.abs(Math.abs(Number(h.amount)) - Math.abs(tx.amount)) < 0.01)
       score += 5;
-    if (score === 0) continue;
+    // One generic or very short word is not enough to learn a category accidentally.
+    const hasStrongTokenMatch =
+      sharedTokens.length >= 2 || sharedTokens.some((token) => token.length >= 5);
+    if (!exactDescription && !exactCounterparty && !hasStrongTokenMatch) continue;
 
     const historyTime = h.date ? Date.parse(h.date) : Number.NaN;
     const distanceDays =
@@ -206,7 +291,14 @@ function similarHistory(tx: SuggestionInput, history: HistoryEntry[]): HistoryMa
           : historyTime < txTime
             ? "past"
             : "same_day";
-    if (!best || score > best.score) best = { entry: h, score, temporal };
+    const matchKind = installmentEquivalent
+      ? "installment"
+      : exactDescription
+        ? "exact"
+        : exactCounterparty
+          ? "counterparty"
+          : "similar";
+    if (!best || score > best.score) best = { entry: h, score, temporal, matchKind };
   }
   return best;
 }
@@ -286,13 +378,19 @@ export function suggestForTransaction(
             : historyMatch.temporal === "same_day"
               ? "outra transação do mesmo dia"
               : "outra transação já cadastrada";
+      const matchLabel =
+        historyMatch.matchKind === "installment"
+          ? `Outra parcela desta compra foi encontrada em ${temporalLabel}`
+          : historyMatch.matchKind === "counterparty"
+            ? `O mesmo favorecido foi encontrado em ${temporalLabel}`
+            : `Descrição semelhante a ${temporalLabel}`;
       return {
         transaction_id: tx.id,
         category_id: cat.id,
         category_name: cat.name,
         importance,
-        confidence: 0.9,
-        reason: `Descrição ou favorecido semelhante a ${temporalLabel}, categorizada como ${cat.name} e ${labelImp(importance)}.`,
+        confidence: historyMatch.matchKind === "installment" ? 0.98 : 0.9,
+        reason: `${matchLabel}, categorizada como ${cat.name} e ${labelImp(importance)}.`,
         source: "history",
       };
     }
