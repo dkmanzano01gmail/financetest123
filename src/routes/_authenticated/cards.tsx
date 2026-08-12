@@ -16,6 +16,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -41,6 +51,7 @@ import {
   Power,
   Receipt,
   ShieldAlert,
+  Trash2,
   Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -74,6 +85,7 @@ function CardsPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<any | null>(null);
   const [selectedCardId, setSelectedCardId] = useState("");
+  const [paymentToRemove, setPaymentToRemove] = useState<any | null>(null);
   const selectedInvoiceMonth = invoiceMonthKey(year, month);
 
   const { data: cards = [] } = useQuery({
@@ -99,12 +111,27 @@ function CardsPage() {
       const { data, error } = await supabase
         .from("transactions")
         .select(
-          "id,date,description,amount,type,status,source,credit_card_id,account_id,linked_credit_card_id,invoice_month,financial_role,reconciliation_method,categories(name,color),accounts(name)",
+          "id,date,description,amount,type,status,source,credit_card_id,account_id,linked_credit_card_id,invoice_month,financial_role,reconciliation_method,categories!transactions_category_id_fkey(name,color),accounts(name)",
         )
         .eq("workspace_id", wsId!)
         .gte("date", isoDate(rangeStart))
         .lte("date", isoDate(rangeEnd))
         .order("date", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: removedPayments = [] } = useQuery({
+    queryKey: ["card-payment-removals", wsId, selectedInvoiceMonth],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("credit_card_payment_removals" as any)
+        .select("*")
+        .eq("workspace_id", wsId!)
+        .eq("invoice_month", selectedInvoiceMonth)
+        .order("removed_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
@@ -168,6 +195,12 @@ function CardsPage() {
       }
     }
 
+    for (const removal of removedPayments as any[]) {
+      const item = byCard.get(removal.credit_card_id);
+      if (!item) continue;
+      item.paid += Math.abs(Number(removal.payment_amount || 0));
+    }
+
     const invoiceTotals = new Map(
       [...byCard].map(([cardId, value]) => [cardId, value.spend - value.paid]),
     );
@@ -202,7 +235,7 @@ function CardsPage() {
       totalPaid: [...byCard.values()].reduce((sum, item) => sum + item.paid, 0),
       purchaseCount: [...byCard.values()].reduce((sum, item) => sum + item.purchases.length, 0),
     };
-  }, [cards, transactions, selectedInvoiceMonth]);
+  }, [cards, transactions, removedPayments, selectedInvoiceMonth]);
 
   const invalidateFinancialViews = () => {
     qc.invalidateQueries({ queryKey: ["card-reconciliation"] });
@@ -210,7 +243,25 @@ function CardsPage() {
     qc.invalidateQueries({ queryKey: ["transactions-dashboard-period"] });
     qc.invalidateQueries({ queryKey: ["ba-txs"] });
     qc.invalidateQueries({ queryKey: ["reconciliation"] });
+    qc.invalidateQueries({ queryKey: ["card-payment-removals"] });
   };
+
+  const removeReconciledPayment = useMutation({
+    mutationFn: async (payment: any) => {
+      const { error } = await (supabase.rpc as any)("archive_and_delete_card_payment", {
+        payment_transaction_id: payment.id,
+        target_credit_card_id: payment.targetCardId ?? payment.linked_credit_card_id,
+        target_invoice_month: payment.targetInvoiceMonth ?? payment.invoice_month,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidateFinancialViews();
+      setPaymentToRemove(null);
+      toast.success("Pagamento removido da conta corrente; conciliação preservada");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
   const reconcile = useMutation({
     mutationFn: async ({
@@ -243,32 +294,6 @@ function CardsPage() {
       setPaymentOpen(false);
       setSelectedPayment(null);
       toast.success("Pagamento conciliado com a fatura");
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const reconcileExact = useMutation({
-    mutationFn: async () => {
-      for (const match of analytics.exactMatches) {
-        const { error } = await supabase
-          .from("transactions")
-          .update({
-            financial_role: "credit_card_payment",
-            linked_credit_card_id: match.cardId,
-            invoice_month: selectedInvoiceMonth,
-            reconciliation_method: "exact_match",
-            reconciled_at: new Date().toISOString(),
-          })
-          .eq("id", match.transaction.id)
-          .eq("workspace_id", wsId!);
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      invalidateFinancialViews();
-      toast.success(
-        `${analytics.exactMatches.length} ${analytics.exactMatches.length === 1 ? "pagamento conciliado" : "pagamentos conciliados"}`,
-      );
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -423,15 +448,11 @@ function CardsPage() {
             </SelectContent>
           </Select>
           {analytics.exactMatches.length > 0 && (
-            <Button
-              className="ml-auto"
-              onClick={() => reconcileExact.mutate()}
-              disabled={reconcileExact.isPending}
-            >
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              Conciliar {analytics.exactMatches.length} correspondência
-              {analytics.exactMatches.length > 1 ? "s" : ""}
-            </Button>
+            <Badge className="ml-auto bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+              <CheckCircle2 className="mr-1 h-3 w-3" />
+              {analytics.exactMatches.length} valor
+              {analytics.exactMatches.length > 1 ? "es conferem" : " confere"}
+            </Badge>
           )}
         </CardContent>
       </Card>
@@ -537,15 +558,15 @@ function CardsPage() {
                     variant={exact ? "default" : "outline"}
                     onClick={() =>
                       exact && cardId
-                        ? reconcile.mutate({
-                            transactionId: transaction.id,
-                            cardId,
-                            method: "exact_match",
+                        ? setPaymentToRemove({
+                            ...transaction,
+                            targetCardId: cardId,
+                            targetInvoiceMonth: selectedInvoiceMonth,
                           })
                         : openPayment(transaction)
                     }
                   >
-                    {exact ? "Conciliar agora" : "Escolher cartão"}
+                    {exact ? "Conciliar e apagar da conta" : "Escolher cartão"}
                   </Button>
                 </div>
               );
@@ -683,7 +704,11 @@ function CardsPage() {
                         Pagamentos conciliados
                       </div>
                       <div className="space-y-2">
-                        {data.payments.map((payment: any) => (
+                        {data.payments.map((payment: any) => {
+                          const paymentMatches = Math.abs(
+                            data.spend - Math.abs(Number(payment.amount || 0)),
+                          ) <= 0.01;
+                          return (
                           <div
                             key={payment.id}
                             className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50/40 p-2 text-sm"
@@ -706,9 +731,36 @@ function CardsPage() {
                             >
                               <Undo2 className="h-4 w-4" />
                             </Button>
+                            {reconciled && paymentMatches && data.payments.length === 1 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                                onClick={() => setPaymentToRemove(payment)}
+                              >
+                                <Trash2 className="mr-1 h-4 w-4" />
+                                Apagar da conta
+                              </Button>
+                            )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
+                    </div>
+                  )}
+
+                  {(removedPayments as any[]).some(
+                    (removal) => removal.credit_card_id === card.id,
+                  ) && (
+                    <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-sm text-emerald-950">
+                      <div className="flex items-center gap-2 font-medium">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Fatura conferida e pagamento removido da conta corrente
+                      </div>
+                      <p className="mt-1 text-xs text-emerald-800">
+                        O total das compras foi mantido como despesa e o lançamento duplicado do
+                        pagamento foi arquivado.
+                      </p>
                     </div>
                   )}
                 </CardContent>
@@ -770,6 +822,39 @@ function CardsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!paymentToRemove}
+        onOpenChange={(open) => {
+          if (!open) setPaymentToRemove(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar pagamento da conta corrente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Os valores conferem: as compras detalhadas já representam a despesa desta fatura. O
+              lançamento “{paymentToRemove?.description}” de{" "}
+              {paymentToRemove
+                ? formatCurrency(Math.abs(Number(paymentToRemove.amount)), currency, privacy)
+                : ""}{" "}
+              será conciliado e removido da lista de transações para evitar duplicidade. Antes de
+              apagar, o sistema verificará os valores novamente. O comprovante da conciliação será
+              preservado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!paymentToRemove || removeReconciledPayment.isPending}
+              onClick={() => paymentToRemove && removeReconciledPayment.mutate(paymentToRemove)}
+            >
+              Apagar pagamento
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
