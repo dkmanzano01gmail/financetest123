@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/format";
 import { L } from "@/lib/labels";
 import { PieChart, TrendingDown, Sparkles, Repeat, AlertTriangle } from "lucide-react";
+import { isConsumptionTransaction } from "@/lib/credit-card-reconciliation";
 
 export const Route = createFileRoute("/_authenticated/budget-analysis")({
   component: BudgetAnalysisPage,
@@ -50,7 +51,7 @@ function BudgetAnalysisPage() {
       const { data, error } = await supabase
         .from("transactions")
         .select(
-          "id,date,description,amount,type,status,category_id,credit_card_id,account_id,importance_level",
+          "id,date,description,amount,type,status,category_id,credit_card_id,account_id,importance_level,financial_role,linked_credit_card_id,invoice_month",
         )
         .eq("workspace_id", wsId!)
         .gte("date", fromISO)
@@ -86,7 +87,7 @@ function BudgetAnalysisPage() {
     const monthKey = (d: string) => d.slice(0, 7);
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-    const expenses = txs.filter((t) => t.type === "expense");
+    const expenses = txs.filter((t) => t.type === "expense" && isConsumptionTransaction(t));
     const monthExpenses = expenses.filter((t) => monthKey(t.date) === currentMonth);
 
     let totalMonth = 0;

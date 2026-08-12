@@ -1275,8 +1275,7 @@ export type Database = {
           rule_kind: string
           source_type: string
           transaction_type:
-            | Database["public"]["Enums"]["transaction_type"]
-            | null
+            Database["public"]["Enums"]["transaction_type"] | null
           updated_at: string
           workspace_id: string | null
           workspace_type: string | null
@@ -1303,8 +1302,7 @@ export type Database = {
           rule_kind?: string
           source_type?: string
           transaction_type?:
-            | Database["public"]["Enums"]["transaction_type"]
-            | null
+            Database["public"]["Enums"]["transaction_type"] | null
           updated_at?: string
           workspace_id?: string | null
           workspace_type?: string | null
@@ -1331,8 +1329,7 @@ export type Database = {
           rule_kind?: string
           source_type?: string
           transaction_type?:
-            | Database["public"]["Enums"]["transaction_type"]
-            | null
+            Database["public"]["Enums"]["transaction_type"] | null
           updated_at?: string
           workspace_id?: string | null
           workspace_type?: string | null
@@ -1970,27 +1967,30 @@ export type Database = {
           credit_card_id: string | null
           date: string
           description: string
+          financial_role: string
           id: string
           import_hash: string | null
           importance_confidence: number | null
           importance_confirmed_at: string | null
           importance_confirmed_by_user: boolean
           importance_level:
-            | Database["public"]["Enums"]["importance_level"]
-            | null
+            Database["public"]["Enums"]["importance_level"] | null
           importance_status:
-            | Database["public"]["Enums"]["importance_status"]
-            | null
+            Database["public"]["Enums"]["importance_status"] | null
           importance_suggestion_reason: string | null
+          invoice_month: string | null
+          linked_credit_card_id: string | null
           method: string | null
           month: number
           notes: string | null
+          reconciled_at: string | null
+          reconciled_by: string | null
+          reconciliation_method: string | null
           source: string
           status: Database["public"]["Enums"]["transaction_status"]
           suggested_category_id: string | null
           suggested_importance_level:
-            | Database["public"]["Enums"]["importance_level"]
-            | null
+            Database["public"]["Enums"]["importance_level"] | null
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at: string
           workspace_id: string
@@ -2006,27 +2006,30 @@ export type Database = {
           credit_card_id?: string | null
           date: string
           description: string
+          financial_role?: string
           id?: string
           import_hash?: string | null
           importance_confidence?: number | null
           importance_confirmed_at?: string | null
           importance_confirmed_by_user?: boolean
           importance_level?:
-            | Database["public"]["Enums"]["importance_level"]
-            | null
+            Database["public"]["Enums"]["importance_level"] | null
           importance_status?:
-            | Database["public"]["Enums"]["importance_status"]
-            | null
+            Database["public"]["Enums"]["importance_status"] | null
           importance_suggestion_reason?: string | null
+          invoice_month?: string | null
+          linked_credit_card_id?: string | null
           method?: string | null
           month: number
           notes?: string | null
+          reconciled_at?: string | null
+          reconciled_by?: string | null
+          reconciliation_method?: string | null
           source?: string
           status?: Database["public"]["Enums"]["transaction_status"]
           suggested_category_id?: string | null
           suggested_importance_level?:
-            | Database["public"]["Enums"]["importance_level"]
-            | null
+            Database["public"]["Enums"]["importance_level"] | null
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           workspace_id: string
@@ -2042,27 +2045,30 @@ export type Database = {
           credit_card_id?: string | null
           date?: string
           description?: string
+          financial_role?: string
           id?: string
           import_hash?: string | null
           importance_confidence?: number | null
           importance_confirmed_at?: string | null
           importance_confirmed_by_user?: boolean
           importance_level?:
-            | Database["public"]["Enums"]["importance_level"]
-            | null
+            Database["public"]["Enums"]["importance_level"] | null
           importance_status?:
-            | Database["public"]["Enums"]["importance_status"]
-            | null
+            Database["public"]["Enums"]["importance_status"] | null
           importance_suggestion_reason?: string | null
+          invoice_month?: string | null
+          linked_credit_card_id?: string | null
           method?: string | null
           month?: number
           notes?: string | null
+          reconciled_at?: string | null
+          reconciled_by?: string | null
+          reconciliation_method?: string | null
           source?: string
           status?: Database["public"]["Enums"]["transaction_status"]
           suggested_category_id?: string | null
           suggested_importance_level?:
-            | Database["public"]["Enums"]["importance_level"]
-            | null
+            Database["public"]["Enums"]["importance_level"] | null
           type?: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           workspace_id?: string
@@ -2086,6 +2092,13 @@ export type Database = {
           {
             foreignKeyName: "transactions_credit_card_id_fkey"
             columns: ["credit_card_id"]
+            isOneToOne: false
+            referencedRelation: "credit_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_linked_credit_card_id_fkey"
+            columns: ["linked_credit_card_id"]
             isOneToOne: false
             referencedRelation: "credit_cards"
             referencedColumns: ["id"]
@@ -2484,16 +2497,10 @@ export type Database = {
     Enums: {
       account_type: "checking" | "savings" | "cash" | "investment" | "other"
       balance_snapshot_type:
-        | "initial"
-        | "manual_current"
-        | "reconciliation_check"
-        | "adjustment"
+        "initial" | "manual_current" | "reconciliation_check" | "adjustment"
       importance_level: "essential" | "important" | "flexible" | "superfluous"
       importance_status:
-        | "suggested"
-        | "confirmed"
-        | "manually_changed"
-        | "needs_review"
+        "suggested" | "confirmed" | "manually_changed" | "needs_review"
       reconciliation_status:
         | "reconciled"
         | "small_diff"
@@ -2519,12 +2526,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2546,13 +2553,12 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2571,13 +2577,12 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2596,13 +2601,12 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2615,11 +2619,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

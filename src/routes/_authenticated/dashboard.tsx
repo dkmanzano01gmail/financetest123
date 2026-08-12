@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
 import { dashboardSummary } from "@/lib/orna-logic";
+import { isConsumptionTransaction } from "@/lib/credit-card-reconciliation";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -53,7 +54,9 @@ function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
-        .select("id,date,type,amount,description,counterparty,status,category_id,categories!transactions_category_id_fkey(name,color)")
+        .select(
+          "id,date,type,amount,description,counterparty,status,category_id,credit_card_id,financial_role,linked_credit_card_id,invoice_month,categories!transactions_category_id_fkey(name,color)",
+        )
         .eq("workspace_id", wsId!)
         .in("year", [year, year - 1]);
       if (error) throw error;
@@ -76,7 +79,7 @@ function Dashboard() {
   });
 
   const summary = useMemo(
-    () => dashboardSummary((yearTxs ?? []) as any, month, year),
+    () => dashboardSummary(((yearTxs ?? []) as any[]).filter(isConsumptionTransaction), month, year),
     [yearTxs, month, year],
   );
   const totals = {
@@ -227,7 +230,11 @@ function Dashboard() {
         />
         <MetricCard
           label="Despesas / receitas"
-          value={summary.metrics.expenseRatio == null ? "—" : `${(summary.metrics.expenseRatio * 100).toFixed(1)}%`}
+          value={
+            summary.metrics.expenseRatio == null
+              ? "—"
+              : `${(summary.metrics.expenseRatio * 100).toFixed(1)}%`
+          }
           sub={`${formatCurrency(summary.metrics.expenseDelta, currency, privacy)} de variação`}
           positive={summary.metrics.expenseDelta <= 0}
         />
@@ -293,29 +300,34 @@ function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {[...summary.current].sort((a: any, b: any) => b.date.localeCompare(a.date)).slice(0, 8).map((tx: any) => (
-              <div key={tx.id} className="flex items-center gap-3 py-1">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === "income" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}
-                >
-                  {tx.type === "income" ? (
-                    <ArrowUpRight className="w-4 h-4" />
-                  ) : (
-                    <ArrowDownRight className="w-4 h-4" />
-                  )}
+            {[...summary.current]
+              .sort((a: any, b: any) => b.date.localeCompare(a.date))
+              .slice(0, 8)
+              .map((tx: any) => (
+                <div key={tx.id} className="flex items-center gap-3 py-1">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === "income" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}
+                  >
+                    {tx.type === "income" ? (
+                      <ArrowUpRight className="w-4 h-4" />
+                    ) : (
+                      <ArrowDownRight className="w-4 h-4" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm truncate">{tx.description}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {tx.categories?.name ?? "—"}
+                    </div>
+                  </div>
+                  <div
+                    className={`font-mono ${tx.type === "income" ? "text-income" : "text-expense"}`}
+                  >
+                    {tx.type === "income" ? "+" : "-"}
+                    {formatCurrency(Number(tx.amount), currency, privacy)}
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm truncate">{tx.description}</div>
-                  <div className="text-xs text-muted-foreground">{tx.categories?.name ?? "—"}</div>
-                </div>
-                <div
-                  className={`font-mono ${tx.type === "income" ? "text-income" : "text-expense"}`}
-                >
-                  {tx.type === "income" ? "+" : "-"}
-                  {formatCurrency(Number(tx.amount), currency, privacy)}
-                </div>
-              </div>
-            ))}
+              ))}
             {!hasData && (
               <EmptyState
                 icon={Receipt}
@@ -467,7 +479,8 @@ function CategoryComparison({
             <span className={`h-2.5 w-2.5 rounded-full ${toneClass}`} /> Mês selecionado
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/55" /> Média dos meses anteriores
+            <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/55" /> Média dos meses
+            anteriores
           </span>
         </div>
       </CardHeader>

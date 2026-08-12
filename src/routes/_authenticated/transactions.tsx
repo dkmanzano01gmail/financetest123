@@ -36,6 +36,7 @@ import {
   transactionCategoryKey,
   type TransactionSourceFilter,
 } from "@/lib/transaction-summary";
+import { isConsumptionTransaction, isCreditCardPayment } from "@/lib/credit-card-reconciliation";
 import { Plus, Receipt, Trash2, Sparkles, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -62,12 +63,8 @@ export const Route = createFileRoute("/_authenticated/transactions")({
       typeof search.month === "string" && /^(?:[1-9]|1[0-2])$/.test(search.month)
         ? search.month
         : undefined,
-    year:
-      typeof search.year === "string" && /^\d{4}$/.test(search.year)
-        ? search.year
-        : undefined,
-    type:
-      search.type === "income" || search.type === "expense" ? search.type : undefined,
+    year: typeof search.year === "string" && /^\d{4}$/.test(search.year) ? search.year : undefined,
+    type: search.type === "income" || search.type === "expense" ? search.type : undefined,
     category: typeof search.category === "string" ? search.category.slice(0, 120) : undefined,
   }),
   component: TransactionsPage,
@@ -152,7 +149,7 @@ function TransactionsPage() {
   }, [txs, type, source, search]);
 
   const categorySummary = useMemo(
-    () => summarizeTransactionsByCategory(filterableTransactions),
+    () => summarizeTransactionsByCategory(filterableTransactions.filter(isConsumptionTransaction)),
     [filterableTransactions],
   );
 
@@ -168,24 +165,21 @@ function TransactionsPage() {
     }
   }, [categorySummary, requestedCategory]);
 
-  const filtered = useMemo(
-    () => {
-      if (selectedCategoryKey) {
-        return filterableTransactions.filter(
-          (transaction) => transactionCategoryKey(transaction) === selectedCategoryKey,
-        );
-      }
-      if (requestedCategory) {
-        const requested = normalizeCategoryName(requestedCategory);
-        return filterableTransactions.filter(
-          (transaction) =>
-            normalizeCategoryName(transaction.categories?.name || "Sem categoria") === requested,
-        );
-      }
-      return filterableTransactions;
-    },
-    [filterableTransactions, requestedCategory, selectedCategoryKey],
-  );
+  const filtered = useMemo(() => {
+    if (selectedCategoryKey) {
+      return filterableTransactions.filter(
+        (transaction) => transactionCategoryKey(transaction) === selectedCategoryKey,
+      );
+    }
+    if (requestedCategory) {
+      const requested = normalizeCategoryName(requestedCategory);
+      return filterableTransactions.filter(
+        (transaction) =>
+          normalizeCategoryName(transaction.categories?.name || "Sem categoria") === requested,
+      );
+    }
+    return filterableTransactions;
+  }, [filterableTransactions, requestedCategory, selectedCategoryKey]);
 
   const hasCategoryFilter = Boolean(selectedCategoryKey || requestedCategory);
 
@@ -196,7 +190,7 @@ function TransactionsPage() {
 
   const filteredTotals = useMemo(
     () =>
-      filtered.reduce(
+      filtered.filter(isConsumptionTransaction).reduce(
         (totals, transaction) => {
           totals[transaction.type as "income" | "expense"] += Math.abs(
             Number(transaction.amount) || 0,
@@ -520,6 +514,11 @@ function TransactionsPage() {
                       <div className="font-medium">{tx.description}</div>
                       {tx.counterparty && (
                         <div className="text-xs text-muted-foreground">{tx.counterparty}</div>
+                      )}
+                      {isCreditCardPayment(tx) && (
+                        <Badge variant="outline" className="mt-1">
+                          Pagamento de fatura · não soma nas despesas
+                        </Badge>
                       )}
                     </TableCell>
                     <TableCell>

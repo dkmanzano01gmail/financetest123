@@ -27,6 +27,7 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { buildCashFlowProjection, type CashFlowDay, type CashFlowEvent } from "@/lib/orna-logic";
+import { isCashFlowTransaction } from "@/lib/credit-card-reconciliation";
 import {
   AlertTriangle,
   CalendarRange,
@@ -204,7 +205,7 @@ function CashFlowPage() {
     () =>
       buildCashFlowProjection({
         entries,
-        transactions,
+        transactions: (transactions as any[]).filter(isCashFlowTransaction),
         month,
         year,
         monthsCount,
