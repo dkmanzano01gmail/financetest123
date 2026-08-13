@@ -16,16 +16,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -51,7 +41,6 @@ import {
   Power,
   Receipt,
   ShieldAlert,
-  Trash2,
   Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -83,9 +72,8 @@ function CardsPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(empty());
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const [selectedPayment, setSelectedPayment] = useState<any | null>(null);
   const [selectedCardId, setSelectedCardId] = useState("");
-  const [paymentToRemove, setPaymentToRemove] = useState<any | null>(null);
+  const [allocations, setAllocations] = useState<Record<string, string>>({});
   const selectedInvoiceMonth = invoiceMonthKey(year, month);
 
   const { data: cards = [] } = useQuery({
@@ -111,7 +99,7 @@ function CardsPage() {
       const { data, error } = await supabase
         .from("transactions")
         .select(
-          "id,date,description,amount,type,status,source,credit_card_id,account_id,linked_credit_card_id,invoice_month,financial_role,reconciliation_method,categories!transactions_category_id_fkey(name,color),accounts(name)",
+          "id,date,description,amount,type,status,source,category_id,counterparty,credit_card_id,account_id,linked_credit_card_id,invoice_month,financial_role,reconciliation_method,reversal_of_transaction_id,categories!transactions_category_id_fkey(name,color),accounts(name)",
         )
         .eq("workspace_id", wsId!)
         .gte("date", isoDate(rangeStart))
@@ -122,16 +110,15 @@ function CardsPage() {
     },
   });
 
-  const { data: removedPayments = [] } = useQuery({
-    queryKey: ["card-payment-removals", wsId, selectedInvoiceMonth],
+  const { data: paymentAllocations = [] } = useQuery({
+    queryKey: ["card-payment-allocations", wsId],
     enabled: !!wsId,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("credit_card_payment_removals" as any)
-        .select("*")
+        .from("credit_card_payment_allocations" as any)
+        .select("*, original:transactions!credit_card_payment_allocations_original_transaction_id_fkey(id,date,description,amount,account_id,accounts(name))")
         .eq("workspace_id", wsId!)
-        .eq("invoice_month", selectedInvoiceMonth)
-        .order("removed_at", { ascending: false });
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
@@ -195,10 +182,12 @@ function CardsPage() {
       }
     }
 
-    for (const removal of removedPayments as any[]) {
-      const item = byCard.get(removal.credit_card_id);
+    for (const allocation of paymentAllocations as any[]) {
+      if (allocation.invoice_month?.slice(0, 10) !== selectedInvoiceMonth) continue;
+      const item = byCard.get(allocation.credit_card_id);
       if (!item) continue;
-      item.paid += Math.abs(Number(removal.payment_amount || 0));
+      item.paid += Math.abs(Number(allocation.allocated_amount || 0));
+      item.payments.push({ ...allocation.original, allocation });
     }
 
     const invoiceTotals = new Map(
@@ -235,7 +224,7 @@ function CardsPage() {
       totalPaid: [...byCard.values()].reduce((sum, item) => sum + item.paid, 0),
       purchaseCount: [...byCard.values()].reduce((sum, item) => sum + item.purchases.length, 0),
     };
-  }, [cards, transactions, removedPayments, selectedInvoiceMonth]);
+  }, [cards, transactions, paymentAllocations, selectedInvoiceMonth]);
 
   const invalidateFinancialViews = () => {
     qc.invalidateQueries({ queryKey: ["card-reconciliation"] });
@@ -243,75 +232,56 @@ function CardsPage() {
     qc.invalidateQueries({ queryKey: ["transactions-dashboard-period"] });
     qc.invalidateQueries({ queryKey: ["ba-txs"] });
     qc.invalidateQueries({ queryKey: ["reconciliation"] });
-    qc.invalidateQueries({ queryKey: ["card-payment-removals"] });
+    qc.invalidateQueries({ queryKey: ["card-payment-allocations"] });
   };
 
-  const removeReconciledPayment = useMutation({
-    mutationFn: async (payment: any) => {
-      const { error } = await (supabase.rpc as any)("archive_and_delete_card_payment", {
-        payment_transaction_id: payment.id,
-        target_credit_card_id: payment.targetCardId ?? payment.linked_credit_card_id,
-        target_invoice_month: payment.targetInvoiceMonth ?? payment.invoice_month,
+  const allocatePayments = useMutation({
+    mutationFn: async () => {
+      if (!selectedCardId) throw new Error("Selecione o cartão.");
+      const selected = analytics.candidates
+        .map((transaction: any) => ({ transaction, amount: parseLocaleAmount(allocations[transaction.id]) }))
+        .filter(({ amount }) => Number.isFinite(amount) && amount > 0);
+      if (!selected.length) throw new Error("Informe quanto deseja abater em pelo menos uma conta.");
+
+      const cardData = analytics.byCard.get(selectedCardId);
+      const invoicePending = Math.max((cardData?.spend || 0) - (cardData?.paid || 0), 0);
+      const requested = selected.reduce((sum, item) => sum + item.amount, 0);
+      if (requested > invoicePending + 0.005)
+        throw new Error(`O total escolhido excede o saldo pendente da fatura (${formatCurrency(invoicePending, currency)}).`);
+
+      for (const { transaction, amount } of selected) {
+        const used = (paymentAllocations as any[])
+          .filter((item) => item.original_transaction_id === transaction.id)
+          .reduce((sum, item) => sum + Math.abs(Number(item.allocated_amount) || 0), 0);
+        const available = Math.max(Math.abs(Number(transaction.amount)) - used, 0);
+        if (amount > available + 0.005)
+          throw new Error(`O valor de “${transaction.description}” excede o disponível (${formatCurrency(available, currency)}).`);
+      }
+
+      const { error } = await (supabase.rpc as any)("allocate_card_payments", {
+        target_credit_card_id: selectedCardId,
+        target_invoice_month: selectedInvoiceMonth,
+        allocation_items: selected.map(({ transaction, amount }) => ({
+          transaction_id: transaction.id,
+          amount,
+        })),
       });
       if (error) throw error;
     },
     onSuccess: () => {
       invalidateFinancialViews();
-      setPaymentToRemove(null);
-      toast.success("Pagamento removido da conta corrente; conciliação preservada");
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const reconcile = useMutation({
-    mutationFn: async ({
-      transactionId,
-      cardId,
-      method,
-    }: {
-      transactionId: string;
-      cardId: string;
-      method: "manual" | "exact_match";
-    }) => {
-      const { data, error } = await supabase
-        .from("transactions")
-        .update({
-          financial_role: "credit_card_payment",
-          linked_credit_card_id: cardId,
-          invoice_month: selectedInvoiceMonth,
-          reconciliation_method: method,
-          reconciled_at: new Date().toISOString(),
-        })
-        .eq("id", transactionId)
-        .eq("workspace_id", wsId!)
-        .select("id")
-        .single();
-      if (error) throw error;
-      if (!data) throw new Error("O pagamento não foi atualizado.");
-    },
-    onSuccess: () => {
-      invalidateFinancialViews();
       setPaymentOpen(false);
-      setSelectedPayment(null);
-      toast.success("Pagamento conciliado com a fatura");
+      setAllocations({});
+      toast.success("Abatimento criado sem apagar as transações originais");
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
   const undoReconciliation = useMutation({
-    mutationFn: async (transactionId: string) => {
-      const { error } = await supabase
-        .from("transactions")
-        .update({
-          financial_role: "regular",
-          linked_credit_card_id: null,
-          invoice_month: null,
-          reconciliation_method: null,
-          reconciled_at: null,
-          reconciled_by: null,
-        })
-        .eq("id", transactionId)
-        .eq("workspace_id", wsId!);
+    mutationFn: async (allocationId: string) => {
+      const { error } = await (supabase.rpc as any)("undo_card_payment_allocation", {
+        target_allocation_id: allocationId,
+      });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -387,10 +357,31 @@ function CardsPage() {
     setOpen(true);
   }
 
-  function openPayment(transaction: any) {
-    setSelectedPayment(transaction);
-    setSelectedCardId(analytics.suggestions.get(transaction.id) || (cards[0] as any)?.id || "");
+  function openPayment(transaction?: any) {
+    const cardId =
+      (transaction ? analytics.suggestions.get(transaction.id) : null) ||
+      (cards[0] as any)?.id ||
+      "";
+    setSelectedCardId(cardId);
+    const cardData = analytics.byCard.get(cardId);
+    const invoicePending = Math.max((cardData?.spend || 0) - (cardData?.paid || 0), 0);
+    setAllocations(
+      transaction
+        ? {
+            [transaction.id]: String(
+              Math.min(Math.abs(Number(transaction.amount)), invoicePending),
+            ),
+          }
+        : {},
+    );
     setPaymentOpen(true);
+  }
+
+  function paymentAvailable(transaction: any) {
+    const used = (paymentAllocations as any[])
+      .filter((item) => item.original_transaction_id === transaction.id)
+      .reduce((sum, item) => sum + Math.abs(Number(item.allocated_amount) || 0), 0);
+    return Math.max(Math.abs(Number(transaction.amount)) - used, 0);
   }
 
   const totalDifference = analytics.totalSpend - analytics.totalPaid;
@@ -505,8 +496,8 @@ function CardsPage() {
               <div>
                 <CardTitle className="text-base">Pagamentos encontrados nas transações</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Vincule cada pagamento ao cartão correto. Ele continuará no fluxo da conta, mas
-                  deixará de duplicar as despesas.
+                  Escolha uma ou mais contas e quanto abater de cada pagamento. O original será
+                  preservado e uma compensação inversa cancelará a duplicidade nos totais.
                 </p>
               </div>
             </div>
@@ -553,20 +544,22 @@ function CardsPage() {
                   </div>
                   <div className="font-mono text-lg font-semibold">
                     {formatCurrency(Math.abs(Number(transaction.amount)), currency, privacy)}
+                    {paymentAvailable(transaction) < Math.abs(Number(transaction.amount)) && (
+                      <div className="text-xs font-sans font-normal text-muted-foreground">
+                        Disponível: {formatCurrency(paymentAvailable(transaction), currency, privacy)}
+                      </div>
+                    )}
                   </div>
                   <Button
                     variant={exact ? "default" : "outline"}
-                    onClick={() =>
-                      exact && cardId
-                        ? setPaymentToRemove({
-                            ...transaction,
-                            targetCardId: cardId,
-                            targetInvoiceMonth: selectedInvoiceMonth,
-                          })
-                        : openPayment(transaction)
-                    }
+                    disabled={paymentAvailable(transaction) <= 0.005}
+                    onClick={() => openPayment(transaction)}
                   >
-                    {exact ? "Conciliar e apagar da conta" : "Escolher cartão"}
+                    {paymentAvailable(transaction) <= 0.005
+                      ? "Totalmente abatido"
+                      : exact
+                        ? "Conciliar valor"
+                        : "Escolher e abater"}
                   </Button>
                 </div>
               );
@@ -704,62 +697,55 @@ function CardsPage() {
                         Pagamentos conciliados
                       </div>
                       <div className="space-y-2">
-                        {data.payments.map((payment: any) => {
-                          const paymentMatches = Math.abs(
-                            data.spend - Math.abs(Number(payment.amount || 0)),
-                          ) <= 0.01;
-                          return (
+                        {data.payments.map((payment: any) => (
                           <div
-                            key={payment.id}
+                            key={payment.allocation?.id ?? payment.id}
                             className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50/40 p-2 text-sm"
                           >
                             <CheckCircle2 className="h-4 w-4 text-emerald-700" />
                             <div className="min-w-0 flex-1">
                               <div className="truncate">{payment.description}</div>
                               <div className="text-xs text-muted-foreground">
-                                {formatDate(payment.date)} · {payment.accounts?.name ?? "Conta"}
+                                {formatDate(payment.date)} · {payment.accounts?.name ?? "Conta"} ·
+                                original preservado
                               </div>
                             </div>
                             <div className="font-mono font-medium">
-                              {formatCurrency(Math.abs(Number(payment.amount)), currency, privacy)}
+                              {formatCurrency(
+                                Math.abs(Number(payment.allocation?.allocated_amount ?? payment.amount)),
+                                currency,
+                                privacy,
+                              )}
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Desfazer conciliação"
-                              onClick={() => undoReconciliation.mutate(payment.id)}
-                            >
-                              <Undo2 className="h-4 w-4" />
-                            </Button>
-                            {reconciled && paymentMatches && data.payments.length === 1 && (
+                            {payment.allocation?.id && (
                               <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-destructive/30 text-destructive hover:bg-destructive/10"
-                                onClick={() => setPaymentToRemove(payment)}
+                                variant="ghost"
+                                size="icon"
+                                title="Desfazer abatimento e remover a compensação"
+                                onClick={() => undoReconciliation.mutate(payment.allocation.id)}
                               >
-                                <Trash2 className="mr-1 h-4 w-4" />
-                                Apagar da conta
+                                <Undo2 className="h-4 w-4" />
                               </Button>
                             )}
                           </div>
-                          );
-                        })}
+                        ))}
                       </div>
                     </div>
                   )}
 
-                  {(removedPayments as any[]).some(
-                    (removal) => removal.credit_card_id === card.id,
+                  {(paymentAllocations as any[]).some(
+                    (allocation) =>
+                      allocation.credit_card_id === card.id &&
+                      allocation.invoice_month?.slice(0, 10) === selectedInvoiceMonth,
                   ) && (
                     <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-sm text-emerald-950">
                       <div className="flex items-center gap-2 font-medium">
                         <CheckCircle2 className="h-4 w-4" />
-                        Fatura conferida e pagamento removido da conta corrente
+                        Pagamento original preservado com compensação auditável
                       </div>
                       <p className="mt-1 text-xs text-emerald-800">
-                        O total das compras foi mantido como despesa e o lançamento duplicado do
-                        pagamento foi arquivado.
+                        O valor abatido foi registrado em uma nova transação inversa. Assim, o
+                        extrato continua íntegro e o pagamento não duplica as despesas.
                       </p>
                     </div>
                   )}
@@ -771,21 +757,19 @@ function CardsPage() {
       )}
 
       <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Conciliar pagamento</DialogTitle>
+            <DialogTitle>Escolher contas e valores para abater</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="rounded-lg bg-muted/40 p-3">
-              <div className="font-medium">{selectedPayment?.description}</div>
-              <div className="mt-1 text-sm text-muted-foreground">
-                {selectedPayment
-                  ? `${formatDate(selectedPayment.date)} · ${formatCurrency(Math.abs(Number(selectedPayment.amount)), currency, privacy)}`
-                  : ""}
-              </div>
-            </div>
             <Field label="Cartão pago">
-              <Select value={selectedCardId} onValueChange={setSelectedCardId}>
+              <Select
+                value={selectedCardId}
+                onValueChange={(value) => {
+                  setSelectedCardId(value);
+                  setAllocations({});
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o cartão" />
                 </SelectTrigger>
@@ -798,9 +782,75 @@ function CardsPage() {
                 </SelectContent>
               </Select>
             </Field>
+            <div className="rounded-lg border bg-muted/25 p-3 text-sm">
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Saldo pendente da fatura</span>
+                <strong className="font-mono">
+                  {formatCurrency(
+                    Math.max(
+                      (analytics.byCard.get(selectedCardId)?.spend || 0) -
+                        (analytics.byCard.get(selectedCardId)?.paid || 0),
+                      0,
+                    ),
+                    currency,
+                    privacy,
+                  )}
+                </strong>
+              </div>
+              <div className="mt-1 flex justify-between gap-3">
+                <span className="text-muted-foreground">Total escolhido</span>
+                <strong className="font-mono">
+                  {formatCurrency(
+                    analytics.candidates.reduce((sum: number, transaction: any) => {
+                      const amount = parseLocaleAmount(allocations[transaction.id]);
+                      return sum + (Number.isFinite(amount) && amount > 0 ? amount : 0);
+                    }, 0),
+                    currency,
+                    privacy,
+                  )}
+                </strong>
+              </div>
+            </div>
+            <div className="max-h-[45vh] space-y-2 overflow-auto pr-1">
+              {analytics.candidates.map((transaction: any) => {
+                const available = paymentAvailable(transaction);
+                return (
+                  <div
+                    key={transaction.id}
+                    className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[1fr_180px] sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{transaction.description}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {formatDate(transaction.date)} · {transaction.accounts?.name ?? "Conta"} ·
+                        disponível {formatCurrency(available, currency, privacy)}
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor={`allocation-${transaction.id}`} className="text-xs">
+                        Quanto abater
+                      </Label>
+                      <Input
+                        id={`allocation-${transaction.id}`}
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        disabled={available <= 0.005}
+                        value={allocations[transaction.id] ?? ""}
+                        onChange={(event) =>
+                          setAllocations((current) => ({
+                            ...current,
+                            [transaction.id]: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
             <div className="text-sm text-muted-foreground">
-              O pagamento será associado à fatura de {monthLabel(month)} de {year}. Ele continuará
-              reduzindo o saldo da conta corrente e não será somado novamente às despesas.
+              Para cada valor será criada uma transação de entrada com sinal inverso, na mesma
+              conta e categoria do pagamento. A operação original permanecerá intacta.
             </div>
           </div>
           <DialogFooter>
@@ -808,53 +858,14 @@ function CardsPage() {
               Cancelar
             </Button>
             <Button
-              disabled={!selectedPayment || !selectedCardId || reconcile.isPending}
-              onClick={() =>
-                reconcile.mutate({
-                  transactionId: selectedPayment.id,
-                  cardId: selectedCardId,
-                  method: "manual",
-                })
-              }
+              disabled={!selectedCardId || allocatePayments.isPending}
+              onClick={() => allocatePayments.mutate()}
             >
-              Confirmar conciliação
+              Criar compensações
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog
-        open={!!paymentToRemove}
-        onOpenChange={(open) => {
-          if (!open) setPaymentToRemove(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Apagar pagamento da conta corrente?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Os valores conferem: as compras detalhadas já representam a despesa desta fatura. O
-              lançamento “{paymentToRemove?.description}” de{" "}
-              {paymentToRemove
-                ? formatCurrency(Math.abs(Number(paymentToRemove.amount)), currency, privacy)
-                : ""}{" "}
-              será conciliado e removido da lista de transações para evitar duplicidade. Antes de
-              apagar, o sistema verificará os valores novamente. O comprovante da conciliação será
-              preservado.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={!paymentToRemove || removeReconciledPayment.isPending}
-              onClick={() => paymentToRemove && removeReconciledPayment.mutate(paymentToRemove)}
-            >
-              Apagar pagamento
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">

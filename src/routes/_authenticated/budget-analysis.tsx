@@ -16,6 +16,7 @@ import { PieChart, TrendingDown, Sparkles, Repeat, AlertTriangle } from "lucide-
 import {
   financialMonthKey,
   isConsumptionTransaction,
+  netCardPaymentOffsets,
 } from "@/lib/credit-card-reconciliation";
 
 export const Route = createFileRoute("/_authenticated/budget-analysis")({
@@ -54,7 +55,7 @@ function BudgetAnalysisPage() {
       const { data, error } = await supabase
         .from("transactions")
         .select(
-          "id,date,description,amount,type,status,category_id,credit_card_id,account_id,importance_level,financial_role,linked_credit_card_id,invoice_month",
+          "id,date,description,amount,type,status,category_id,credit_card_id,account_id,importance_level,financial_role,reversal_of_transaction_id,linked_credit_card_id,invoice_month",
         )
         .eq("workspace_id", wsId!)
         .gte("date", fromISO)
@@ -89,7 +90,9 @@ function BudgetAnalysisPage() {
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-    const expenses = txs.filter((t) => t.type === "expense" && isConsumptionTransaction(t));
+    const expenses = netCardPaymentOffsets(txs).filter(
+      (t) => t.type === "expense" && isConsumptionTransaction(t),
+    );
     const monthExpenses = expenses.filter((t) => financialMonthKey(t) === currentMonth);
 
     let totalMonth = 0;

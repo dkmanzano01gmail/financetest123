@@ -21,6 +21,7 @@ import { dashboardSummary } from "@/lib/orna-logic";
 import {
   financialDateForTransaction,
   isConsumptionTransaction,
+  netCardPaymentOffsets,
 } from "@/lib/credit-card-reconciliation";
 import {
   ArrowDownRight,
@@ -58,7 +59,7 @@ function Dashboard() {
       const { data, error } = await supabase
         .from("transactions")
         .select(
-          "id,date,type,amount,description,counterparty,status,category_id,credit_card_id,financial_role,linked_credit_card_id,invoice_month,categories!transactions_category_id_fkey(name,color)",
+          "id,date,type,amount,description,counterparty,status,category_id,credit_card_id,financial_role,reversal_of_transaction_id,linked_credit_card_id,invoice_month,categories!transactions_category_id_fkey(name,color)",
         )
         .eq("workspace_id", wsId!)
         .in("year", [year, year - 1]);
@@ -84,7 +85,7 @@ function Dashboard() {
   const summary = useMemo(
     () =>
       dashboardSummary(
-        ((yearTxs ?? []) as any[])
+        netCardPaymentOffsets((yearTxs ?? []) as any[])
           .filter(isConsumptionTransaction)
           .map((transaction) => ({
             ...transaction,

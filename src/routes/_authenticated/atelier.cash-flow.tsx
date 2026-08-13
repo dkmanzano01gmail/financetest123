@@ -148,7 +148,7 @@ function CashFlowPage() {
       const { data, error } = await sb
         .from("transactions")
         .select(
-          "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,categories!transactions_category_id_fkey(name,color)",
+          "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,financial_role,reversal_of_transaction_id,categories!transactions_category_id_fkey(name,color)",
         )
         .eq("workspace_id", wsId)
         .gte("date", start)

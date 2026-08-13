@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { isCashFlowTransaction } from "@/lib/credit-card-reconciliation";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
@@ -90,7 +91,7 @@ function ReconciliationPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
-        .select("id,date,description,amount,type,status,category_id,account_id")
+        .select("id,date,description,amount,type,status,category_id,account_id,credit_card_id,financial_role")
         .eq("workspace_id", wsId!)
         .not("account_id", "is", null)
         .neq("status", "ignored")
@@ -143,7 +144,7 @@ function ReconciliationPage() {
     return accounts.map((a) => {
       const initialDate = a.initial_balance_date || "0000-01-01";
       const accountTransactions = txs.filter(
-        (t) => t.account_id === a.id && t.date >= initialDate,
+        (t) => t.account_id === a.id && t.date >= initialDate && isCashFlowTransaction(t),
       );
       const beforePeriod = accountTransactions.filter((t) => t.date < periodStart);
       const periodTransactions = accountTransactions.filter(

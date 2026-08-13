@@ -36,7 +36,13 @@ import {
   transactionCategoryKey,
   type TransactionSourceFilter,
 } from "@/lib/transaction-summary";
-import { isConsumptionTransaction, isCreditCardPayment } from "@/lib/credit-card-reconciliation";
+import {
+  analyticalTransactionType,
+  isConsumptionTransaction,
+  isCreditCardPayment,
+  isCreditCardPaymentOffset,
+  netCardPaymentOffsets,
+} from "@/lib/credit-card-reconciliation";
 import { Plus, Receipt, Trash2, Sparkles, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -79,6 +85,11 @@ function normalizeCategoryName(value: string) {
     .toLowerCase()
     .trim()
     .replace(/s$/, "");
+}
+
+function analyticalTransactionCategoryKey(transaction: any) {
+  const key = transactionCategoryKey(transaction);
+  return isCreditCardPaymentOffset(transaction) ? key.replace(/^income:/, "expense:") : key;
 }
 
 function TransactionsPage() {
@@ -160,7 +171,7 @@ function TransactionsPage() {
 
   const filterableTransactions = useMemo(() => {
     return (txs ?? []).filter((tx) => {
-      if (type !== "all" && tx.type !== type) return false;
+      if (type !== "all" && analyticalTransactionType(tx) !== type) return false;
       if (!matchesTransactionSource(tx, source)) return false;
       if (search && !tx.description?.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
@@ -168,7 +179,10 @@ function TransactionsPage() {
   }, [txs, type, source, search]);
 
   const categorySummary = useMemo(
-    () => summarizeTransactionsByCategory(filterableTransactions.filter(isConsumptionTransaction)),
+    () =>
+      summarizeTransactionsByCategory(
+        netCardPaymentOffsets(filterableTransactions).filter(isConsumptionTransaction),
+      ),
     [filterableTransactions],
   );
 
@@ -187,7 +201,7 @@ function TransactionsPage() {
   const filtered = useMemo(() => {
     if (selectedCategoryKey) {
       return filterableTransactions.filter(
-        (transaction) => transactionCategoryKey(transaction) === selectedCategoryKey,
+        (transaction) => analyticalTransactionCategoryKey(transaction) === selectedCategoryKey,
       );
     }
     if (requestedCategory) {
@@ -200,6 +214,18 @@ function TransactionsPage() {
     return filterableTransactions;
   }, [filterableTransactions, requestedCategory, selectedCategoryKey]);
 
+  const protectedAllocationTransactionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const transaction of txs ?? []) {
+      if (!isCreditCardPaymentOffset(transaction)) continue;
+      ids.add(transaction.id);
+      if (transaction.reversal_of_transaction_id) {
+        ids.add(transaction.reversal_of_transaction_id);
+      }
+    }
+    return ids;
+  }, [txs]);
+
   const hasCategoryFilter = Boolean(selectedCategoryKey || requestedCategory);
 
   function clearCategorySelection() {
@@ -209,7 +235,7 @@ function TransactionsPage() {
 
   const filteredTotals = useMemo(
     () =>
-      filtered.filter(isConsumptionTransaction).reduce(
+      netCardPaymentOffsets(filtered).filter(isConsumptionTransaction).reduce(
         (totals, transaction) => {
           totals[transaction.type as "income" | "expense"] += Math.abs(
             Number(transaction.amount) || 0,
@@ -545,10 +571,16 @@ function TransactionsPage() {
                           Pagamento de fatura · não soma nas despesas
                         </Badge>
                       )}
+                      {isCreditCardPaymentOffset(tx) && (
+                        <Badge variant="outline" className="mt-1 border-emerald-300 text-emerald-800">
+                          Compensação de pagamento · original preservado
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Select
                         value={tx.category_id ?? ""}
+                        disabled={protectedAllocationTransactionIds.has(tx.id)}
                         onValueChange={(v) =>
                           updateCat.mutate({ id: tx.id, category_id: v || null })
                         }
@@ -558,7 +590,7 @@ function TransactionsPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {(categories ?? [])
-                            .filter((c: any) => c.type === tx.type)
+                            .filter((c: any) => c.type === analyticalTransactionType(tx))
                             .map((c: any) => (
                               <SelectItem key={c.id} value={c.id}>
                                 {c.name}
@@ -586,9 +618,9 @@ function TransactionsPage() {
                         "—"}
                     </TableCell>
                     <TableCell
-                      className={`text-right font-medium tabular-nums ${tx.type === "income" ? "text-[var(--income)]" : "text-[var(--expense)]"}`}
+                      className={`text-right font-medium tabular-nums ${isCreditCardPaymentOffset(tx) || tx.type === "income" ? "text-[var(--income)]" : "text-[var(--expense)]"}`}
                     >
-                      {tx.type === "income" ? "+" : "-"}
+                      {isCreditCardPaymentOffset(tx) ? "+" : tx.type === "income" ? "+" : "-"}
                       {formatCurrency(Number(tx.amount), currency, privacy)}
                     </TableCell>
                     <TableCell>
@@ -596,7 +628,12 @@ function TransactionsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="Editar"
+                          title={
+                            protectedAllocationTransactionIds.has(tx.id)
+                              ? "Desfaça o abatimento na aba Cartões para editar"
+                              : "Editar"
+                          }
+                          disabled={protectedAllocationTransactionIds.has(tx.id)}
                           onClick={() => {
                             setEditingTx(tx);
                             setOpen(true);
@@ -607,7 +644,12 @@ function TransactionsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="Remover"
+                          title={
+                            protectedAllocationTransactionIds.has(tx.id)
+                              ? "Desfaça o abatimento na aba Cartões para remover"
+                              : "Remover"
+                          }
+                          disabled={protectedAllocationTransactionIds.has(tx.id)}
                           onClick={() => setDeleteId(tx.id)}
                         >
                           <Trash2 className="w-4 h-4 text-muted-foreground" />
@@ -661,18 +703,20 @@ function TransactionsPage() {
           workspaceId={wsId}
           workspaceType={workspace.type}
           transactions={
-            filtered.map((tx: any) => ({
-              id: tx.id,
-              date: tx.date,
-              description: tx.description,
-              counterparty: tx.counterparty,
-              type: tx.type,
-              amount: Number(tx.amount),
-              category_id: tx.category_id,
-              importance_level: tx.importance_level,
-              importance_confirmed_by_user: tx.importance_confirmed_by_user,
-              current_category_name: tx.categories?.name ?? null,
-            })) as any
+            filtered
+              .filter((tx: any) => !protectedAllocationTransactionIds.has(tx.id))
+              .map((tx: any) => ({
+                id: tx.id,
+                date: tx.date,
+                description: tx.description,
+                counterparty: tx.counterparty,
+                type: tx.type,
+                amount: Number(tx.amount),
+                category_id: tx.category_id,
+                importance_level: tx.importance_level,
+                importance_confirmed_by_user: tx.importance_confirmed_by_user,
+                current_category_name: tx.categories?.name ?? null,
+              })) as any
           }
         />
       )}

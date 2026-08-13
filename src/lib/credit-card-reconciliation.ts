@@ -9,6 +9,7 @@ export type ReconciliationTransaction = {
   linked_credit_card_id?: string | null;
   invoice_month?: string | null;
   financial_role?: string | null;
+  reversal_of_transaction_id?: string | null;
   status?: string | null;
   categories?: { name?: string | null } | null;
 };
@@ -66,12 +67,46 @@ export function isCreditCardPayment(transaction: ReconciliationTransaction) {
   return transaction.financial_role === "credit_card_payment";
 }
 
+export function isCreditCardPaymentOffset(transaction: ReconciliationTransaction) {
+  return transaction.financial_role === "credit_card_payment_offset";
+}
+
 export function isConsumptionTransaction(transaction: ReconciliationTransaction) {
-  return !isCreditCardPayment(transaction);
+  return !isCreditCardPayment(transaction) && !isCreditCardPaymentOffset(transaction);
 }
 
 export function isCashFlowTransaction(transaction: ReconciliationTransaction) {
-  return !transaction.credit_card_id;
+  return !transaction.credit_card_id && !isCreditCardPaymentOffset(transaction);
+}
+
+export function analyticalTransactionType(transaction: ReconciliationTransaction) {
+  return isCreditCardPaymentOffset(transaction) ? "expense" : transaction.type;
+}
+
+/**
+ * Nets each generated offset against its original payment for analytical views.
+ * The raw transaction list remains untouched and auditable. Partial offsets leave
+ * only the unallocated remainder of the original expense.
+ */
+export function netCardPaymentOffsets<T extends ReconciliationTransaction>(transactions: T[]): T[] {
+  const offsetByOriginal = new Map<string, number>();
+  for (const transaction of transactions) {
+    if (!isCreditCardPaymentOffset(transaction) || !transaction.reversal_of_transaction_id)
+      continue;
+    offsetByOriginal.set(
+      transaction.reversal_of_transaction_id,
+      (offsetByOriginal.get(transaction.reversal_of_transaction_id) || 0) +
+        Math.abs(Number(transaction.amount) || 0),
+    );
+  }
+
+  return transactions.flatMap((transaction) => {
+    if (isCreditCardPaymentOffset(transaction)) return [];
+    const offset = offsetByOriginal.get(transaction.id) || 0;
+    if (!offset) return [transaction];
+    const remaining = Math.max(Math.abs(Number(transaction.amount) || 0) - offset, 0);
+    return remaining > 0.005 ? [{ ...transaction, amount: remaining }] : [];
+  });
 }
 
 export function isLikelyInvoicePayment(transaction: ReconciliationTransaction) {
@@ -80,6 +115,7 @@ export function isLikelyInvoicePayment(transaction: ReconciliationTransaction) {
     !transaction.account_id ||
     transaction.credit_card_id ||
     isCreditCardPayment(transaction) ||
+    isCreditCardPaymentOffset(transaction) ||
     ["ignored", "cancelled", "ignorado"].includes(String(transaction.status ?? "").toLowerCase())
   )
     return false;
