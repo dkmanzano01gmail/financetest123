@@ -12,6 +12,7 @@ export type ReconciliationTransaction = {
   reversal_of_transaction_id?: string | null;
   status?: string | null;
   categories?: { name?: string | null } | null;
+  accounts?: { type?: string | null } | null;
 };
 
 export type ReconciliationCard = {
@@ -77,6 +78,16 @@ export function isConsumptionTransaction(transaction: ReconciliationTransaction)
 
 export function isCashFlowTransaction(transaction: ReconciliationTransaction) {
   return !transaction.credit_card_id && !isCreditCardPaymentOffset(transaction);
+}
+
+export function isCheckingAccountCashFlowTransaction(
+  transaction: ReconciliationTransaction,
+) {
+  return (
+    Boolean(transaction.account_id) &&
+    transaction.accounts?.type === "checking" &&
+    isCashFlowTransaction(transaction)
+  );
 }
 
 export function analyticalTransactionType(transaction: ReconciliationTransaction) {

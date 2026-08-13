@@ -27,7 +27,7 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { buildCashFlowProjection, type CashFlowDay, type CashFlowEvent } from "@/lib/orna-logic";
-import { isCashFlowTransaction } from "@/lib/credit-card-reconciliation";
+import { isCheckingAccountCashFlowTransaction } from "@/lib/credit-card-reconciliation";
 import {
   AlertTriangle,
   CalendarRange,
@@ -148,9 +148,10 @@ function CashFlowPage() {
       const { data, error } = await sb
         .from("transactions")
         .select(
-          "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,financial_role,reversal_of_transaction_id,categories!transactions_category_id_fkey(name,color)",
+          "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,financial_role,reversal_of_transaction_id,accounts!inner(type),categories!transactions_category_id_fkey(name,color)",
         )
         .eq("workspace_id", wsId)
+        .eq("accounts.type", "checking")
         .gte("date", start)
         .lte("date", end)
         .order("date");
@@ -205,7 +206,7 @@ function CashFlowPage() {
     () =>
       buildCashFlowProjection({
         entries,
-        transactions: (transactions as any[]).filter(isCashFlowTransaction),
+        transactions: (transactions as any[]).filter(isCheckingAccountCashFlowTransaction),
         month,
         year,
         monthsCount,
@@ -349,7 +350,7 @@ function CashFlowPage() {
     <PageContainer>
       <PageHeader
         title="Fluxo de Caixa"
-        description="Previsto × realizado, seguindo a conciliação diária do Apps Script"
+        description="Previsto × realizado; o realizado considera somente contas correntes"
         action={
           <div className="flex flex-wrap gap-2">
             <Button
