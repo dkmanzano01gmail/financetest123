@@ -29,11 +29,9 @@ const sb = supabase as any;
 export function QuickFeedbackButton({
   workspaceId,
   pathname,
-  sidebarCollapsed,
 }: {
   workspaceId: string;
   pathname: string;
-  sidebarCollapsed: boolean;
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -93,9 +91,7 @@ export function QuickFeedbackButton({
         data-tour-key="quick-feedback"
         title="Enviar comentário"
         aria-label="Enviar comentário"
-        className={`fixed bottom-4 left-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-primary-foreground/15 bg-primary text-primary-foreground shadow-lg transition-all hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:bottom-5 ${
-          sidebarCollapsed ? "md:left-[5.5rem]" : "md:left-[17rem]"
-        }`}
+        className="fixed bottom-4 right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-primary-foreground/15 bg-primary text-primary-foreground shadow-lg transition-all hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:bottom-5 md:right-5"
       >
         <MessageSquarePlus className="h-5 w-5" />
       </button>

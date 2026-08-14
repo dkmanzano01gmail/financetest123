@@ -695,7 +695,6 @@ export function AppShell() {
           <QuickFeedbackButton
             workspaceId={workspace.id}
             pathname={pathname}
-            sidebarCollapsed={sidebarCollapsed}
           />
           <ProductTour
             workspaceId={workspace.id}
