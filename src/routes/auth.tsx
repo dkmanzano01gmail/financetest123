@@ -76,9 +76,9 @@ function AuthPage() {
             aria-label="Selá Finance"
           >
             <img
-              src="/sela-finance-seal.png"
+              src="/sela-finance-logo.png"
               alt="Selá Finance"
-              className="h-28 w-28 object-contain"
+              className="h-24 w-auto max-w-[17rem] object-contain"
             />
             <span className="self-start rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
               Beta
