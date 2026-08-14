@@ -80,6 +80,11 @@ function CardsPage() {
     previousInvoiceDate.getFullYear(),
     previousInvoiceDate.getMonth() + 1,
   );
+  const twoMonthsPriorInvoiceDate = new Date(year, month - 3, 1, 12);
+  const twoMonthsPriorInvoiceMonth = invoiceMonthKey(
+    twoMonthsPriorInvoiceDate.getFullYear(),
+    twoMonthsPriorInvoiceDate.getMonth() + 1,
+  );
 
   const { data: cards = [] } = useQuery({
     queryKey: ["cards-full", wsId],
@@ -201,6 +206,7 @@ function CardsPage() {
     const candidateMonths = new Set([
       selectedInvoiceMonth.slice(0, 7),
       previousInvoiceMonth.slice(0, 7),
+      twoMonthsPriorInvoiceMonth.slice(0, 7),
     ]);
     const candidates = (transactions as any[]).filter(
       (tx) => candidateMonths.has(tx.date.slice(0, 7)) && isLikelyInvoicePayment(tx),
@@ -232,7 +238,14 @@ function CardsPage() {
       totalPaid: [...byCard.values()].reduce((sum, item) => sum + item.paid, 0),
       purchaseCount: [...byCard.values()].reduce((sum, item) => sum + item.purchases.length, 0),
     };
-  }, [cards, transactions, paymentAllocations, selectedInvoiceMonth, previousInvoiceMonth]);
+  }, [
+    cards,
+    transactions,
+    paymentAllocations,
+    selectedInvoiceMonth,
+    previousInvoiceMonth,
+    twoMonthsPriorInvoiceMonth,
+  ]);
 
   const invalidateFinancialViews = () => {
     qc.invalidateQueries({ queryKey: ["card-reconciliation"] });
@@ -504,10 +517,10 @@ function CardsPage() {
               <div>
                 <CardTitle className="text-base">Pagamentos encontrados nas transações</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Mostramos pagamentos feitos no mês da fatura e no mês anterior, caso ela tenha
-                  sido paga antecipadamente. Escolha uma ou mais contas e quanto abater de cada
-                  pagamento. O original será preservado e uma compensação inversa cancelará a
-                  duplicidade nos totais. Nenhum pagamento será apagado.
+                  Mostramos pagamentos feitos no mês da fatura e nos dois meses anteriores, caso
+                  ela tenha sido paga antecipadamente. Escolha uma ou mais contas e quanto abater
+                  de cada pagamento. O original será preservado e uma compensação inversa cancelará
+                  a duplicidade nos totais. Nenhum pagamento será apagado.
                 </p>
               </div>
             </div>
@@ -520,8 +533,13 @@ function CardsPage() {
               const exact = analytics.exactMatches.some(
                 (item) => item.transaction.id === transaction.id,
               );
-              const paidInPreviousMonth =
-                transaction.date.slice(0, 7) === previousInvoiceMonth.slice(0, 7);
+              const transactionMonth = transaction.date.slice(0, 7);
+              const monthsPaidInAdvance =
+                transactionMonth === twoMonthsPriorInvoiceMonth.slice(0, 7)
+                  ? 2
+                  : transactionMonth === previousInvoiceMonth.slice(0, 7)
+                    ? 1
+                    : 0;
               return (
                 <div
                   key={transaction.id}
@@ -535,8 +553,11 @@ function CardsPage() {
                           Valor confere
                         </Badge>
                       )}
-                      {paidInPreviousMonth && (
-                        <Badge variant="outline">Pagamento antecipado · mês anterior</Badge>
+                      {monthsPaidInAdvance > 0 && (
+                        <Badge variant="outline">
+                          Pagamento antecipado · {monthsPaidInAdvance}
+                          {monthsPaidInAdvance === 1 ? " mês antes" : " meses antes"}
+                        </Badge>
                       )}
                       {duplicate && (
                         <Badge variant="destructive">
