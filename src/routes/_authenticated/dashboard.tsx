@@ -182,6 +182,7 @@ function Dashboard() {
                   value={formatCurrency(totals.income, currency, privacy)}
                   icon={ArrowUpRight}
                   tone="income"
+                  motif="/brand/motifs/arch-wine.png"
                 />
               ),
             },
@@ -193,6 +194,7 @@ function Dashboard() {
                   value={formatCurrency(totals.expense, currency, privacy)}
                   icon={ArrowDownRight}
                   tone="expense"
+                  motif="/brand/motifs/bowl-wine.png"
                 />
               ),
             },
@@ -204,6 +206,7 @@ function Dashboard() {
                   value={formatCurrency(totals.net, currency, privacy)}
                   icon={TrendingUp}
                   tone={totals.net >= 0 ? "income" : "expense"}
+                  motif="/brand/motifs/curve-wine.png"
                 />
               ),
             },
@@ -214,6 +217,7 @@ function Dashboard() {
                   label="Saldo em contas"
                   value={formatCurrency(accountsBalance, currency, privacy)}
                   icon={Wallet}
+                  motif="/brand/motifs/circle-wine.png"
                 />
               ),
             },
@@ -361,11 +365,13 @@ function StatCard({
   value,
   icon: Icon,
   tone,
+  motif,
 }: {
   label: string;
   value: string;
   icon: any;
   tone?: "income" | "expense";
+  motif: string;
 }) {
   const toneClass =
     tone === "income"
@@ -374,8 +380,14 @@ function StatCard({
         ? "text-expense bg-expense/10"
         : "text-primary bg-primary/10";
   return (
-    <Card>
-      <CardContent className="p-4">
+    <Card className="group relative overflow-hidden border-border/70 bg-card/95 transition hover:-translate-y-0.5 hover:shadow-md">
+      <img
+        src={motif}
+        alt=""
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-10 -right-6 h-28 w-28 object-contain opacity-[0.07] transition duration-300 group-hover:opacity-[0.11]"
+      />
+      <CardContent className="relative z-10 p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
