@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 
 const TOUR_KEY = "main_navigation";
-const TOUR_VERSION = 1;
+const TOUR_VERSION = 2;
 
 type TourStep = {
   key: string;
@@ -76,10 +76,26 @@ const allSteps: TourStep[] = [
     atelierOnly: true,
   },
   {
-    key: "help",
-    title: "Ajuda sempre disponível",
+    key: "messages",
+    title: "Envie mensagens e acompanhe respostas",
     description:
-      "Os ícones de informação explicam cada página. Use o botão Ajuda para refazer este tour quando quiser.",
+      "Em Comentários você pode enviar dúvidas, ideias, melhorias ou erros e acompanhar o andamento de cada mensagem. Esse canal ajuda o Selá Finance a evoluir com você.",
+    to: "/feedback",
+    target: "nav.feedback",
+  },
+  {
+    key: "customizations",
+    title: "Peça uma experiência feita para você",
+    description:
+      "Em Personalizações, descreva em linguagem natural as mudanças que gostaria de ver. Os pedidos são avaliados para adaptar o aplicativo ao seu jeito de trabalhar.",
+    to: "/customizations",
+    target: "nav.customizations",
+  },
+  {
+    key: "help",
+    title: "Ajuda e feedback sempre disponíveis",
+    description:
+      "Os ícones de informação explicam cada página. Use Ajuda para refazer este tour e o botão flutuante de mensagem para enviar um comentário de qualquer tela.",
     to: "/feedback",
     target: "help-button",
   },

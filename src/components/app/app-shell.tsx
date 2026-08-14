@@ -62,6 +62,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { ProductTour } from "@/components/app/product-tour";
+import { QuickFeedbackButton } from "@/components/app/quick-feedback-button";
 
 const baseNavDef = [
   { to: "/dashboard", icon: LayoutDashboard, key: "nav.dashboard", label: "Dashboard" },
@@ -674,15 +675,22 @@ export function AppShell() {
         </main>
       </div>
       {workspace && (
-        <ProductTour
-          workspaceId={workspace.id}
-          isAtelier={isAtelierWorkspace}
-          restartSignal={tourRestartSignal}
-          onTourStart={() => {
-            setSidebarCollapsed(false);
-            if (isAtelierWorkspace) setAtelierExpanded(true);
-          }}
-        />
+        <>
+          <QuickFeedbackButton
+            workspaceId={workspace.id}
+            pathname={pathname}
+            sidebarCollapsed={sidebarCollapsed}
+          />
+          <ProductTour
+            workspaceId={workspace.id}
+            isAtelier={isAtelierWorkspace}
+            restartSignal={tourRestartSignal}
+            onTourStart={() => {
+              setSidebarCollapsed(false);
+              if (isAtelierWorkspace) setAtelierExpanded(true);
+            }}
+          />
+        </>
       )}
     </div>
   );

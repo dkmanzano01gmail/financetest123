@@ -19,18 +19,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { sendFeedbackNotification } from "@/lib/feedback.functions";
+import { FEEDBACK_RECIPIENT, FEEDBACK_TYPES } from "@/lib/feedback-content";
 
 export const Route = createFileRoute("/_authenticated/feedback")({ component: FeedbackPage });
 const sb = supabase as any;
-const FEEDBACK_RECIPIENT = "dkmanzano.o@hotmail.com";
-
-const TYPES = [
-  ["general", "Comentário geral"],
-  ["improvement", "Melhoria"],
-  ["bug", "Erro/bug"],
-  ["idea", "Ideia nova"],
-  ["question", "Dúvida"],
-] as const;
 const STATUSES = [
   ["new", "Novo"],
   ["reviewing", "Em análise"],
@@ -163,7 +155,7 @@ function FeedbackPage() {
               <Label>Tipo</Label>
               <Select value={type} onValueChange={setType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{TYPES.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                <SelectContent>{FEEDBACK_TYPES.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
@@ -187,7 +179,7 @@ function FeedbackPage() {
       <div className="mb-3 flex flex-wrap gap-2">
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="all">Todos os tipos</SelectItem>{TYPES.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+          <SelectContent><SelectItem value="all">Todos os tipos</SelectItem>{FEEDBACK_TYPES.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
@@ -208,7 +200,7 @@ function FeedbackPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                       <span>{new Date(row.created_at).toLocaleString("pt-BR")}</span>
-                      <span>· {labelFor(TYPES, row.type)}</span>
+                      <span>· {labelFor(FEEDBACK_TYPES, row.type)}</span>
                       <span>· {row.page}</span>
                     </div>
                     <p className="mt-2 whitespace-pre-wrap text-sm">{row.comment}</p>
