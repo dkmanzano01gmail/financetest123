@@ -107,6 +107,7 @@ function TransactionsPage() {
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestionTransactions, setSuggestionTransactions] = useState<any[]>([]);
   const wsId = workspace?.id;
   const { savedFilters } = useCustomizedUI(wsId);
   const t = workspace ? L(workspace.type) : L("personal");
@@ -290,7 +291,27 @@ function TransactionsPage() {
           <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => setSuggestOpen(true)}
+              onClick={() => {
+                // Take one immutable snapshot per click. Re-renders while the
+                // review is open must not recalculate and overwrite user edits.
+                setSuggestionTransactions(
+                  filtered
+                    .filter((tx: any) => !protectedAllocationTransactionIds.has(tx.id))
+                    .map((tx: any) => ({
+                      id: tx.id,
+                      date: tx.date,
+                      description: tx.description,
+                      counterparty: tx.counterparty,
+                      type: tx.type,
+                      amount: Number(tx.amount),
+                      category_id: tx.category_id,
+                      importance_level: tx.importance_level,
+                      importance_confirmed_by_user: tx.importance_confirmed_by_user,
+                      current_category_name: tx.categories?.name ?? null,
+                    })),
+                );
+                setSuggestOpen(true);
+              }}
               disabled={!filtered.length}
             >
               <Sparkles className="w-4 h-4 mr-1" />
@@ -708,22 +729,7 @@ function TransactionsPage() {
           onOpenChange={setSuggestOpen}
           workspaceId={wsId}
           workspaceType={workspace.type}
-          transactions={
-            filtered
-              .filter((tx: any) => !protectedAllocationTransactionIds.has(tx.id))
-              .map((tx: any) => ({
-                id: tx.id,
-                date: tx.date,
-                description: tx.description,
-                counterparty: tx.counterparty,
-                type: tx.type,
-                amount: Number(tx.amount),
-                category_id: tx.category_id,
-                importance_level: tx.importance_level,
-                importance_confirmed_by_user: tx.importance_confirmed_by_user,
-                current_category_name: tx.categories?.name ?? null,
-              })) as any
-          }
+          transactions={suggestionTransactions}
         />
       )}
     </PageContainer>
