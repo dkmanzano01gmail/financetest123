@@ -75,6 +75,11 @@ function CardsPage() {
   const [selectedCardId, setSelectedCardId] = useState("");
   const [allocations, setAllocations] = useState<Record<string, string>>({});
   const selectedInvoiceMonth = invoiceMonthKey(year, month);
+  const previousInvoiceDate = new Date(year, month - 2, 1, 12);
+  const previousInvoiceMonth = invoiceMonthKey(
+    previousInvoiceDate.getFullYear(),
+    previousInvoiceDate.getMonth() + 1,
+  );
 
   const { data: cards = [] } = useQuery({
     queryKey: ["cards-full", wsId],
@@ -193,9 +198,12 @@ function CardsPage() {
     const invoiceTotals = new Map(
       [...byCard].map(([cardId, value]) => [cardId, value.spend - value.paid]),
     );
+    const candidateMonths = new Set([
+      selectedInvoiceMonth.slice(0, 7),
+      previousInvoiceMonth.slice(0, 7),
+    ]);
     const candidates = (transactions as any[]).filter(
-      (tx) =>
-        tx.date.slice(0, 7) === selectedInvoiceMonth.slice(0, 7) && isLikelyInvoicePayment(tx),
+      (tx) => candidateMonths.has(tx.date.slice(0, 7)) && isLikelyInvoicePayment(tx),
     );
     const suggestions = new Map<string, string | null>();
     const duplicates = new Set<string>();
@@ -224,7 +232,7 @@ function CardsPage() {
       totalPaid: [...byCard.values()].reduce((sum, item) => sum + item.paid, 0),
       purchaseCount: [...byCard.values()].reduce((sum, item) => sum + item.purchases.length, 0),
     };
-  }, [cards, transactions, paymentAllocations, selectedInvoiceMonth]);
+  }, [cards, transactions, paymentAllocations, selectedInvoiceMonth, previousInvoiceMonth]);
 
   const invalidateFinancialViews = () => {
     qc.invalidateQueries({ queryKey: ["card-reconciliation"] });
@@ -496,9 +504,10 @@ function CardsPage() {
               <div>
                 <CardTitle className="text-base">Pagamentos encontrados nas transações</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Escolha uma ou mais contas e quanto abater de cada pagamento. O original será
-                  preservado e uma compensação inversa cancelará a duplicidade nos totais. Nenhum
-                  pagamento será apagado.
+                  Mostramos pagamentos feitos no mês da fatura e no mês anterior, caso ela tenha
+                  sido paga antecipadamente. Escolha uma ou mais contas e quanto abater de cada
+                  pagamento. O original será preservado e uma compensação inversa cancelará a
+                  duplicidade nos totais. Nenhum pagamento será apagado.
                 </p>
               </div>
             </div>
@@ -511,6 +520,8 @@ function CardsPage() {
               const exact = analytics.exactMatches.some(
                 (item) => item.transaction.id === transaction.id,
               );
+              const paidInPreviousMonth =
+                transaction.date.slice(0, 7) === previousInvoiceMonth.slice(0, 7);
               return (
                 <div
                   key={transaction.id}
@@ -523,6 +534,9 @@ function CardsPage() {
                         <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
                           Valor confere
                         </Badge>
+                      )}
+                      {paidInPreviousMonth && (
+                        <Badge variant="outline">Pagamento antecipado · mês anterior</Badge>
                       )}
                       {duplicate && (
                         <Badge variant="destructive">
