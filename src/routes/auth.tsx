@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -88,9 +88,17 @@ function AuthPage() {
           <p className="text-muted-foreground text-sm">
             Seu dashboard financeiro pessoal e de negócios.
           </p>
-          <p className="mx-auto mt-3 max-w-sm rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-foreground/80">
-            Este produto está em versão beta. Algumas funcionalidades ainda estão em desenvolvimento.
-          </p>
+          <div className="mx-auto mt-4 max-w-sm rounded-2xl border border-accent/50 bg-accent/10 px-4 py-3 text-left shadow-sm">
+            <div className="flex items-center gap-2 font-display text-sm font-bold text-primary">
+              <Sparkles className="h-4 w-4 shrink-0 text-accent" />
+              Você foi selecionado para experimentar o futuro das finanças
+            </div>
+            <p className="mt-1.5 text-xs leading-relaxed text-foreground/75">
+              Você faz parte de um grupo especial com acesso antecipado ao Selá Finance. Explore,
+              personalize e compartilhe seus feedbacks — suas ideias ajudarão a construir a próxima
+              versão do aplicativo.
+            </p>
+          </div>
         </div>
         <Card className="border-border/60 shadow-sm">
           <CardHeader className="pb-3">
