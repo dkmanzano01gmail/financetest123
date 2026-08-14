@@ -33,6 +33,7 @@ import {
   PanelLeftOpen,
   ChevronRight,
   CircleHelp,
+  Loader2,
 } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
@@ -170,6 +171,7 @@ export function AppShell() {
       typeof window === "undefined" || window.localStorage.getItem("sela-atelier-nav") !== "closed",
   );
   const [tourRestartSignal, setTourRestartSignal] = useState(0);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const baseNav = baseNavDef.map((n) => ({ ...n, label: applyLabel(labels, n.key, n.label) }));
   const navWithAdmin = isSuperAdmin
@@ -220,10 +222,19 @@ export function AppShell() {
   }, [loading, workspaces.length, pathname, navigate]);
 
   async function signOut() {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    if (error) {
+      setIsSigningOut(false);
+      toast.error(`Não foi possível sair: ${error.message}`);
+      return;
+    }
+
     await qc.cancelQueries();
     qc.clear();
-    await supabase.auth.signOut();
-    navigate({ to: "/auth", replace: true });
+    window.location.replace(new URL("/auth", window.location.origin).toString());
   }
 
   async function togglePrivacy() {
@@ -498,13 +509,18 @@ export function AppShell() {
               <TooltipTrigger asChild>
                 <button
                   onClick={signOut}
+                  disabled={isSigningOut}
                   aria-label="Sair"
-                  className={`flex h-10 w-full items-center rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent ${
+                  className={`flex h-10 w-full items-center rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent disabled:cursor-wait disabled:opacity-60 ${
                     sidebarCollapsed ? "justify-center" : "gap-3 px-3"
                   }`}
                 >
-                  <LogOut className="h-4 w-4" />
-                  {!sidebarCollapsed && "Sair"}
+                  {isSigningOut ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <LogOut className="h-4 w-4" />
+                  )}
+                  {!sidebarCollapsed && (isSigningOut ? "Saindo…" : "Sair")}
                 </button>
               </TooltipTrigger>
               {sidebarCollapsed && <TooltipContent side="right">Sair</TooltipContent>}
@@ -596,9 +612,15 @@ export function AppShell() {
                     </button>
                     <button
                       onClick={signOut}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
+                      disabled={isSigningOut}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent disabled:cursor-wait disabled:opacity-60"
                     >
-                      <LogOut className="h-4 w-4" /> Sair
+                      {isSigningOut ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <LogOut className="h-4 w-4" />
+                      )}
+                      {isSigningOut ? "Saindo…" : "Sair"}
                     </button>
                   </div>
                 </SheetContent>
