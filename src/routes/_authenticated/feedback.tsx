@@ -18,9 +18,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { sendFeedbackNotification } from "@/lib/feedback.functions";
 
 export const Route = createFileRoute("/_authenticated/feedback")({ component: FeedbackPage });
 const sb = supabase as any;
+const FEEDBACK_RECIPIENT = "dkmanzano.o@hotmail.com";
 
 const TYPES = [
   ["general", "Comentário geral"],
@@ -84,21 +86,38 @@ function FeedbackPage() {
       const clean = comment.trim();
       if (!clean) throw new Error("Escreva um comentário antes de enviar.");
       const { data: auth } = await supabase.auth.getUser();
-      const { error } = await sb.from("feedback_comments").insert({
-        workspace_id: wsId,
-        page: pathname || "Não informado",
-        type,
-        comment: clean,
-        device: typeof navigator === "undefined" ? null : navigator.userAgent,
-        status: "new",
-        created_by: auth.user?.id ?? null,
-      });
+      const { data: created, error } = await sb
+        .from("feedback_comments")
+        .insert({
+          workspace_id: wsId,
+          page: pathname || "Não informado",
+          type,
+          comment: clean,
+          device: typeof navigator === "undefined" ? null : navigator.userAgent,
+          status: "new",
+          created_by: auth.user?.id ?? null,
+        })
+        .select("id")
+        .single();
       if (error) throw error;
+      try {
+        await sendFeedbackNotification({ data: { commentId: created.id } });
+        return { emailSent: true, emailError: null };
+      } catch (emailError) {
+        return {
+          emailSent: false,
+          emailError: emailError instanceof Error ? emailError.message : String(emailError),
+        };
+      }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       setComment("");
       qc.invalidateQueries({ queryKey: ["feedback_comments"] });
-      toast.success("Comentário enviado. Obrigado pelo feedback!");
+      if (result.emailSent) {
+        toast.success("Comentário salvo e enviado por e-mail. Obrigado pelo feedback!");
+      } else {
+        toast.warning(result.emailError || "Comentário salvo, mas o e-mail não foi enviado.");
+      }
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -153,9 +172,14 @@ function FeedbackPage() {
             </div>
           </div>
           <div className="flex justify-end">
-            <Button onClick={() => create.mutate()} disabled={create.isPending || !comment.trim()}>
-              <Plus className="mr-1 h-4 w-4" />Enviar comentário
-            </Button>
+            <div className="flex flex-col items-end gap-1">
+              <Button onClick={() => create.mutate()} disabled={create.isPending || !comment.trim()}>
+                <Plus className="mr-1 h-4 w-4" />Enviar comentário
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Uma cópia será enviada para {FEEDBACK_RECIPIENT}.
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
