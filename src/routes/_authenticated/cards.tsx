@@ -497,7 +497,8 @@ function CardsPage() {
                 <CardTitle className="text-base">Pagamentos encontrados nas transações</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Escolha uma ou mais contas e quanto abater de cada pagamento. O original será
-                  preservado e uma compensação inversa cancelará a duplicidade nos totais.
+                  preservado e uma compensação inversa cancelará a duplicidade nos totais. Nenhum
+                  pagamento será apagado.
                 </p>
               </div>
             </div>
@@ -558,8 +559,8 @@ function CardsPage() {
                     {paymentAvailable(transaction) <= 0.005
                       ? "Totalmente abatido"
                       : exact
-                        ? "Conciliar valor"
-                        : "Escolher e abater"}
+                        ? "Criar compensação"
+                        : "Escolher valores"}
                   </Button>
                 </div>
               );
@@ -850,7 +851,8 @@ function CardsPage() {
             </div>
             <div className="text-sm text-muted-foreground">
               Para cada valor será criada uma transação de entrada com sinal inverso, na mesma
-              conta e categoria do pagamento. A operação original permanecerá intacta.
+              conta e categoria do pagamento. Ela neutraliza a despesa nos relatórios, enquanto o
+              pagamento bancário original permanece intacto e continua no Fluxo de Caixa.
             </div>
           </div>
           <DialogFooter>
