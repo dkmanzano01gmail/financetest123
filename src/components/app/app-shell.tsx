@@ -254,10 +254,23 @@ export function AppShell() {
             }`}
           >
             <item.icon className="h-4 w-4 shrink-0" />
-            {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+            {!sidebarCollapsed && (
+              <>
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                {item.key === "nav.budget" && (
+                  <span className="rounded-full border border-sidebar-primary/50 bg-sidebar-primary/15 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider">
+                    WIP
+                  </span>
+                )}
+              </>
+            )}
           </Link>
         </TooltipTrigger>
-        {sidebarCollapsed && <TooltipContent side="right">{item.label}</TooltipContent>}
+        {sidebarCollapsed && (
+          <TooltipContent side="right">
+            {item.label}{item.key === "nav.budget" ? " · WIP" : ""}
+          </TooltipContent>
+        )}
       </Tooltip>
     );
   }
@@ -276,7 +289,12 @@ export function AppShell() {
           }`}
         >
           <item.icon className="h-4 w-4 shrink-0" />
-          <span>{item.label}</span>
+          <span className="min-w-0 flex-1">{item.label}</span>
+          {item.key === "nav.budget" && (
+            <span className="rounded-full border border-sidebar-primary/50 bg-sidebar-primary/15 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider">
+              WIP
+            </span>
+          )}
         </Link>
       </SheetClose>
     );
@@ -315,7 +333,12 @@ export function AppShell() {
             />
             {!sidebarCollapsed && (
               <div>
-                <div className="font-display text-base font-bold leading-tight">Finance</div>
+                <div className="flex items-center gap-1.5">
+                  <div className="font-display text-base font-bold leading-tight">Finance</div>
+                  <span className="rounded-full bg-sidebar-primary px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-sidebar-primary-foreground">
+                    Beta
+                  </span>
+                </div>
                 <div className="text-xs text-sidebar-foreground/60">
                   Pessoal e negócios
                 </div>
@@ -520,7 +543,12 @@ export function AppShell() {
                         className="h-10 w-14 shrink-0 object-contain"
                       />
                       <span>
-                        <span className="block font-display leading-tight">Finance</span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="font-display leading-tight">Finance</span>
+                          <span className="rounded-full bg-sidebar-primary px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-sidebar-primary-foreground">
+                            Beta
+                          </span>
+                        </span>
                         <span className="block text-xs font-normal text-sidebar-foreground/60">
                           Pessoal e negócios
                         </span>

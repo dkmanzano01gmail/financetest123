@@ -81,9 +81,15 @@ function AuthPage() {
               className="h-20 w-auto object-contain"
             />
             <span className="font-display text-4xl font-bold text-primary">Finance</span>
+            <span className="self-start rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
+              Beta
+            </span>
           </div>
           <p className="text-muted-foreground text-sm">
             Seu dashboard financeiro pessoal e de negócios.
+          </p>
+          <p className="mx-auto mt-3 max-w-sm rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-foreground/80">
+            Este produto está em versão beta. Algumas funcionalidades ainda estão em desenvolvimento.
           </p>
         </div>
         <Card className="border-border/60 shadow-sm">
