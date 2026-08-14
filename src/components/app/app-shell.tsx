@@ -339,7 +339,7 @@ export function AppShell() {
             className={`flex items-center py-5 ${sidebarCollapsed ? "justify-center px-2" : "gap-3 px-5"}`}
           >
             <img
-              src="/sela-finance-logo.png"
+              src="/sela-finance-logo-light.png"
               alt="Selá Finance"
               className={`shrink-0 object-contain ${sidebarCollapsed ? "h-10 w-14" : "h-14 w-28"}`}
             />
@@ -552,7 +552,7 @@ export function AppShell() {
                   <SheetHeader className="border-b border-sidebar-border px-5 py-5 text-left">
                     <SheetTitle className="flex items-center gap-3 text-sidebar-foreground">
                       <img
-                        src="/sela-finance-logo.png"
+                        src="/sela-finance-logo-light.png"
                         alt="Selá Finance"
                         className="h-14 w-24 shrink-0 object-contain"
                       />
