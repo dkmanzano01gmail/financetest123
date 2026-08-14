@@ -79,24 +79,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Selá — Financeiro e Ateliê" },
+      { title: "Selá Finance" },
       {
         name: "description",
-        content:
-          "Selá é o app operacional e financeiro do ateliê de cerâmica: fluxo de caixa, precificação de peças e workshops, controle de queimas, presença e matéria-prima.",
+        content: "Seu dashboard financeiro pessoal e de negócios.",
       },
-      { name: "author", content: "Selá Cerâmica" },
-      { property: "og:title", content: "Selá — Financeiro e Ateliê" },
+      { name: "author", content: "Selá Finance" },
+      { property: "og:title", content: "Selá Finance" },
       {
         property: "og:description",
-        content: "App operacional e financeiro do ateliê Selá Cerâmica.",
+        content: "Seu dashboard financeiro pessoal e de negócios.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "Selá — Financeiro e Ateliê" },
+      { name: "twitter:title", content: "Selá Finance" },
       {
         name: "twitter:description",
-        content: "App operacional e financeiro do ateliê Selá Cerâmica.",
+        content: "Seu dashboard financeiro pessoal e de negócios.",
       },
       {
         property: "og:image",
@@ -114,6 +113,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
+      { rel: "icon", href: "/sela-logo.png", type: "image/png" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {

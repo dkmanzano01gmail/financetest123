@@ -288,14 +288,16 @@ export function AppShell() {
           <div
             className={`flex items-center py-5 ${sidebarCollapsed ? "justify-center px-2" : "gap-3 px-5"}`}
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary font-display text-lg font-bold text-sidebar-primary-foreground">
-              S
-            </div>
+            <img
+              src="/sela-logo.png"
+              alt="Selá"
+              className={`shrink-0 object-contain ${sidebarCollapsed ? "h-9 w-12" : "h-10 w-14"}`}
+            />
             {!sidebarCollapsed && (
               <div>
-                <div className="font-display text-base font-bold leading-tight">Selá</div>
+                <div className="font-display text-base font-bold leading-tight">Finance</div>
                 <div className="text-xs text-sidebar-foreground/60">
-                  {workspace?.type === "business" ? "Cerâmica" : "Financeiro"}
+                  Pessoal e negócios
                 </div>
               </div>
             )}
@@ -468,13 +470,15 @@ export function AppShell() {
                 >
                   <SheetHeader className="border-b border-sidebar-border px-5 py-5 text-left">
                     <SheetTitle className="flex items-center gap-3 text-sidebar-foreground">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sidebar-primary font-display font-bold text-sidebar-primary-foreground">
-                        S
-                      </span>
+                      <img
+                        src="/sela-logo.png"
+                        alt="Selá"
+                        className="h-10 w-14 shrink-0 object-contain"
+                      />
                       <span>
-                        <span className="block font-display leading-tight">Selá</span>
+                        <span className="block font-display leading-tight">Finance</span>
                         <span className="block text-xs font-normal text-sidebar-foreground/60">
-                          {workspace?.type === "business" ? "Cerâmica" : "Financeiro"}
+                          Pessoal e negócios
                         </span>
                       </span>
                     </SheetTitle>

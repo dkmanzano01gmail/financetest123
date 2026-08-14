@@ -71,12 +71,18 @@ function AuthPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-primary text-primary-foreground font-display text-xl font-bold mb-3">
-            O
+          <div
+            className="mb-4 flex items-center justify-center gap-3"
+            aria-label="Selá Finance"
+          >
+            <img
+              src="/sela-logo.png"
+              alt="Selá"
+              className="h-20 w-auto object-contain"
+            />
+            <span className="font-display text-4xl font-bold text-primary">Finance</span>
           </div>
-          <h1 className="text-4xl font-display font-bold text-primary">Selá</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Financeiro e ateliê de cerâmica</p>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="text-muted-foreground text-sm">
             Seu dashboard financeiro pessoal e de negócios.
           </p>
         </div>
