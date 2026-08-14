@@ -328,18 +328,15 @@ export function AppShell() {
             className={`flex items-center py-5 ${sidebarCollapsed ? "justify-center px-2" : "gap-3 px-5"}`}
           >
             <img
-              src="/sela-logo.png"
-              alt="Selá"
-              className={`shrink-0 object-contain ${sidebarCollapsed ? "h-9 w-12" : "h-10 w-14"}`}
+              src="/sela-finance-seal.png"
+              alt="Selá Finance"
+              className={`shrink-0 object-contain ${sidebarCollapsed ? "h-11 w-11" : "h-14 w-14"}`}
             />
             {!sidebarCollapsed && (
               <div>
-                <div className="flex items-center gap-1.5">
-                  <div className="font-display text-base font-bold leading-tight">Finance</div>
-                  <span className="rounded-full bg-sidebar-primary px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-sidebar-primary-foreground">
-                    Beta
-                  </span>
-                </div>
+                <span className="rounded-full bg-sidebar-primary px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-sidebar-primary-foreground">
+                  Beta
+                </span>
                 <div className="text-xs text-sidebar-foreground/60">
                   Pessoal e negócios
                 </div>
@@ -539,16 +536,13 @@ export function AppShell() {
                   <SheetHeader className="border-b border-sidebar-border px-5 py-5 text-left">
                     <SheetTitle className="flex items-center gap-3 text-sidebar-foreground">
                       <img
-                        src="/sela-logo.png"
-                        alt="Selá"
-                        className="h-10 w-14 shrink-0 object-contain"
+                        src="/sela-finance-seal.png"
+                        alt="Selá Finance"
+                        className="h-14 w-14 shrink-0 object-contain"
                       />
                       <span>
-                        <span className="flex items-center gap-1.5">
-                          <span className="font-display leading-tight">Finance</span>
-                          <span className="rounded-full bg-sidebar-primary px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-sidebar-primary-foreground">
-                            Beta
-                          </span>
+                        <span className="inline-flex rounded-full bg-sidebar-primary px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-sidebar-primary-foreground">
+                          Beta
                         </span>
                         <span className="block text-xs font-normal text-sidebar-foreground/60">
                           Pessoal e negócios

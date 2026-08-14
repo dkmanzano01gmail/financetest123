@@ -113,7 +113,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "icon", href: "/sela-logo.png", type: "image/png" },
+      { rel: "icon", href: "/sela-finance-seal.png", type: "image/png" },
     ],
   }),
   shellComponent: RootShell,

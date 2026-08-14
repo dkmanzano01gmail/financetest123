@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, MessageSquareText } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -76,11 +76,10 @@ function AuthPage() {
             aria-label="Selá Finance"
           >
             <img
-              src="/sela-logo.png"
-              alt="Selá"
-              className="h-20 w-auto object-contain"
+              src="/sela-finance-seal.png"
+              alt="Selá Finance"
+              className="h-28 w-28 object-contain"
             />
-            <span className="font-display text-4xl font-bold text-primary">Finance</span>
             <span className="self-start rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
               Beta
             </span>
@@ -90,13 +89,13 @@ function AuthPage() {
           </p>
           <div className="mx-auto mt-4 max-w-sm rounded-2xl border border-accent/50 bg-accent/10 px-4 py-3 text-left shadow-sm">
             <div className="flex items-center gap-2 font-display text-sm font-bold text-primary">
-              <Sparkles className="h-4 w-4 shrink-0 text-accent" />
-              Você foi selecionado para experimentar o futuro das finanças
+              <MessageSquareText className="h-4 w-4 shrink-0 text-accent" />
+              Você está participando da fase de testes
             </div>
             <p className="mt-1.5 text-xs leading-relaxed text-foreground/75">
-              Você faz parte de um grupo especial com acesso antecipado ao Selá Finance. Explore,
-              personalize e compartilhe seus feedbacks — suas ideias ajudarão a construir a próxima
-              versão do aplicativo.
+              Esta é uma versão beta do Selá Finance. Ao usar o aplicativo, envie comentários sobre
+              sua experiência, dúvidas e sugestões. Seu retorno nos ajudará a corrigir problemas e
+              melhorar as próximas versões.
             </p>
           </div>
         </div>
