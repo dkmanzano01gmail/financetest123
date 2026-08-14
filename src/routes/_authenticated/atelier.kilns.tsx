@@ -21,6 +21,7 @@ import { formatCurrency, parseLocaleAmount } from "@/lib/format";
 import { FileUp, Gauge, Loader2, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { analyzeKilnManual, type ManualField } from "@/lib/kiln-manual.functions";
+import { ORNA_KILN_DEFAULTS } from "@/lib/orna-logic";
 
 const MANUAL_LABELS: Record<string, string> = {
   brand: "Marca",
@@ -72,17 +73,17 @@ const empty = () => ({
   brand: "",
   model: "",
   serial_number: "",
-  power_kw: "0",
-  kwh_cost: "0",
-  oven_diameter_cm: "0",
-  resistance_cost: "0",
-  resistance_burns: "0",
-  utilization: "0",
-  area_adjustment: "0",
-  final_buffer: "0",
-  customer_margin_percent: "0",
-  biscuit_hours: "0",
-  glaze_hours: "0",
+  power_kw: String(ORNA_KILN_DEFAULTS.powerKw),
+  kwh_cost: String(ORNA_KILN_DEFAULTS.kwhCost),
+  oven_diameter_cm: String(ORNA_KILN_DEFAULTS.ovenDiameter),
+  resistance_cost: String(ORNA_KILN_DEFAULTS.resistanceCost),
+  resistance_burns: String(ORNA_KILN_DEFAULTS.profiles.biscuit.resistanceBurns),
+  utilization: String(ORNA_KILN_DEFAULTS.profiles.biscuit.utilization),
+  area_adjustment: String(ORNA_KILN_DEFAULTS.areaAdjustment),
+  final_buffer: String(ORNA_KILN_DEFAULTS.finalBuffer),
+  customer_margin_percent: String(ORNA_KILN_DEFAULTS.customerMarginPercent),
+  biscuit_hours: String(ORNA_KILN_DEFAULTS.profiles.biscuit.hours),
+  glaze_hours: String(ORNA_KILN_DEFAULTS.profiles.cone6.hours),
   is_active: true,
   is_default: false,
   notes: "",
