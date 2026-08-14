@@ -285,6 +285,7 @@ function Page() {
     <PageContainer>
       <PageHeader
         title="Fornos"
+        helpKey="atelier.kilns"
         description="Cadastro dos fornos e parâmetros usados no cálculo de queimas"
         action={
           <Button

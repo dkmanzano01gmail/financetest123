@@ -210,6 +210,7 @@ function Page() {
     <PageContainer>
       <PageHeader
         title="Precificação de Workshops"
+        helpKey="atelier.workshop-pricing"
         description="Custo, receita e margem por evento"
         action={
           <Button

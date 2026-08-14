@@ -350,6 +350,7 @@ function CashFlowPage() {
     <PageContainer>
       <PageHeader
         title="Fluxo de Caixa"
+        helpKey="financial.cash-flow"
         description="Previsto × realizado; o realizado considera somente contas correntes"
         action={
           <div className="flex flex-wrap gap-2">

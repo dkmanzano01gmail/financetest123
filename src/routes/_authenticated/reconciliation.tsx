@@ -221,7 +221,7 @@ function ReconciliationPage() {
   if (!accounts) {
     return (
       <PageContainer>
-        <PageHeader title="Conciliação de Conta" description="Carregando…" />
+        <PageHeader title="Conciliação de Conta" helpKey="financial.reconciliation" description="Carregando…" />
       </PageContainer>
     );
   }
@@ -231,6 +231,7 @@ function ReconciliationPage() {
       <PageContainer>
         <PageHeader
           title="Conciliação de Conta"
+          helpKey="financial.reconciliation"
           description="Compare o saldo calculado com o saldo real do banco"
         />
         <EmptyState
@@ -255,6 +256,7 @@ function ReconciliationPage() {
     <PageContainer>
       <PageHeader
         title="Conciliação de Conta"
+        helpKey="financial.reconciliation"
         description="Verifique se o saldo calculado bate com o saldo real"
       />
 

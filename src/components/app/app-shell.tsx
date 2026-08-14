@@ -32,6 +32,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ChevronRight,
+  CircleHelp,
 } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
@@ -60,6 +61,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { ProductTour } from "@/components/app/product-tour";
 
 const baseNavDef = [
   { to: "/dashboard", icon: LayoutDashboard, key: "nav.dashboard", label: "Dashboard" },
@@ -166,6 +168,7 @@ export function AppShell() {
     () =>
       typeof window === "undefined" || window.localStorage.getItem("sela-atelier-nav") !== "closed",
   );
+  const [tourRestartSignal, setTourRestartSignal] = useState(0);
 
   const baseNav = baseNavDef.map((n) => ({ ...n, label: applyLabel(labels, n.key, n.label) }));
   const navWithAdmin = isSuperAdmin
@@ -240,6 +243,7 @@ export function AppShell() {
         <TooltipTrigger asChild>
           <Link
             to={item.to}
+            data-tour-key={item.key}
             aria-label={item.label}
             className={`flex h-10 items-center rounded-lg text-sm transition ${
               sidebarCollapsed ? "justify-center px-0" : "gap-3 px-3"
@@ -264,6 +268,7 @@ export function AppShell() {
       <SheetClose asChild key={item.to}>
         <Link
           to={item.to}
+          data-tour-key={item.key}
           className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
             active
               ? "bg-sidebar-primary text-sidebar-primary-foreground"
@@ -387,6 +392,7 @@ export function AppShell() {
                 {!sidebarCollapsed && (
                   <button
                     onClick={() => setAtelierExpanded((value) => !value)}
+                    data-tour-key="atelier-section"
                     className="mb-1 flex w-full items-center justify-between rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 transition hover:bg-sidebar-accent hover:text-sidebar-foreground"
                   >
                     Ateliê
@@ -426,6 +432,23 @@ export function AppShell() {
                 </p>
               </div>
             )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setTourRestartSignal((value) => value + 1)}
+                  data-tour-key="help-button"
+                  aria-label="Ajuda e apresentação"
+                  className={`flex h-10 w-full items-center rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent ${
+                    sidebarCollapsed ? "justify-center" : "gap-3 px-3"
+                  }`}
+                >
+                  <CircleHelp className="h-4 w-4" />
+                  {!sidebarCollapsed && "Ajuda e apresentação"}
+                </button>
+              </TooltipTrigger>
+              {sidebarCollapsed && <TooltipContent side="right">Ajuda e apresentação</TooltipContent>}
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -530,6 +553,14 @@ export function AppShell() {
                   </nav>
                   <div className="space-y-1 border-t border-sidebar-border p-3">
                     <button
+                      type="button"
+                      onClick={() => setTourRestartSignal((value) => value + 1)}
+                      data-tour-key="help-button"
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
+                    >
+                      <CircleHelp className="h-4 w-4" /> Ajuda e apresentação
+                    </button>
+                    <button
                       onClick={togglePrivacy}
                       className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
                     >
@@ -581,18 +612,31 @@ export function AppShell() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={togglePrivacy}
-              className="text-sidebar-foreground shrink-0"
-            >
-              {workspace?.privacy_mode ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
-            </Button>
+            <div className="flex items-center">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setTourRestartSignal((value) => value + 1)}
+                data-tour-key="help-button"
+                className="shrink-0 text-sidebar-foreground"
+                aria-label="Ajuda e apresentação"
+              >
+                <CircleHelp className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={togglePrivacy}
+                className="shrink-0 text-sidebar-foreground"
+                aria-label={workspace?.privacy_mode ? "Mostrar valores" : "Ocultar valores"}
+              >
+                {workspace?.privacy_mode ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </header>
         </div>
 
@@ -601,6 +645,17 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      {workspace && (
+        <ProductTour
+          workspaceId={workspace.id}
+          isAtelier={isAtelierWorkspace}
+          restartSignal={tourRestartSignal}
+          onTourStart={() => {
+            setSidebarCollapsed(false);
+            if (isAtelierWorkspace) setAtelierExpanded(true);
+          }}
+        />
+      )}
     </div>
   );
 }

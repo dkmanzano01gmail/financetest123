@@ -320,6 +320,7 @@ function Page() {
     <PageContainer>
       <PageHeader
         title="Precificação de Queimas"
+        helpKey="atelier.firing-pricing"
         description="Custo por queima e cobrança de clientes/alunos"
         action={
           <div className="flex gap-2">

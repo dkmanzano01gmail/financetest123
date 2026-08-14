@@ -208,6 +208,7 @@ function CategoriesPage() {
     <PageContainer>
       <PageHeader
         title="Categorias"
+        helpKey="financial.categories"
         description="Organize entradas e saídas — use o comentário para orientar a auto-classificação."
         action={
           <Button onClick={openCreate}>

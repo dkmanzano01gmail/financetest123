@@ -294,6 +294,7 @@ function Page() {
     <PageContainer>
       <PageHeader
         title="Precificação de Peças"
+        helpKey="atelier.piece-pricing"
         description="Calculadora transparente de custo e preço"
         action={
           <div className="flex gap-2">

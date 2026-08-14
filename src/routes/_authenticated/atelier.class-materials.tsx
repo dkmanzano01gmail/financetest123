@@ -557,6 +557,7 @@ function Page() {
       }`}</style>
       <PageHeader
         title="Material Aulas Regulares"
+        helpKey="atelier.class-materials"
         description="Custo completo da peça, cobrança e acompanhamento por aluno"
         action={
           <div className="flex gap-2">

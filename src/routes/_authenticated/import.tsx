@@ -431,6 +431,7 @@ function ImportPage() {
     <PageContainer>
       <PageHeader
         title="Importar CSV"
+        helpKey="financial.import"
         description="Importe extratos de contas e faturas de cartões. Duplicidades são detectadas automaticamente."
       />
 

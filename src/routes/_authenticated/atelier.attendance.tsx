@@ -587,6 +587,7 @@ function Page() {
     <PageContainer>
       <PageHeader
         title="Lista de presença"
+        helpKey="atelier.attendance"
         description="Confirme turmas inteiras, registre faltas e acompanhe até 2 reposições por aluno a cada mês."
         action={
           <Button onClick={openNew}>

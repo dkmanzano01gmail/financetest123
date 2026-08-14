@@ -208,7 +208,7 @@ function BudgetAnalysisPage() {
   if (isLoading || !analysis) {
     return (
       <PageContainer>
-        <PageHeader title="Análise de Orçamento" description="Carregando análise…" />
+        <PageHeader title="Análise de Orçamento" helpKey="financial.budget" description="Carregando análise…" />
       </PageContainer>
     );
   }
@@ -216,7 +216,7 @@ function BudgetAnalysisPage() {
   if ((txs?.length ?? 0) === 0) {
     return (
       <PageContainer>
-        <PageHeader title="Análise de Orçamento" description="Insights sobre seus gastos" />
+        <PageHeader title="Análise de Orçamento" helpKey="financial.budget" description="Insights sobre seus gastos" />
         <EmptyState
           icon={PieChart}
           title="Sem dados suficientes"
@@ -230,6 +230,7 @@ function BudgetAnalysisPage() {
     <PageContainer>
       <PageHeader
         title="Análise de Orçamento"
+        helpKey="financial.budget"
         description="Descubra para onde vai seu dinheiro e quanto pode economizar"
       />
 

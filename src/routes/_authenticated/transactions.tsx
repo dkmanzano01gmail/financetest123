@@ -286,6 +286,7 @@ function TransactionsPage() {
     <PageContainer>
       <PageHeader
         title="Transações"
+        helpKey="financial.transactions"
         description={`Histórico de ${workspace?.name ?? ""}`}
         action={
           <div className="flex gap-2">

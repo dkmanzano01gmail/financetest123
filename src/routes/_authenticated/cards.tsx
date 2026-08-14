@@ -417,6 +417,7 @@ function CardsPage() {
     <PageContainer>
       <PageHeader
         title="Cartões"
+        helpKey="financial.cards"
         description="Faturas, gastos detalhados e pagamentos sem dupla contagem"
         action={
           <Button

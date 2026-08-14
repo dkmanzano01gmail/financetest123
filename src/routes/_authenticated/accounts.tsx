@@ -180,6 +180,7 @@ function AccountsPage() {
     <PageContainer>
       <PageHeader
         title={pageTitle}
+        helpKey="financial.accounts"
         description="Suas contas bancárias e carteiras"
         action={
           <Button onClick={openCreate}>

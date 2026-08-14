@@ -139,6 +139,7 @@ function Dashboard() {
     <PageContainer>
       <PageHeader
         title="Dashboard"
+        helpKey="financial.dashboard"
         description={`Visão financeira de ${workspace.name}`}
         action={
           <div className="flex gap-2">

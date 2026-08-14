@@ -351,6 +351,7 @@ function Page() {
     <PageContainer>
       <PageHeader
         title="Alunos"
+        helpKey="atelier.students"
         description="Perfil completo, frequência, pagamentos e produção de cada aluno"
         action={
           <Button

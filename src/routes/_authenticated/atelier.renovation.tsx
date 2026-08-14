@@ -154,7 +154,7 @@ function Page() {
   }
 
   return <PageContainer>
-    <PageHeader title="Reforma do Ateliê" description="Orçamento, gasto real, pagamentos e responsáveis" action={<Button onClick={() => { setEditId(null); setForm(empty()); setOpen(true); }}><Plus className="mr-1 h-4 w-4" />Nova despesa</Button>} />
+    <PageHeader title="Reforma do Ateliê" helpKey="atelier.renovation" description="Orçamento, gasto real, pagamentos e responsáveis" action={<Button onClick={() => { setEditId(null); setForm(empty()); setOpen(true); }}><Plus className="mr-1 h-4 w-4" />Nova despesa</Button>} />
     <Card className="mb-4"><CardContent className="flex flex-wrap gap-2 p-3">
       <Select value={mode} onValueChange={setMode}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todo o projeto</SelectItem><SelectItem value="month">Mês</SelectItem><SelectItem value="year">Ano</SelectItem></SelectContent></Select>
       {mode === "month" && <Select value={String(month)} onValueChange={(value) => setMonth(Number(value))}><SelectTrigger className="w-36"><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 12 }, (_, index) => <SelectItem key={index + 1} value={String(index + 1)}>{monthLabel(index + 1)}</SelectItem>)}</SelectContent></Select>}
