@@ -43,9 +43,13 @@ function SuperAdminCustomizationsPage() {
 
   const approve = useMutation({
     mutationFn: async (req: any) => approveFn({ data: { request_id: req.id } }),
-    onSuccess: () => {
+    onSuccess: (row: any) => {
       qc.invalidateQueries({ queryKey: ["admin-queue"] });
-      toast.success("Aprovado. Enviado para teste no workspace do usuário.");
+      toast.success(
+        row?.status === "approved_for_development"
+          ? "Aprovado para desenvolvimento. O prompt foi enviado por e-mail."
+          : "Aprovado. Enviado para teste no workspace do usuário.",
+      );
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -180,7 +184,9 @@ function AdminRow({
               ) : (
                 <Check className="w-3.5 h-3.5 mr-1" />
               )}
-              Aprovar e enviar para teste
+              {interp.type === "other"
+                ? "Aprovar desenvolvimento"
+                : "Aprovar e enviar para teste"}
             </Button>
             <Button size="sm" variant="outline" onClick={() => setShowReject(true)}>
               <X className="w-3.5 h-3.5 mr-1" />

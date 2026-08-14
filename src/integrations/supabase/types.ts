@@ -792,6 +792,9 @@ export type Database = {
           completed_at: string | null
           complexity: string | null
           created_at: string
+          development_email_attempts: number
+          development_email_error: string | null
+          development_email_sent_at: string | null
           estimated_credits: number
           id: string
           rejected_at: string | null
@@ -817,6 +820,9 @@ export type Database = {
           completed_at?: string | null
           complexity?: string | null
           created_at?: string
+          development_email_attempts?: number
+          development_email_error?: string | null
+          development_email_sent_at?: string | null
           estimated_credits?: number
           id?: string
           rejected_at?: string | null
@@ -842,6 +848,9 @@ export type Database = {
           completed_at?: string | null
           complexity?: string | null
           created_at?: string
+          development_email_attempts?: number
+          development_email_error?: string | null
+          development_email_sent_at?: string | null
           estimated_credits?: number
           id?: string
           rejected_at?: string | null

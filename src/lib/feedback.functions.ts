@@ -1,11 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-
-const FEEDBACK_EMAIL = "dkmanzano.o@hotmail.com";
-const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycby3jEledMUp539xy8lNieDAUlnWe7Qw4ixyxCfzf6wrxpl9W0epVgACSCTzv4Y2Uc44mQ/exec";
-const APPS_SCRIPT_TOKEN =
-  "fb_8a3e1c7d5f9042b6a1d8e7c3f9b2054a6c8d1e3f7b9a0245c6d8e1f3a7b9c2d4";
+import { NOTIFICATION_EMAIL, sendAdminNotification } from "@/lib/notification-email";
 
 export const sendFeedbackNotification = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -30,7 +25,7 @@ export const sendFeedbackNotification = createServerFn({ method: "POST" })
     if (commentError) throw commentError;
     if (!comment) throw new Error("Comentário não encontrado.");
     if (comment.email_sent_at) {
-      return { ok: true, alreadySent: true, recipient: FEEDBACK_EMAIL };
+      return { ok: true, alreadySent: true, recipient: NOTIFICATION_EMAIL };
     }
 
     const { data: workspace } = await client
@@ -40,25 +35,13 @@ export const sendFeedbackNotification = createServerFn({ method: "POST" })
       .maybeSingle();
 
     try {
-      const response = await fetch(APPS_SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          action: "lovable_feedback",
-          token: APPS_SCRIPT_TOKEN,
-          comment: comment.comment,
-          type: comment.type,
-          page: comment.page,
-          createdAt: comment.created_at,
-          workspaceName: workspace?.name ?? "Não informado",
-        }),
+      await sendAdminNotification({
+        comment: comment.comment,
+        type: comment.type,
+        page: comment.page,
+        createdAt: comment.created_at,
+        workspaceName: workspace?.name ?? "Não informado",
       });
-      const result = await response.json().catch(() => null);
-      if (!response.ok || !result?.ok) {
-        throw new Error(
-          result?.error || "Falha no serviço de e-mail (" + response.status + ").",
-        );
-      }
 
       const { error: updateError } = await client
         .from("feedback_comments")
@@ -72,7 +55,7 @@ export const sendFeedbackNotification = createServerFn({ method: "POST" })
         .eq("workspace_id", comment.workspace_id);
       if (updateError) throw updateError;
 
-      return { ok: true, alreadySent: false, recipient: FEEDBACK_EMAIL };
+      return { ok: true, alreadySent: false, recipient: NOTIFICATION_EMAIL };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await client
