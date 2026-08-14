@@ -249,11 +249,10 @@ function TransactionsPage() {
 
   const removeMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("transactions")
-        .delete()
-        .eq("id", id)
-        .eq("workspace_id", wsId!);
+      const { error } = await (supabase.rpc as any)(
+        "delete_transaction_with_card_reconciliation",
+        { target_transaction_id: id },
+      );
       if (error) throw error;
     },
     onSuccess: () => {
@@ -261,7 +260,7 @@ function TransactionsPage() {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["reconciliation"] });
       qc.invalidateQueries({ queryKey: ["ba-txs"] });
-      toast.success("Removida");
+      toast.success("Transação removida");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -646,10 +645,9 @@ function TransactionsPage() {
                           size="icon"
                           title={
                             protectedAllocationTransactionIds.has(tx.id)
-                              ? "Desfaça o abatimento na aba Cartões para remover"
+                              ? "Remover pagamento e compensação"
                               : "Remover"
                           }
-                          disabled={protectedAllocationTransactionIds.has(tx.id)}
                           onClick={() => setDeleteId(tx.id)}
                         >
                           <Trash2 className="w-4 h-4 text-muted-foreground" />
@@ -680,8 +678,16 @@ function TransactionsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover transação?</AlertDialogTitle>
-            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+            <AlertDialogTitle>
+              {deleteId && protectedAllocationTransactionIds.has(deleteId)
+                ? "Remover pagamento e compensação?"
+                : "Remover transação?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteId && protectedAllocationTransactionIds.has(deleteId)
+                ? "As duas transações vinculadas — o pagamento original e a compensação inversa — serão removidas juntas. Esta ação não pode ser desfeita."
+                : "Esta ação não pode ser desfeita."}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
