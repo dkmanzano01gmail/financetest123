@@ -10,6 +10,7 @@ export type Workspace = {
   currency: string;
   country: string;
   privacy_mode: boolean;
+  is_atelier: boolean;
   owner_id: string;
   plan?: string;
 };

@@ -157,6 +157,7 @@ export function AppShell() {
   const { data: isSuperAdmin } = useIsSuperAdmin();
   const { data: labels } = useLabelOverrides(workspace?.id);
   const { hiddenNav, navOrder } = useCustomizedUI(workspace?.id);
+  const isAtelierWorkspace = workspace?.is_atelier === true;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () =>
       typeof window !== "undefined" && window.localStorage.getItem("sela-sidebar") === "compact",
@@ -180,7 +181,9 @@ export function AppShell() {
     : baseNav;
   const nav = arrangeNav(navWithAdmin, navOrder, hiddenNav);
   const financialNav = nav.filter((item) => financialNavKeys.has(item.key));
-  const atelierNav = nav.filter((item) => atelierNavKeys.has(item.key));
+  const atelierNav = isAtelierWorkspace
+    ? nav.filter((item) => atelierNavKeys.has(item.key))
+    : [];
   const systemNav = nav.filter(
     (item) => !financialNavKeys.has(item.key) && !atelierNavKeys.has(item.key),
   );
@@ -192,6 +195,18 @@ export function AppShell() {
   useEffect(() => {
     window.localStorage.setItem("sela-atelier-nav", atelierExpanded ? "open" : "closed");
   }, [atelierExpanded]);
+
+  useEffect(() => {
+    if (
+      !loading &&
+      workspace &&
+      !isAtelierWorkspace &&
+      pathname.startsWith("/atelier/") &&
+      !pathname.startsWith("/atelier/cash-flow")
+    ) {
+      navigate({ to: "/dashboard", replace: true });
+    }
+  }, [isAtelierWorkspace, loading, navigate, pathname, workspace]);
 
   // Redirect to onboarding if no workspace
   useEffect(() => {
@@ -345,7 +360,7 @@ export function AppShell() {
                   <DropdownMenuItem key={w.id} onClick={() => switchTo(w.id)}>
                     <span className="flex-1 truncate">{w.name}</span>
                     <span className="ml-2 text-xs text-muted-foreground">
-                      {w.type === "personal" ? "Pessoal" : "Negócio"}
+                      {w.is_atelier ? "Ateliê" : w.type === "personal" ? "Pessoal" : "Negócio"}
                     </span>
                   </DropdownMenuItem>
                 ))}
@@ -366,19 +381,25 @@ export function AppShell() {
             )}
             <div className="space-y-0.5">{financialNav.map(desktopNavLink)}</div>
 
-            <div className="my-3 border-t border-sidebar-border/70" />
-            {!sidebarCollapsed && (
-              <button
-                onClick={() => setAtelierExpanded((value) => !value)}
-                className="mb-1 flex w-full items-center justify-between rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 transition hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              >
-                Ateliê
-                <ChevronRight
-                  className={`h-3.5 w-3.5 transition-transform ${atelierExpanded ? "rotate-90" : ""}`}
-                />
-              </button>
+            {isAtelierWorkspace && (
+              <>
+                <div className="my-3 border-t border-sidebar-border/70" />
+                {!sidebarCollapsed && (
+                  <button
+                    onClick={() => setAtelierExpanded((value) => !value)}
+                    className="mb-1 flex w-full items-center justify-between rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50 transition hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  >
+                    Ateliê
+                    <ChevronRight
+                      className={`h-3.5 w-3.5 transition-transform ${atelierExpanded ? "rotate-90" : ""}`}
+                    />
+                  </button>
+                )}
+                {atelierExpanded && (
+                  <div className="space-y-0.5">{atelierNav.map(desktopNavLink)}</div>
+                )}
+              </>
             )}
-            {atelierExpanded && <div className="space-y-0.5">{atelierNav.map(desktopNavLink)}</div>}
 
             {systemNav.length > 0 && (
               <>
@@ -488,11 +509,15 @@ export function AppShell() {
                       Financeiro
                     </div>
                     <div className="space-y-0.5">{financialNav.map(mobileNavLink)}</div>
-                    <div className="my-3 border-t border-sidebar-border/70" />
-                    <div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
-                      Ateliê
-                    </div>
-                    <div className="space-y-0.5">{atelierNav.map(mobileNavLink)}</div>
+                    {isAtelierWorkspace && (
+                      <>
+                        <div className="my-3 border-t border-sidebar-border/70" />
+                        <div className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                          Ateliê
+                        </div>
+                        <div className="space-y-0.5">{atelierNav.map(mobileNavLink)}</div>
+                      </>
+                    )}
                     {systemNav.length > 0 && (
                       <>
                         <div className="my-3 border-t border-sidebar-border/70" />
@@ -544,7 +569,7 @@ export function AppShell() {
                     <DropdownMenuItem key={w.id} onClick={() => switchTo(w.id)}>
                       <span className="flex-1 truncate">{w.name}</span>
                       <span className="ml-2 text-xs text-muted-foreground">
-                        {w.type === "personal" ? "Pessoal" : "Negócio"}
+                        {w.is_atelier ? "Ateliê" : w.type === "personal" ? "Pessoal" : "Negócio"}
                       </span>
                     </DropdownMenuItem>
                   ))}

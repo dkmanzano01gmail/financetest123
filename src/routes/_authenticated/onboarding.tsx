@@ -6,10 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { setCurrentWorkspaceId } from "@/lib/workspace-storage";
-import { Loader2, User, Building2 } from "lucide-react";
+import { Loader2, User, Building2, Palette } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
   component: Onboarding,
@@ -20,6 +21,7 @@ function Onboarding() {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [type, setType] = useState<"personal" | "business">("personal");
+  const [isAtelier, setIsAtelier] = useState(false);
   const [currency, setCurrency] = useState("BRL");
   const [initialBalance, setInitialBalance] = useState("");
   const [accountName, setAccountName] = useState("");
@@ -37,7 +39,7 @@ function Onboarding() {
 
     const { error } = await supabase
       .from("workspaces")
-      .insert({ name, type, currency, country: "BR", owner_id: userId });
+      .insert({ name, type, currency, country: "BR", owner_id: userId, is_atelier: isAtelier });
 
     if (error) {
       setLoading(false);
@@ -130,6 +132,29 @@ function Onboarding() {
                 </label>
               </RadioGroup>
             </div>
+
+            <label
+              htmlFor="is-atelier"
+              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
+                isAtelier ? "border-primary bg-primary/5" : "border-border"
+              }`}
+            >
+              <Checkbox
+                id="is-atelier"
+                checked={isAtelier}
+                onCheckedChange={(checked) => setIsAtelier(checked === true)}
+                className="mt-0.5"
+              />
+              <div>
+                <div className="flex items-center gap-2 font-medium">
+                  <Palette className="h-4 w-4" />
+                  Este workspace é um ateliê
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Mostra alunos, materiais, presença, fornos, peças, workshops e queimas.
+                </p>
+              </div>
+            </label>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

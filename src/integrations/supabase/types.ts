@@ -2276,6 +2276,7 @@ export type Database = {
           created_at: string
           currency: string
           id: string
+          is_atelier: boolean
           name: string
           owner_id: string
           plan: string
@@ -2288,6 +2289,7 @@ export type Database = {
           created_at?: string
           currency?: string
           id?: string
+          is_atelier?: boolean
           name: string
           owner_id: string
           plan?: string
@@ -2300,6 +2302,7 @@ export type Database = {
           created_at?: string
           currency?: string
           id?: string
+          is_atelier?: boolean
           name?: string
           owner_id?: string
           plan?: string
