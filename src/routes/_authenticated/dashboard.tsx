@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
 import { dashboardSummary } from "@/lib/orna-logic";
+import { profitThroughSelectedMonth } from "@/lib/dashboard-profit";
 import {
   financialDateForTransaction,
   isConsumptionTransaction,
@@ -49,7 +50,11 @@ function Dashboard() {
   const privacy = workspace?.privacy_mode ?? false;
   const currency = workspace?.currency ?? "BRL";
   const { labelOverrides, hiddenCards } = useCustomizations(wsId);
-  const { cardOrder, hiddenCards: hiddenCards2 } = useCustomizedUI(wsId);
+  const {
+    cardOrder,
+    hiddenCards: hiddenCards2,
+    dashboardProfitSummaryEnabled,
+  } = useCustomizedUI(wsId);
   const t = L(workspace?.type ?? "personal", labelOverrides);
 
   const { data: yearTxs } = useQuery({
@@ -101,6 +106,10 @@ function Dashboard() {
     expense: summary.expense,
     net: summary.balance,
   };
+  const profitSummary = useMemo(
+    () => profitThroughSelectedMonth(summary.monthly, month),
+    [summary.monthly, month],
+  );
 
   const accountsBalance = useMemo(() => {
     if (!accounts) return 0;
@@ -239,6 +248,50 @@ function Dashboard() {
           return cards.map((c) => <div key={c.key}>{c.node}</div>);
         })()}
       </div>
+
+      {dashboardProfitSummaryEnabled && (
+        <Card className="mb-4 overflow-hidden border-primary/25 bg-primary/[0.035]">
+          <CardContent className="p-4 md:p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <TrendingUp className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="font-medium">Indicador de lucro</div>
+                <div className="text-xs text-muted-foreground">
+                  Mês selecionado e média desde janeiro
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-border/70 bg-background/75 p-3">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Lucro de {monthLabel(month)}
+                </div>
+                <div
+                  className={`mt-1 font-mono text-2xl ${profitSummary.selectedProfit >= 0 ? "text-income" : "text-expense"}`}
+                >
+                  {formatCurrency(profitSummary.selectedProfit, currency, privacy)}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">Receitas menos despesas</div>
+              </div>
+              <div className="rounded-lg border border-border/70 bg-background/75 p-3">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Lucro médio mensal em {year}
+                </div>
+                <div
+                  className={`mt-1 font-mono text-2xl ${profitSummary.averageMonthlyProfit >= 0 ? "text-income" : "text-expense"}`}
+                >
+                  {formatCurrency(profitSummary.averageMonthlyProfit, currency, privacy)}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Janeiro a {monthLabel(month)} · {profitSummary.monthsIncluded} meses
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard

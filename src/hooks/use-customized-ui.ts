@@ -60,7 +60,17 @@ export function useCustomizedUI(workspaceId?: string) {
 
   const savedFilters = useMemo(() => rows.filter((r) => r.type === "saved_filter"), [rows]);
 
-  return { ...q, hiddenNav, navOrder, hiddenCards, cardOrder, savedFilters };
+  const dashboardProfitSummaryEnabled = rows.some((row) => row.type === "dashboard_profit_summary");
+
+  return {
+    ...q,
+    hiddenNav,
+    navOrder,
+    hiddenCards,
+    cardOrder,
+    savedFilters,
+    dashboardProfitSummaryEnabled,
+  };
 }
 
 /** Apply hidden + order to a list of nav items keyed by `.key`. */
