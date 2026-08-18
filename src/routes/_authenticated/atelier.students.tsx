@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useCustomizations } from "@/hooks/use-customizations";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,7 @@ export const Route = createFileRoute("/_authenticated/atelier/students")({ compo
 
 const sb = supabase as any;
 const NOW = new Date();
+const CLASS_SUMMARY_REQUEST_ID = "e71b1837-8cdd-4e0d-9d03-04bd1c5dee7a";
 const CLASS_SUMMARY_TARGET_USER_ID = "0fc9511c-da1f-4fde-aba5-4a5397ad0bca";
 const CLASS_SUMMARY_WORKSPACE_ID = "37f30192-2237-4949-986b-8ad5d6434f91";
 const emptyStudent = () => ({
@@ -78,6 +80,7 @@ function Page() {
   const { workspace } = useCurrentWorkspace();
   const qc = useQueryClient();
   const wsId = workspace?.id;
+  const { active: activeCustomizations } = useCustomizations(wsId);
   const currency = workspace?.currency ?? "BRL";
   const privacy = workspace?.privacy_mode ?? false;
   const [month, setMonth] = useState(NOW.getMonth() + 1);
@@ -176,7 +179,11 @@ function Page() {
   }, [students]);
 
   const showClassSummary =
-    user?.id === CLASS_SUMMARY_TARGET_USER_ID && wsId === CLASS_SUMMARY_WORKSPACE_ID;
+    user?.id === CLASS_SUMMARY_TARGET_USER_ID &&
+    wsId === CLASS_SUMMARY_WORKSPACE_ID &&
+    activeCustomizations.some(
+      (customization) => customization.request_id === CLASS_SUMMARY_REQUEST_ID,
+    );
 
   const inSelectedMonth = (value?: string | null) => {
     if (!value) return false;
