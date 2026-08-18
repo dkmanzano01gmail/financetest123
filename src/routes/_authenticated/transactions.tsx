@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { useCustomizedUI } from "@/hooks/use-customized-ui";
@@ -77,7 +77,6 @@ export const Route = createFileRoute("/_authenticated/transactions")({
 });
 
 const NOW = new Date();
-
 function normalizeCategoryName(value: string) {
   return value
     .normalize("NFD")
@@ -108,11 +107,30 @@ function TransactionsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestionTransactions, setSuggestionTransactions] = useState<any[]>([]);
+  const defaultPeriodInitialized = useRef(false);
   const wsId = workspace?.id;
-  const { savedFilters } = useCustomizedUI(wsId);
+  const {
+    savedFilters,
+    transactionCurrentMonthDefaultEnabled,
+    isLoading: customizationsLoading,
+  } = useCustomizedUI(wsId);
   const t = workspace ? L(workspace.type) : L("personal");
   const currency = workspace?.currency ?? "BRL";
   const privacy = workspace?.privacy_mode ?? false;
+
+  useEffect(() => {
+    if (customizationsLoading || defaultPeriodInitialized.current) return;
+    defaultPeriodInitialized.current = true;
+    if (!transactionCurrentMonthDefaultEnabled) return;
+    const currentPeriod = new Date();
+    if (!routeSearch.month) setMonth(String(currentPeriod.getMonth() + 1));
+    if (!routeSearch.year) setYear(String(currentPeriod.getFullYear()));
+  }, [
+    customizationsLoading,
+    routeSearch.month,
+    routeSearch.year,
+    transactionCurrentMonthDefaultEnabled,
+  ]);
 
   const {
     data: txs,
