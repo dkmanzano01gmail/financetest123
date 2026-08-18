@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { useCustomizedUI } from "@/hooks/use-customized-ui";
@@ -93,10 +93,15 @@ function analyticalTransactionCategoryKey(transaction: any) {
 
 function TransactionsPage() {
   const routeSearch = Route.useSearch();
+  const currentPeriod = new Date();
   const { workspace } = useCurrentWorkspace();
   const qc = useQueryClient();
-  const [month, setMonth] = useState<string>(routeSearch.month ?? "all");
-  const [year, setYear] = useState<string>(routeSearch.year ?? "all");
+  const [month, setMonth] = useState<string>(
+    routeSearch.month ?? String(currentPeriod.getMonth() + 1),
+  );
+  const [year, setYear] = useState<string>(
+    routeSearch.year ?? String(currentPeriod.getFullYear()),
+  );
   const [type, setType] = useState<string>(routeSearch.type ?? "all");
   const [source, setSource] = useState<TransactionSourceFilter>("all");
   const [search, setSearch] = useState("");
@@ -107,32 +112,11 @@ function TransactionsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestionTransactions, setSuggestionTransactions] = useState<any[]>([]);
-  const defaultPeriodInitializedForWorkspace = useRef<string | null>(null);
   const wsId = workspace?.id;
-  const {
-    savedFilters,
-    transactionCurrentMonthDefaultEnabled,
-    isFetched: customizationsFetched,
-  } = useCustomizedUI(wsId);
+  const { savedFilters } = useCustomizedUI(wsId);
   const t = workspace ? L(workspace.type) : L("personal");
   const currency = workspace?.currency ?? "BRL";
   const privacy = workspace?.privacy_mode ?? false;
-
-  useEffect(() => {
-    if (!wsId || !customizationsFetched) return;
-    if (defaultPeriodInitializedForWorkspace.current === wsId) return;
-    defaultPeriodInitializedForWorkspace.current = wsId;
-    if (!transactionCurrentMonthDefaultEnabled) return;
-    const currentPeriod = new Date();
-    if (!routeSearch.month) setMonth(String(currentPeriod.getMonth() + 1));
-    if (!routeSearch.year) setYear(String(currentPeriod.getFullYear()));
-  }, [
-    customizationsFetched,
-    routeSearch.month,
-    routeSearch.year,
-    transactionCurrentMonthDefaultEnabled,
-    wsId,
-  ]);
 
   const {
     data: txs,

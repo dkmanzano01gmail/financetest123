@@ -61,9 +61,6 @@ export function useCustomizedUI(workspaceId?: string) {
   const savedFilters = useMemo(() => rows.filter((r) => r.type === "saved_filter"), [rows]);
 
   const dashboardProfitSummaryEnabled = rows.some((row) => row.type === "dashboard_profit_summary");
-  const transactionCurrentMonthDefaultEnabled = rows.some(
-    (row) => row.type === "transaction_current_month_default",
-  );
 
   return {
     ...q,
@@ -73,7 +70,6 @@ export function useCustomizedUI(workspaceId?: string) {
     cardOrder,
     savedFilters,
     dashboardProfitSummaryEnabled,
-    transactionCurrentMonthDefaultEnabled,
   };
 }
 
