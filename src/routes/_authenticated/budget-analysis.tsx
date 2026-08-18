@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/format";
 import { L } from "@/lib/labels";
-import { PieChart, TrendingDown, Sparkles, Repeat, AlertTriangle } from "lucide-react";
+import { PieChart, TrendingDown, Sparkles, Repeat, AlertTriangle, Check } from "lucide-react";
 import {
   financialMonthKey,
   isConsumptionTransaction,
@@ -24,6 +24,15 @@ export const Route = createFileRoute("/_authenticated/budget-analysis")({
 });
 
 type Importance = "essential" | "important" | "flexible" | "superfluous";
+type BudgetCategory = {
+  id: string;
+  name: string;
+  importance: Importance;
+  monthAmount: number;
+  count: number;
+  yearTotal: number;
+  averageMonthly: number;
+};
 const importanceLabel: Record<Importance, string> = {
   essential: "Essencial",
   important: "Importante",
@@ -45,7 +54,9 @@ function BudgetAnalysisPage() {
   const labels = L(workspace?.type ?? "personal");
 
   const today = new Date();
-  const from = new Date(today.getFullYear(), today.getMonth() - 5, 1);
+  const yearStart = new Date(today.getFullYear(), 0, 1);
+  const rollingSixMonthStart = new Date(today.getFullYear(), today.getMonth() - 5, 1);
+  const from = new Date(Math.min(yearStart.getTime(), rollingSixMonthStart.getTime()));
   const fromISO = from.toISOString().slice(0, 10);
 
   const { data: txs, isLoading } = useQuery({
@@ -80,15 +91,19 @@ function BudgetAnalysisPage() {
 
   const analysis = useMemo(() => {
     if (!txs || !categories) return null;
-    const catMap = new Map<string, { name: string; importance: Importance }>();
+    const catMap = new Map<string, { name: string; type: string; importance: Importance }>();
     categories.forEach((c: any) =>
       catMap.set(c.id, {
         name: c.name,
+        type: c.type,
         importance: (c.importance_level ?? "flexible") as Importance,
       }),
     );
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const currentYear = now.getFullYear();
+    const elapsedMonths = now.getMonth() + 1;
+    const recentFrom = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
     const expenses = netCardPaymentOffsets(txs).filter(
       (t) => t.type === "expense" && isConsumptionTransaction(t),
@@ -102,10 +117,19 @@ function BudgetAnalysisPage() {
       flexible: 0,
       superfluous: 0,
     };
-    const byCategory = new Map<
-      string,
-      { name: string; importance: Importance; monthAmount: number; count: number; total6m: number }
-    >();
+    const byCategory = new Map<string, Omit<BudgetCategory, "averageMonthly">>();
+
+    for (const category of categories as any[]) {
+      if (category.type !== "expense") continue;
+      byCategory.set(category.id, {
+        id: category.id,
+        name: category.name,
+        importance: (category.importance_level ?? "flexible") as Importance,
+        monthAmount: 0,
+        count: 0,
+        yearTotal: 0,
+      });
+    }
 
     for (const t of monthExpenses) {
       const amt = Math.abs(Number(t.amount));
@@ -120,16 +144,18 @@ function BudgetAnalysisPage() {
       const cat = t.category_id ? catMap.get(t.category_id) : null;
       const key = t.category_id ?? "uncategorized";
       const txImp =
-        ((t as any).importance_level as Importance | null) ?? cat?.importance ?? "flexible";
+        cat?.importance ?? ((t as any).importance_level as Importance | null) ?? "flexible";
       const cur = byCategory.get(key) ?? {
+        id: key,
         name: cat?.name ?? "Sem categoria",
         importance: txImp as Importance,
         monthAmount: 0,
         count: 0,
-        total6m: 0,
+        yearTotal: 0,
       };
       const amt = Math.abs(Number(t.amount));
-      cur.total6m += amt;
+      const transactionDate = new Date(`${String(t.date).slice(0, 10)}T12:00:00`);
+      if (transactionDate.getFullYear() === currentYear) cur.yearTotal += amt;
       if (financialMonthKey(t) === currentMonth) {
         cur.monthAmount += amt;
         cur.count += 1;
@@ -143,6 +169,8 @@ function BudgetAnalysisPage() {
       { sample: string; total: number; count: number; categoryName: string }
     >();
     for (const t of expenses) {
+      const transactionDate = new Date(`${String(t.date).slice(0, 10)}T12:00:00`);
+      if (transactionDate < recentFrom) continue;
       const key = normalizeDesc(t.description);
       if (!key) continue;
       const cat = t.category_id ? catMap.get(t.category_id) : null;
@@ -176,9 +204,12 @@ function BudgetAnalysisPage() {
       .slice(0, 5);
 
     const insights: { title: string; description: string; monthly: number }[] = [];
-    const sortedCats = Array.from(byCategory.values()).sort(
-      (a, b) => b.monthAmount - a.monthAmount,
-    );
+    const sortedCats: BudgetCategory[] = Array.from(byCategory.values())
+      .map((category) => ({
+        ...category,
+        averageMonthly: category.yearTotal / elapsedMonths,
+      }))
+      .sort((a, b) => b.monthAmount - a.monthAmount);
     if (sortedCats[0]) {
       insights.push({
         title: `${sortedCats[0].name} é seu maior gasto do mês`,
@@ -208,7 +239,12 @@ function BudgetAnalysisPage() {
   if (isLoading || !analysis) {
     return (
       <PageContainer>
-        <PageHeader title="Análise de Orçamento" titleBadge="WIP" helpKey="financial.budget" description="Carregando análise…" />
+        <PageHeader
+          title="Análise de Orçamento"
+          titleBadge="WIP"
+          helpKey="financial.budget"
+          description="Carregando análise…"
+        />
       </PageContainer>
     );
   }
@@ -216,7 +252,12 @@ function BudgetAnalysisPage() {
   if ((txs?.length ?? 0) === 0) {
     return (
       <PageContainer>
-        <PageHeader title="Análise de Orçamento" titleBadge="WIP" helpKey="financial.budget" description="Insights sobre seus gastos" />
+        <PageHeader
+          title="Análise de Orçamento"
+          titleBadge="WIP"
+          helpKey="financial.budget"
+          description="Insights sobre seus gastos"
+        />
         <EmptyState
           icon={PieChart}
           title="Sem dados suficientes"
@@ -389,7 +430,12 @@ function BudgetAnalysisPage() {
         </TabsContent>
 
         <TabsContent value="simulator">
-          <Simulator byImportance={analysis.byImportance} currency={currency} privacy={privacy} />
+          <Simulator
+            byImportance={analysis.byImportance}
+            categories={analysis.byCategory}
+            currency={currency}
+            privacy={privacy}
+          />
         </TabsContent>
       </Tabs>
 
@@ -440,10 +486,12 @@ function StatCard({
 
 function Simulator({
   byImportance,
+  categories,
   currency,
   privacy,
 }: {
   byImportance: Record<Importance, number>;
+  categories: BudgetCategory[];
   currency: string;
   privacy: boolean;
 }) {
@@ -456,14 +504,29 @@ function Simulator({
     aggressive: { essential: 0, important: 10, flexible: 40, superfluous: 100 },
     custom: { essential: 0, important: 0, flexible: 0, superfluous: 0 },
   };
-  const [custom, setCustom] = useState(presets.custom);
-  const cuts = preset === "custom" ? custom : presets[preset];
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(() => new Set());
+  const cuts = presets[preset];
 
-  const monthlySavings =
+  const customMonthlySavings = categories.reduce(
+    (total, category) =>
+      selectedCategories.has(category.id) ? total + category.averageMonthly : total,
+    0,
+  );
+  const presetMonthlySavings =
     byImportance.essential * (cuts.essential / 100) +
     byImportance.important * (cuts.important / 100) +
     byImportance.flexible * (cuts.flexible / 100) +
     byImportance.superfluous * (cuts.superfluous / 100);
+  const monthlySavings = preset === "custom" ? customMonthlySavings : presetMonthlySavings;
+
+  function toggleCategory(categoryId: string) {
+    setSelectedCategories((current) => {
+      const next = new Set(current);
+      if (next.has(categoryId)) next.delete(categoryId);
+      else next.add(categoryId);
+      return next;
+    });
+  }
 
   return (
     <Card>
@@ -490,30 +553,96 @@ function Simulator({
           ))}
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
-          {(["superfluous", "flexible", "important", "essential"] as Importance[]).map((imp) => (
-            <div key={imp} className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span>
+        {preset === "custom" ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+              Selecione as categorias que deseja reduzir. A economia considera a média mensal de
+              cada categoria no ano atual.
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {(["superfluous", "flexible", "important", "essential"] as Importance[]).map(
+                (importance) => {
+                  const group = categories.filter((category) => category.importance === importance);
+                  return (
+                    <section key={importance} className="rounded-lg border p-3">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <Badge variant="secondary" className={importanceColor[importance]}>
+                          {importanceLabel[importance]}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {group.length} {group.length === 1 ? "categoria" : "categorias"}
+                        </span>
+                      </div>
+                      {group.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Nenhuma categoria registrada nesta classificação.
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {group.map((category) => {
+                            const selected = selectedCategories.has(category.id);
+                            const hasAverage = category.averageMonthly > 0;
+                            return (
+                              <button
+                                key={category.id}
+                                type="button"
+                                aria-pressed={selected}
+                                disabled={!hasAverage}
+                                onClick={() => toggleCategory(category.id)}
+                                className={`rounded-lg border px-3 py-2 text-left transition ${
+                                  selected
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "bg-card hover:border-primary/60 hover:bg-accent"
+                                } disabled:cursor-not-allowed disabled:opacity-50`}
+                              >
+                                <span className="flex items-center gap-1.5 text-sm font-medium">
+                                  {selected && <Check className="h-3.5 w-3.5" />}
+                                  {category.name}
+                                </span>
+                                <span
+                                  className={`mt-0.5 block text-xs ${
+                                    selected
+                                      ? "text-primary-foreground/80"
+                                      : "text-muted-foreground"
+                                  }`}
+                                >
+                                  Média {formatCurrency(category.averageMonthly, currency, privacy)}
+                                  /mês
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+                  );
+                },
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {selectedCategories.size === 0
+                ? "Nenhuma categoria selecionada."
+                : `${selectedCategories.size} ${selectedCategories.size === 1 ? "categoria selecionada" : "categorias selecionadas"}.`}
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {(["superfluous", "flexible", "important", "essential"] as Importance[]).map((imp) => (
+              <div key={imp} className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
                   <Badge variant="secondary" className={importanceColor[imp]}>
                     {importanceLabel[imp]}
                   </Badge>
-                </span>
-                <span className="text-muted-foreground">{cuts[imp]}% de corte</span>
+                  <span className="text-muted-foreground">{cuts[imp]}% de corte</span>
+                </div>
+                <Slider value={[cuts[imp]]} max={100} step={5} disabled />
+                <div className="text-xs text-muted-foreground">
+                  Gasto atual: {formatCurrency(byImportance[imp], currency, privacy)}
+                </div>
               </div>
-              <Slider
-                value={[cuts[imp]]}
-                max={100}
-                step={5}
-                disabled={preset !== "custom" || imp === "essential"}
-                onValueChange={(v) => setCustom({ ...custom, [imp]: v[0] })}
-              />
-              <div className="text-xs text-muted-foreground">
-                Gasto atual: {formatCurrency(byImportance[imp], currency, privacy)}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t">
           <SavingStat
