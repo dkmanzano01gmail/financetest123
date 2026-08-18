@@ -107,29 +107,31 @@ function TransactionsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestionTransactions, setSuggestionTransactions] = useState<any[]>([]);
-  const defaultPeriodInitialized = useRef(false);
+  const defaultPeriodInitializedForWorkspace = useRef<string | null>(null);
   const wsId = workspace?.id;
   const {
     savedFilters,
     transactionCurrentMonthDefaultEnabled,
-    isLoading: customizationsLoading,
+    isFetched: customizationsFetched,
   } = useCustomizedUI(wsId);
   const t = workspace ? L(workspace.type) : L("personal");
   const currency = workspace?.currency ?? "BRL";
   const privacy = workspace?.privacy_mode ?? false;
 
   useEffect(() => {
-    if (customizationsLoading || defaultPeriodInitialized.current) return;
-    defaultPeriodInitialized.current = true;
+    if (!wsId || !customizationsFetched) return;
+    if (defaultPeriodInitializedForWorkspace.current === wsId) return;
+    defaultPeriodInitializedForWorkspace.current = wsId;
     if (!transactionCurrentMonthDefaultEnabled) return;
     const currentPeriod = new Date();
     if (!routeSearch.month) setMonth(String(currentPeriod.getMonth() + 1));
     if (!routeSearch.year) setYear(String(currentPeriod.getFullYear()));
   }, [
-    customizationsLoading,
+    customizationsFetched,
     routeSearch.month,
     routeSearch.year,
     transactionCurrentMonthDefaultEnabled,
+    wsId,
   ]);
 
   const {
