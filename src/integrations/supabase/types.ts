@@ -690,6 +690,167 @@ export type Database = {
           },
         ]
       }
+      credit_card_payment_allocations: {
+        Row: {
+          allocated_amount: number
+          created_at: string
+          created_by: string | null
+          credit_card_id: string
+          id: string
+          invoice_month: string
+          offset_transaction_id: string
+          original_transaction_id: string
+          workspace_id: string
+        }
+        Insert: {
+          allocated_amount: number
+          created_at?: string
+          created_by?: string | null
+          credit_card_id: string
+          id?: string
+          invoice_month: string
+          offset_transaction_id: string
+          original_transaction_id: string
+          workspace_id: string
+        }
+        Update: {
+          allocated_amount?: number
+          created_at?: string
+          created_by?: string | null
+          credit_card_id?: string
+          id?: string
+          invoice_month?: string
+          offset_transaction_id?: string
+          original_transaction_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_card_payment_allocations_credit_card_id_fkey"
+            columns: ["credit_card_id"]
+            isOneToOne: false
+            referencedRelation: "credit_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_card_payment_allocations_offset_transaction_id_fkey"
+            columns: ["offset_transaction_id"]
+            isOneToOne: true
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_card_payment_allocations_original_transaction_id_fkey"
+            columns: ["original_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_card_payment_allocations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_card_payment_removals: {
+        Row: {
+          account_id: string | null
+          credit_card_id: string
+          id: string
+          invoice_month: string
+          original_transaction_id: string
+          payment_amount: number
+          payment_date: string
+          payment_description: string
+          payment_source: string | null
+          purchase_count: number
+          purchase_total: number
+          removed_at: string
+          removed_by: string | null
+          restored_at: string | null
+          restored_offset_transaction_id: string | null
+          restored_transaction_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          credit_card_id: string
+          id?: string
+          invoice_month: string
+          original_transaction_id: string
+          payment_amount: number
+          payment_date: string
+          payment_description: string
+          payment_source?: string | null
+          purchase_count: number
+          purchase_total: number
+          removed_at?: string
+          removed_by?: string | null
+          restored_at?: string | null
+          restored_offset_transaction_id?: string | null
+          restored_transaction_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          account_id?: string | null
+          credit_card_id?: string
+          id?: string
+          invoice_month?: string
+          original_transaction_id?: string
+          payment_amount?: number
+          payment_date?: string
+          payment_description?: string
+          payment_source?: string | null
+          purchase_count?: number
+          purchase_total?: number
+          removed_at?: string
+          removed_by?: string | null
+          restored_at?: string | null
+          restored_offset_transaction_id?: string | null
+          restored_transaction_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_card_payment_removals_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_card_payment_removals_credit_card_id_fkey"
+            columns: ["credit_card_id"]
+            isOneToOne: false
+            referencedRelation: "credit_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_card_payment_removals_restored_offset_transaction_i_fkey"
+            columns: ["restored_offset_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_card_payment_removals_restored_transaction_id_fkey"
+            columns: ["restored_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_card_payment_removals_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_cards: {
         Row: {
           brand: string | null
@@ -783,6 +944,9 @@ export type Database = {
       }
       customization_requests: {
         Row: {
+          admin_decided_at: string | null
+          admin_decided_by: string | null
+          admin_decision: string | null
           ai_classification_reason: string | null
           ai_interpretation: Json | null
           applied_customization_id: string | null
@@ -807,10 +971,16 @@ export type Database = {
           target_user_id: string | null
           tested_at: string | null
           updated_at: string
+          user_decided_at: string | null
+          user_decided_by: string | null
+          user_decision: string | null
           user_id: string
           workspace_id: string
         }
         Insert: {
+          admin_decided_at?: string | null
+          admin_decided_by?: string | null
+          admin_decision?: string | null
           ai_classification_reason?: string | null
           ai_interpretation?: Json | null
           applied_customization_id?: string | null
@@ -835,10 +1005,16 @@ export type Database = {
           target_user_id?: string | null
           tested_at?: string | null
           updated_at?: string
+          user_decided_at?: string | null
+          user_decided_by?: string | null
+          user_decision?: string | null
           user_id: string
           workspace_id: string
         }
         Update: {
+          admin_decided_at?: string | null
+          admin_decided_by?: string | null
+          admin_decision?: string | null
           ai_classification_reason?: string | null
           ai_interpretation?: Json | null
           applied_customization_id?: string | null
@@ -863,6 +1039,9 @@ export type Database = {
           target_user_id?: string | null
           tested_at?: string | null
           updated_at?: string
+          user_decided_at?: string | null
+          user_decided_by?: string | null
+          user_decision?: string | null
           user_id?: string
           workspace_id?: string
         }
@@ -999,6 +1178,9 @@ export type Database = {
           created_at: string
           created_by: string | null
           device: string | null
+          email_attempts: number
+          email_error: string | null
+          email_sent_at: string | null
           id: string
           page: string
           status: string
@@ -1011,6 +1193,9 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           device?: string | null
+          email_attempts?: number
+          email_error?: string | null
+          email_sent_at?: string | null
           id?: string
           page?: string
           status?: string
@@ -1023,6 +1208,9 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           device?: string | null
+          email_attempts?: number
+          email_error?: string | null
+          email_sent_at?: string | null
           id?: string
           page?: string
           status?: string
@@ -1284,7 +1472,8 @@ export type Database = {
           rule_kind: string
           source_type: string
           transaction_type:
-            Database["public"]["Enums"]["transaction_type"] | null
+            | Database["public"]["Enums"]["transaction_type"]
+            | null
           updated_at: string
           workspace_id: string | null
           workspace_type: string | null
@@ -1311,7 +1500,8 @@ export type Database = {
           rule_kind?: string
           source_type?: string
           transaction_type?:
-            Database["public"]["Enums"]["transaction_type"] | null
+            | Database["public"]["Enums"]["transaction_type"]
+            | null
           updated_at?: string
           workspace_id?: string | null
           workspace_type?: string | null
@@ -1338,7 +1528,8 @@ export type Database = {
           rule_kind?: string
           source_type?: string
           transaction_type?:
-            Database["public"]["Enums"]["transaction_type"] | null
+            | Database["public"]["Enums"]["transaction_type"]
+            | null
           updated_at?: string
           workspace_id?: string | null
           workspace_type?: string | null
@@ -1983,9 +2174,11 @@ export type Database = {
           importance_confirmed_at: string | null
           importance_confirmed_by_user: boolean
           importance_level:
-            Database["public"]["Enums"]["importance_level"] | null
+            | Database["public"]["Enums"]["importance_level"]
+            | null
           importance_status:
-            Database["public"]["Enums"]["importance_status"] | null
+            | Database["public"]["Enums"]["importance_status"]
+            | null
           importance_suggestion_reason: string | null
           invoice_month: string | null
           linked_credit_card_id: string | null
@@ -1995,11 +2188,13 @@ export type Database = {
           reconciled_at: string | null
           reconciled_by: string | null
           reconciliation_method: string | null
+          reversal_of_transaction_id: string | null
           source: string
           status: Database["public"]["Enums"]["transaction_status"]
           suggested_category_id: string | null
           suggested_importance_level:
-            Database["public"]["Enums"]["importance_level"] | null
+            | Database["public"]["Enums"]["importance_level"]
+            | null
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at: string
           workspace_id: string
@@ -2022,9 +2217,11 @@ export type Database = {
           importance_confirmed_at?: string | null
           importance_confirmed_by_user?: boolean
           importance_level?:
-            Database["public"]["Enums"]["importance_level"] | null
+            | Database["public"]["Enums"]["importance_level"]
+            | null
           importance_status?:
-            Database["public"]["Enums"]["importance_status"] | null
+            | Database["public"]["Enums"]["importance_status"]
+            | null
           importance_suggestion_reason?: string | null
           invoice_month?: string | null
           linked_credit_card_id?: string | null
@@ -2034,11 +2231,13 @@ export type Database = {
           reconciled_at?: string | null
           reconciled_by?: string | null
           reconciliation_method?: string | null
+          reversal_of_transaction_id?: string | null
           source?: string
           status?: Database["public"]["Enums"]["transaction_status"]
           suggested_category_id?: string | null
           suggested_importance_level?:
-            Database["public"]["Enums"]["importance_level"] | null
+            | Database["public"]["Enums"]["importance_level"]
+            | null
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           workspace_id: string
@@ -2061,9 +2260,11 @@ export type Database = {
           importance_confirmed_at?: string | null
           importance_confirmed_by_user?: boolean
           importance_level?:
-            Database["public"]["Enums"]["importance_level"] | null
+            | Database["public"]["Enums"]["importance_level"]
+            | null
           importance_status?:
-            Database["public"]["Enums"]["importance_status"] | null
+            | Database["public"]["Enums"]["importance_status"]
+            | null
           importance_suggestion_reason?: string | null
           invoice_month?: string | null
           linked_credit_card_id?: string | null
@@ -2073,11 +2274,13 @@ export type Database = {
           reconciled_at?: string | null
           reconciled_by?: string | null
           reconciliation_method?: string | null
+          reversal_of_transaction_id?: string | null
           source?: string
           status?: Database["public"]["Enums"]["transaction_status"]
           suggested_category_id?: string | null
           suggested_importance_level?:
-            Database["public"]["Enums"]["importance_level"] | null
+            | Database["public"]["Enums"]["importance_level"]
+            | null
           type?: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           workspace_id?: string
@@ -2113,6 +2316,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "transactions_reversal_of_transaction_id_fkey"
+            columns: ["reversal_of_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "transactions_suggested_category_id_fkey"
             columns: ["suggested_category_id"]
             isOneToOne: false
@@ -2121,6 +2331,53 @@ export type Database = {
           },
           {
             foreignKeyName: "transactions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_onboarding_progress: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          current_step: number
+          dismissed_at: string | null
+          id: string
+          tour_key: string
+          tour_version: number
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          current_step?: number
+          dismissed_at?: string | null
+          id?: string
+          tour_key?: string
+          tour_version?: number
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          current_step?: number
+          dismissed_at?: string | null
+          id?: string
+          tour_key?: string
+          tour_version?: number
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_onboarding_progress_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -2250,46 +2507,49 @@ export type Database = {
           },
         ]
       }
-      user_onboarding_progress: {
+      workspace_invitations: {
         Row: {
-          completed_at: string | null
+          accepted_at: string | null
+          accepted_by: string | null
           created_at: string
-          current_step: number
-          dismissed_at: string | null
+          email: string
+          expires_at: string
           id: string
-          tour_key: string
-          tour_version: number
+          invited_by: string
+          role: Database["public"]["Enums"]["workspace_role"]
+          status: string
           updated_at: string
-          user_id: string
           workspace_id: string
         }
         Insert: {
-          completed_at?: string | null
+          accepted_at?: string | null
+          accepted_by?: string | null
           created_at?: string
-          current_step?: number
-          dismissed_at?: string | null
+          email: string
+          expires_at?: string
           id?: string
-          tour_key?: string
-          tour_version?: number
+          invited_by: string
+          role?: Database["public"]["Enums"]["workspace_role"]
+          status?: string
           updated_at?: string
-          user_id: string
           workspace_id: string
         }
         Update: {
-          completed_at?: string | null
+          accepted_at?: string | null
+          accepted_by?: string | null
           created_at?: string
-          current_step?: number
-          dismissed_at?: string | null
+          email?: string
+          expires_at?: string
           id?: string
-          tour_key?: string
-          tour_version?: number
+          invited_by?: string
+          role?: Database["public"]["Enums"]["workspace_role"]
+          status?: string
           updated_at?: string
-          user_id?: string
           workspace_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "user_onboarding_progress_workspace_id_fkey"
+            foreignKeyName: "workspace_invitations_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -2376,6 +2636,9 @@ export type Database = {
       admin_approve_request: {
         Args: { _admin_note?: string; _request_id: string }
         Returns: {
+          admin_decided_at: string | null
+          admin_decided_by: string | null
+          admin_decision: string | null
           ai_classification_reason: string | null
           ai_interpretation: Json | null
           applied_customization_id: string | null
@@ -2385,6 +2648,9 @@ export type Database = {
           completed_at: string | null
           complexity: string | null
           created_at: string
+          development_email_attempts: number
+          development_email_error: string | null
+          development_email_sent_at: string | null
           estimated_credits: number
           id: string
           rejected_at: string | null
@@ -2397,6 +2663,9 @@ export type Database = {
           target_user_id: string | null
           tested_at: string | null
           updated_at: string
+          user_decided_at: string | null
+          user_decided_by: string | null
+          user_decision: string | null
           user_id: string
           workspace_id: string
         }
@@ -2410,6 +2679,9 @@ export type Database = {
       admin_reject_request: {
         Args: { _reason?: string; _request_id: string }
         Returns: {
+          admin_decided_at: string | null
+          admin_decided_by: string | null
+          admin_decision: string | null
           ai_classification_reason: string | null
           ai_interpretation: Json | null
           applied_customization_id: string | null
@@ -2419,6 +2691,9 @@ export type Database = {
           completed_at: string | null
           complexity: string | null
           created_at: string
+          development_email_attempts: number
+          development_email_error: string | null
+          development_email_sent_at: string | null
           estimated_credits: number
           id: string
           rejected_at: string | null
@@ -2431,6 +2706,9 @@ export type Database = {
           target_user_id: string | null
           tested_at: string | null
           updated_at: string
+          user_decided_at: string | null
+          user_decided_by: string | null
+          user_decision: string | null
           user_id: string
           workspace_id: string
         }
@@ -2440,6 +2718,31 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      allocate_card_payment: {
+        Args: {
+          allocation_amount: number
+          payment_transaction_id: string
+          target_credit_card_id: string
+          target_invoice_month: string
+        }
+        Returns: string
+      }
+      allocate_card_payments: {
+        Args: {
+          allocation_items: Json
+          target_credit_card_id: string
+          target_invoice_month: string
+        }
+        Returns: string[]
+      }
+      archive_and_delete_card_payment: {
+        Args: {
+          payment_transaction_id: string
+          target_credit_card_id: string
+          target_invoice_month: string
+        }
+        Returns: string
       }
       charge_request_credits: {
         Args: { _request_id: string }
@@ -2453,6 +2756,10 @@ export type Database = {
           _workspace_id: string
         }
         Returns: boolean
+      }
+      delete_transaction_with_card_reconciliation: {
+        Args: { target_transaction_id: string }
+        Returns: number
       }
       ensure_current_credits: {
         Args: { _workspace_id: string }
@@ -2474,15 +2781,49 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      get_admin_customization_history: {
+        Args: never
+        Returns: {
+          admin_actor_email: string
+          admin_actor_name: string
+          admin_decided_at: string
+          admin_decision: string
+          completed_at: string
+          complexity: string
+          created_at: string
+          estimated_credits: number
+          id: string
+          rejection_reason: string
+          request_text: string
+          request_type: string
+          status: string
+          target_scope: string
+          tested_at: string
+          user_decided_at: string
+          user_decision: string
+          user_email: string
+          user_id: string
+          user_name: string
+          workspace_id: string
+          workspace_name: string
+        }[]
+      }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       is_workspace_member: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
       }
       seed_sela_defaults: { Args: { _workspace_id: string }; Returns: Json }
+      undo_card_payment_allocation: {
+        Args: { target_allocation_id: string }
+        Returns: string
+      }
       user_approve_test: {
         Args: { _request_id: string }
         Returns: {
+          admin_decided_at: string | null
+          admin_decided_by: string | null
+          admin_decision: string | null
           ai_classification_reason: string | null
           ai_interpretation: Json | null
           applied_customization_id: string | null
@@ -2492,6 +2833,9 @@ export type Database = {
           completed_at: string | null
           complexity: string | null
           created_at: string
+          development_email_attempts: number
+          development_email_error: string | null
+          development_email_sent_at: string | null
           estimated_credits: number
           id: string
           rejected_at: string | null
@@ -2504,6 +2848,9 @@ export type Database = {
           target_user_id: string | null
           tested_at: string | null
           updated_at: string
+          user_decided_at: string | null
+          user_decided_by: string | null
+          user_decision: string | null
           user_id: string
           workspace_id: string
         }
@@ -2517,6 +2864,9 @@ export type Database = {
       user_reject_test: {
         Args: { _reason?: string; _request_id: string }
         Returns: {
+          admin_decided_at: string | null
+          admin_decided_by: string | null
+          admin_decision: string | null
           ai_classification_reason: string | null
           ai_interpretation: Json | null
           applied_customization_id: string | null
@@ -2526,6 +2876,9 @@ export type Database = {
           completed_at: string | null
           complexity: string | null
           created_at: string
+          development_email_attempts: number
+          development_email_error: string | null
+          development_email_sent_at: string | null
           estimated_credits: number
           id: string
           rejected_at: string | null
@@ -2538,6 +2891,9 @@ export type Database = {
           target_user_id: string | null
           tested_at: string | null
           updated_at: string
+          user_decided_at: string | null
+          user_decided_by: string | null
+          user_decision: string | null
           user_id: string
           workspace_id: string
         }
@@ -2556,10 +2912,16 @@ export type Database = {
     Enums: {
       account_type: "checking" | "savings" | "cash" | "investment" | "other"
       balance_snapshot_type:
-        "initial" | "manual_current" | "reconciliation_check" | "adjustment"
+        | "initial"
+        | "manual_current"
+        | "reconciliation_check"
+        | "adjustment"
       importance_level: "essential" | "important" | "flexible" | "superfluous"
       importance_status:
-        "suggested" | "confirmed" | "manually_changed" | "needs_review"
+        | "suggested"
+        | "confirmed"
+        | "manually_changed"
+        | "needs_review"
       reconciliation_status:
         | "reconciled"
         | "small_diff"
@@ -2585,12 +2947,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2612,12 +2974,13 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2636,12 +2999,13 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2660,12 +3024,13 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2678,11 +3043,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
