@@ -831,6 +831,21 @@ export const userRejectTest = createServerFn({ method: "POST" })
 // Super-admin flow
 // ============================================================
 
+/**
+ * Returns the complete customization-request audit trail for super admins.
+ *
+ * Keep this read behind the authenticated server boundary. The database RPC
+ * performs the final super-admin check and is allowed to cross workspace RLS
+ * only for that role.
+ */
+export const getAdminCustomizationHistory = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase.rpc("get_admin_customization_history" as never);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
 const AdminActionInput = z.object({
   request_id: z.string().uuid(),
   note: z.string().max(500).optional(),

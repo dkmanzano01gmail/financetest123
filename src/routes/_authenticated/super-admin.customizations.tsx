@@ -2,9 +2,12 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
 import { useIsSuperAdmin } from "@/hooks/use-super-admin";
-import { adminApproveRequest, adminRejectRequest } from "@/lib/customizations.functions";
+import {
+  adminApproveRequest,
+  adminRejectRequest,
+  getAdminCustomizationHistory,
+} from "@/lib/customizations.functions";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +29,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, X, Loader2, ShieldCheck, Search, Clock3, CircleCheck } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  X,
+  Loader2,
+  ShieldCheck,
+  Search,
+  Clock3,
+  CircleCheck,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/super-admin/customizations")({
@@ -105,22 +118,26 @@ function formatAuditDate(value: string | null | undefined) {
 function SuperAdminCustomizationsPage() {
   const { data: isAdmin, isLoading: checkingAdmin } = useIsSuperAdmin();
   const qc = useQueryClient();
+  const historyFn = useServerFn(getAdminCustomizationHistory);
   const approveFn = useServerFn(adminApproveRequest);
   const rejectFn = useServerFn(adminRejectRequest);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const { data: history, isLoading } = useQuery({
+  const {
+    data: history,
+    error: historyError,
+    isError: historyFailed,
+    isFetching: refreshingHistory,
+    isLoading,
+    refetch: refetchHistory,
+  } = useQuery({
     queryKey: ["admin-customization-history"],
     enabled: !!isAdmin,
     refetchInterval: 10_000,
     queryFn: async () => {
-      const callHistoryRpc = supabase.rpc as unknown as (
-        functionName: string,
-      ) => Promise<{ data: AdminHistoryRow[] | null; error: Error | null }>;
-      const { data, error } = await callHistoryRpc("get_admin_customization_history");
-      if (error) throw error;
-      return data ?? [];
+      const data = await historyFn();
+      return (data ?? []) as AdminHistoryRow[];
     },
   });
 
@@ -200,6 +217,37 @@ function SuperAdminCustomizationsPage() {
         />
       </div>
 
+      {historyFailed && (
+        <Card className="mb-5 border-red-200 bg-red-50/70">
+          <CardContent className="flex flex-col gap-3 p-4 text-red-800 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <div className="font-medium">Não foi possível carregar os pedidos</div>
+                <div className="text-sm">
+                  {historyError instanceof Error
+                    ? historyError.message
+                    : "Tente atualizar a listagem."}
+                </div>
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => refetchHistory()}
+              disabled={refreshingHistory}
+              className="border-red-200 bg-white hover:bg-red-100"
+            >
+              <RefreshCw
+                className={`mr-1.5 h-3.5 w-3.5 ${refreshingHistory ? "animate-spin" : ""}`}
+              />
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {queue.length > 0 && (
         <section className="mb-7">
           <div className="mb-3 flex items-center gap-2">
@@ -262,6 +310,10 @@ function SuperAdminCustomizationsPage() {
             {isLoading ? (
               <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Carregando histórico…
+              </div>
+            ) : historyFailed ? (
+              <div className="p-10 text-center text-sm text-muted-foreground">
+                A listagem ficará disponível assim que a consulta for restabelecida.
               </div>
             ) : filteredRows.length === 0 ? (
               <div className="p-10 text-center text-sm text-muted-foreground">
