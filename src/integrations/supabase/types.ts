@@ -264,6 +264,60 @@ export type Database = {
           },
         ]
       }
+      billing_plans: {
+        Row: {
+          code: string
+          created_at: string
+          included_credits: number
+          is_active: boolean
+          monthly_price: number
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          included_credits?: number
+          is_active?: boolean
+          monthly_price: number
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          included_credits?: number
+          is_active?: boolean
+          monthly_price?: number
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      billing_settings: {
+        Row: {
+          credit_reference_value: number
+          default_payment_fee_percent: number
+          id: boolean
+          simulation_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          credit_reference_value?: number
+          default_payment_fee_percent?: number
+          id?: boolean
+          simulation_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          credit_reference_value?: number
+          default_payment_fee_percent?: number
+          id?: boolean
+          simulation_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       budgets: {
         Row: {
           category_id: string
@@ -898,6 +952,159 @@ export type Database = {
           },
         ]
       }
+      credit_ledger: {
+        Row: {
+          created_at: string
+          credits_delta: number
+          customization_request_id: string | null
+          description: string | null
+          id: string
+          monetary_reference_value: number | null
+          payment_id: string | null
+          reference_month: string | null
+          type: string
+          user_id: string
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          credits_delta: number
+          customization_request_id?: string | null
+          description?: string | null
+          id?: string
+          monetary_reference_value?: number | null
+          payment_id?: string | null
+          reference_month?: string | null
+          type: string
+          user_id: string
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          credits_delta?: number
+          customization_request_id?: string | null
+          description?: string | null
+          id?: string
+          monetary_reference_value?: number | null
+          payment_id?: string | null
+          reference_month?: string | null
+          type?: string
+          user_id?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_ledger_customization_request_id_fkey"
+            columns: ["customization_request_id"]
+            isOneToOne: false
+            referencedRelation: "customization_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_ledger_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_ledger_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_packs: {
+        Row: {
+          code: string
+          created_at: string
+          credits: number
+          is_active: boolean
+          name: string
+          price: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          credits: number
+          is_active?: boolean
+          name: string
+          price: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          credits?: number
+          is_active?: boolean
+          name?: string
+          price?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      customization_costs: {
+        Row: {
+          ai_api_cost_brl: number | null
+          corrections: number
+          created_at: string
+          customization_request_id: string
+          human_cost_brl: number | null
+          id: string
+          implementation_attempts: number
+          infra_cost_brl: number | null
+          lovable_cost_brl: number | null
+          lovable_credits_used: number | null
+          notes: string | null
+          other_variable_cost_brl: number | null
+          total_variable_cost_brl: number | null
+          updated_at: string
+        }
+        Insert: {
+          ai_api_cost_brl?: number | null
+          corrections?: number
+          created_at?: string
+          customization_request_id: string
+          human_cost_brl?: number | null
+          id?: string
+          implementation_attempts?: number
+          infra_cost_brl?: number | null
+          lovable_cost_brl?: number | null
+          lovable_credits_used?: number | null
+          notes?: string | null
+          other_variable_cost_brl?: number | null
+          total_variable_cost_brl?: number | null
+          updated_at?: string
+        }
+        Update: {
+          ai_api_cost_brl?: number | null
+          corrections?: number
+          created_at?: string
+          customization_request_id?: string
+          human_cost_brl?: number | null
+          id?: string
+          implementation_attempts?: number
+          infra_cost_brl?: number | null
+          lovable_cost_brl?: number | null
+          lovable_credits_used?: number | null
+          notes?: string | null
+          other_variable_cost_brl?: number | null
+          total_variable_cost_brl?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customization_costs_customization_request_id_fkey"
+            columns: ["customization_request_id"]
+            isOneToOne: false
+            referencedRelation: "customization_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customization_credits: {
         Row: {
           created_at: string
@@ -955,21 +1162,27 @@ export type Database = {
           auto_applied: boolean
           completed_at: string | null
           complexity: string | null
+          consumed_credits: number
           created_at: string
           development_email_attempts: number
           development_email_error: string | null
           development_email_sent_at: string | null
           estimated_credits: number
+          execution_status: string
           id: string
+          is_bug_fix: boolean
+          pricing_status: string
           rejected_at: string | null
           rejection_reason: string | null
           request_text: string
           request_type: string
+          reserved_credits: number
           rollback_payload: Json | null
           status: string
           target_scope: string
           target_user_id: string | null
           tested_at: string | null
+          title: string | null
           updated_at: string
           user_decided_at: string | null
           user_decided_by: string | null
@@ -989,21 +1202,27 @@ export type Database = {
           auto_applied?: boolean
           completed_at?: string | null
           complexity?: string | null
+          consumed_credits?: number
           created_at?: string
           development_email_attempts?: number
           development_email_error?: string | null
           development_email_sent_at?: string | null
           estimated_credits?: number
+          execution_status?: string
           id?: string
+          is_bug_fix?: boolean
+          pricing_status?: string
           rejected_at?: string | null
           rejection_reason?: string | null
           request_text: string
           request_type?: string
+          reserved_credits?: number
           rollback_payload?: Json | null
           status?: string
           target_scope?: string
           target_user_id?: string | null
           tested_at?: string | null
+          title?: string | null
           updated_at?: string
           user_decided_at?: string | null
           user_decided_by?: string | null
@@ -1023,21 +1242,27 @@ export type Database = {
           auto_applied?: boolean
           completed_at?: string | null
           complexity?: string | null
+          consumed_credits?: number
           created_at?: string
           development_email_attempts?: number
           development_email_error?: string | null
           development_email_sent_at?: string | null
           estimated_credits?: number
+          execution_status?: string
           id?: string
+          is_bug_fix?: boolean
+          pricing_status?: string
           rejected_at?: string | null
           rejection_reason?: string | null
           request_text?: string
           request_type?: string
+          reserved_credits?: number
           rollback_payload?: Json | null
           status?: string
           target_scope?: string
           target_user_id?: string | null
           tested_at?: string | null
+          title?: string | null
           updated_at?: string
           user_decided_at?: string | null
           user_decided_by?: string | null
@@ -1702,6 +1927,98 @@ export type Database = {
           },
         ]
       }
+      operating_costs: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          is_fixed: boolean
+          reference_month: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_fixed?: boolean
+          reference_month: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_fixed?: boolean
+          reference_month?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      payments: {
+        Row: {
+          created_at: string
+          currency: string
+          description: string | null
+          external_payment_id: string | null
+          gross_amount: number
+          id: string
+          is_simulated: boolean
+          net_amount: number
+          paid_at: string | null
+          payment_fee: number
+          status: string
+          subscription_id: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          description?: string | null
+          external_payment_id?: string | null
+          gross_amount?: number
+          id?: string
+          is_simulated?: boolean
+          net_amount?: number
+          paid_at?: string | null
+          payment_fee?: number
+          status?: string
+          subscription_id?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          description?: string | null
+          external_payment_id?: string | null
+          gross_amount?: number
+          id?: string
+          is_simulated?: boolean
+          net_amount?: number
+          paid_at?: string | null
+          payment_fee?: number
+          status?: string
+          subscription_id?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       piece_pricing: {
         Row: {
           biscuit_cost: number
@@ -2138,6 +2455,65 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          created_at: string
+          current_period_end: string
+          current_period_start: string
+          external_customer_id: string | null
+          external_subscription_id: string | null
+          id: string
+          included_credits: number
+          monthly_price: number
+          plan_code: string
+          renewal_date: string | null
+          started_at: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_period_end?: string
+          current_period_start?: string
+          external_customer_id?: string | null
+          external_subscription_id?: string | null
+          id?: string
+          included_credits?: number
+          monthly_price: number
+          plan_code: string
+          renewal_date?: string | null
+          started_at?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_period_end?: string
+          current_period_start?: string
+          external_customer_id?: string | null
+          external_subscription_id?: string | null
+          id?: string
+          included_credits?: number
+          monthly_price?: number
+          plan_code?: string
+          renewal_date?: string | null
+          started_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_plan_code_fkey"
+            columns: ["plan_code"]
+            isOneToOne: false
+            referencedRelation: "billing_plans"
+            referencedColumns: ["code"]
           },
         ]
       }
@@ -2630,7 +3006,18 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      credit_wallets: {
+        Row: {
+          available_balance: number | null
+          consumed_total: number | null
+          granted_total: number | null
+          purchased_total: number | null
+          reserved_balance: number | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       admin_approve_request: {
@@ -2647,21 +3034,27 @@ export type Database = {
           auto_applied: boolean
           completed_at: string | null
           complexity: string | null
+          consumed_credits: number
           created_at: string
           development_email_attempts: number
           development_email_error: string | null
           development_email_sent_at: string | null
           estimated_credits: number
+          execution_status: string
           id: string
+          is_bug_fix: boolean
+          pricing_status: string
           rejected_at: string | null
           rejection_reason: string | null
           request_text: string
           request_type: string
+          reserved_credits: number
           rollback_payload: Json | null
           status: string
           target_scope: string
           target_user_id: string | null
           tested_at: string | null
+          title: string | null
           updated_at: string
           user_decided_at: string | null
           user_decided_by: string | null
@@ -2675,6 +3068,55 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      admin_customization_economics: {
+        Args: { _month: number; _year: number }
+        Returns: {
+          ai_cost: number
+          attempts: number
+          corrections: number
+          created_at: string
+          credits_charged: number
+          customer_email: string
+          customer_name: string
+          economic_margin: number
+          economic_margin_pct: number
+          economic_value: number
+          execution_status: string
+          human_cost: number
+          infra_cost: number
+          is_bug_fix: boolean
+          lovable_cost: number
+          other_cost: number
+          request_id: string
+          request_text: string
+          title: string
+          total_variable_cost: number
+          workspace_name: string
+        }[]
+      }
+      admin_operation_result: {
+        Args: { _month: number; _year: number }
+        Returns: {
+          active_customers: number
+          avg_cost_per_consumed_credit: number
+          contribution_margin: number
+          contribution_margin_pct: number
+          credit_pack_revenue: number
+          credits_consumed: number
+          customization_variable_costs: number
+          economic_value_of_credits_consumed: number
+          fixed_operating_costs: number
+          mrr: number
+          operating_margin_pct: number
+          operating_profit: number
+          payment_fees: number
+          personalization_economic_margin: number
+          personalization_economic_margin_pct: number
+          subscription_revenue: number
+          total_revenue: number
+          total_variable_costs: number
+        }[]
       }
       admin_reject_request: {
         Args: { _reason?: string; _request_id: string }
@@ -2690,21 +3132,27 @@ export type Database = {
           auto_applied: boolean
           completed_at: string | null
           complexity: string | null
+          consumed_credits: number
           created_at: string
           development_email_attempts: number
           development_email_error: string | null
           development_email_sent_at: string | null
           estimated_credits: number
+          execution_status: string
           id: string
+          is_bug_fix: boolean
+          pricing_status: string
           rejected_at: string | null
           rejection_reason: string | null
           request_text: string
           request_type: string
+          reserved_credits: number
           rollback_payload: Json | null
           status: string
           target_scope: string
           target_user_id: string | null
           tested_at: string | null
+          title: string | null
           updated_at: string
           user_decided_at: string | null
           user_decided_by: string | null
@@ -2718,6 +3166,28 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      admin_unit_economics: {
+        Args: { _month: number; _year: number }
+        Returns: {
+          contribution_margin: number
+          contribution_margin_pct: number
+          credit_pack_revenue: number
+          credits_consumed: number
+          credits_granted: number
+          credits_purchased: number
+          current_credit_balance: number
+          customer_email: string
+          customer_name: string
+          direct_customization_costs: number
+          direct_variable_costs: number
+          payment_fees: number
+          plan_code: string
+          subscription_revenue: number
+          subscription_status: string
+          total_revenue: number
+          user_id: string
+        }[]
       }
       allocate_card_payment: {
         Args: {
@@ -2756,6 +3226,17 @@ export type Database = {
           _workspace_id: string
         }
         Returns: boolean
+      }
+      consume_customization_credits: {
+        Args: { _request_id: string }
+        Returns: number
+      }
+      credit_balance_of: {
+        Args: { _user_id: string }
+        Returns: {
+          available: number
+          reserved: number
+        }[]
       }
       delete_transaction_with_card_reconciliation: {
         Args: { target_transaction_id: string }
@@ -2808,10 +3289,23 @@ export type Database = {
           workspace_name: string
         }[]
       }
+      grant_monthly_credits: {
+        Args: { _reference_month?: string; _user_id: string }
+        Returns: number
+      }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       is_workspace_member: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
+      }
+      purchase_credit_pack: { Args: { _pack_code: string }; Returns: string }
+      release_customization_credits: {
+        Args: { _reason?: string; _request_id: string }
+        Returns: number
+      }
+      reserve_customization_credits: {
+        Args: { _request_id: string }
+        Returns: number
       }
       seed_sela_defaults: { Args: { _workspace_id: string }; Returns: Json }
       undo_card_payment_allocation: {
@@ -2832,21 +3326,27 @@ export type Database = {
           auto_applied: boolean
           completed_at: string | null
           complexity: string | null
+          consumed_credits: number
           created_at: string
           development_email_attempts: number
           development_email_error: string | null
           development_email_sent_at: string | null
           estimated_credits: number
+          execution_status: string
           id: string
+          is_bug_fix: boolean
+          pricing_status: string
           rejected_at: string | null
           rejection_reason: string | null
           request_text: string
           request_type: string
+          reserved_credits: number
           rollback_payload: Json | null
           status: string
           target_scope: string
           target_user_id: string | null
           tested_at: string | null
+          title: string | null
           updated_at: string
           user_decided_at: string | null
           user_decided_by: string | null
@@ -2875,21 +3375,27 @@ export type Database = {
           auto_applied: boolean
           completed_at: string | null
           complexity: string | null
+          consumed_credits: number
           created_at: string
           development_email_attempts: number
           development_email_error: string | null
           development_email_sent_at: string | null
           estimated_credits: number
+          execution_status: string
           id: string
+          is_bug_fix: boolean
+          pricing_status: string
           rejected_at: string | null
           rejection_reason: string | null
           request_text: string
           request_type: string
+          reserved_credits: number
           rollback_payload: Json | null
           status: string
           target_scope: string
           target_user_id: string | null
           tested_at: string | null
+          title: string | null
           updated_at: string
           user_decided_at: string | null
           user_decided_by: string | null
