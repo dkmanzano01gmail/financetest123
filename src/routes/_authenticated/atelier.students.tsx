@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,8 @@ export const Route = createFileRoute("/_authenticated/atelier/students")({ compo
 
 const sb = supabase as any;
 const NOW = new Date();
+const CLASS_SUMMARY_TARGET_USER_ID = "0fc9511c-da1f-4fde-aba5-4a5397ad0bca";
+const CLASS_SUMMARY_WORKSPACE_ID = "37f30192-2237-4949-986b-8ad5d6434f91";
 const emptyStudent = () => ({
   name: "",
   class_name: "",
@@ -71,6 +74,7 @@ const emptyPayment = () => ({
 });
 
 function Page() {
+  const { user } = useAuth();
   const { workspace } = useCurrentWorkspace();
   const qc = useQueryClient();
   const wsId = workspace?.id;
@@ -144,12 +148,35 @@ function Page() {
 
   const classOptions = useMemo(() => {
     const uniqueClasses = new Map<string, string>();
-    for (const student of students as any[]) {
+    for (const student of students as Array<{
+      class_name?: string | null;
+      is_active?: boolean;
+    }>) {
       const className = String(student.class_name || "").trim();
       if (className) uniqueClasses.set(className.toLocaleLowerCase("pt-BR"), className);
     }
     return [...uniqueClasses.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [students]);
+
+  const classSummary = useMemo(() => {
+    const counts = new Map<string, { name: string; total: number; active: number }>();
+    for (const student of students as any[]) {
+      const className = String(student.class_name || "").trim() || "Sem turma";
+      const key = className.toLocaleLowerCase("pt-BR");
+      const current = counts.get(key) ?? { name: className, total: 0, active: 0 };
+      current.total += 1;
+      if (student.is_active) current.active += 1;
+      counts.set(key, current);
+    }
+    return [...counts.values()].sort((a, b) => {
+      if (a.name === "Sem turma") return 1;
+      if (b.name === "Sem turma") return -1;
+      return a.name.localeCompare(b.name, "pt-BR");
+    });
+  }, [students]);
+
+  const showClassSummary =
+    user?.id === CLASS_SUMMARY_TARGET_USER_ID && wsId === CLASS_SUMMARY_WORKSPACE_ID;
 
   const inSelectedMonth = (value?: string | null) => {
     if (!value) return false;
@@ -418,6 +445,33 @@ function Page() {
         <SummaryCard icon={WalletCards} label="Pagamentos" value={formatCurrency(summary.paymentsTotal, currency, privacy)} tone="income" />
         <SummaryCard icon={ReceiptText} label="Materiais pagos" value={formatCurrency(summary.materialPaid, currency, privacy)} />
       </div>
+
+      {showClassSummary && classSummary.length > 0 && (
+        <section className="mb-4" aria-labelledby="class-summary-title">
+          <div className="mb-2 flex items-center gap-2">
+            <GraduationCap className="h-4 w-4 text-primary" />
+            <h2 id="class-summary-title" className="font-medium">
+              Alunos por turma
+            </h2>
+            <Badge variant="secondary">{students.length} alunos</Badge>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+            {classSummary.map((item) => (
+              <Card key={item.name}>
+                <CardContent className="p-4">
+                  <div className="truncate text-xs uppercase tracking-wide text-muted-foreground">
+                    {item.name}
+                  </div>
+                  <div className="mt-1 font-mono text-2xl">{item.total}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {item.active} {item.active === 1 ? "ativo" : "ativos"}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       {isLoading ? (
         <div className="p-6 text-sm text-muted-foreground">Carregando…</div>
