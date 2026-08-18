@@ -209,8 +209,8 @@ function SettingsPage() {
               Personalizações
             </CardTitle>
             <CardDescription>
-              Peça mudanças no app em linguagem natural. Cada workspace tem créditos mensais de
-              personalização.
+              Peça mudanças no app em linguagem natural. Durante o beta, as personalizações são
+              ilimitadas.
             </CardDescription>
           </CardHeader>
           <CardContent>

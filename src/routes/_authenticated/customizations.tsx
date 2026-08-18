@@ -17,7 +17,6 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Progress } from "@/components/ui/progress";
 import { Sparkles, Wand2, Trash2, Loader2, RefreshCw } from "lucide-react";
 import {
   AlertDialog,
@@ -36,13 +35,6 @@ export const Route = createFileRoute("/_authenticated/customizations")({
   ssr: false,
   component: CustomizationsPage,
 });
-
-const PLAN_LABELS: Record<string, string> = {
-  personal: "Pessoal · 3 créditos/mês",
-  personal_plus: "Pessoal Plus · 8 créditos/mês",
-  business: "Negócio · 10 créditos/mês",
-  business_pro: "Negócio Pro · 25 créditos/mês",
-};
 
 const EXAMPLES = [
   "Recebimentos com o mesmo descritivo todo mês = Aulas regulares",
@@ -72,40 +64,6 @@ function CustomizationsPage() {
     return () => clearInterval(id);
   }, []);
 
-  // Ensure current credits row exists (surface errors instead of swallowing).
-  useEffect(() => {
-    if (!wsId) return;
-    let cancelled = false;
-    (async () => {
-      const { error } = await (supabase as any).rpc("ensure_current_credits", {
-        _workspace_id: wsId,
-      });
-      if (cancelled) return;
-      if (error) toast.error(`Não foi possível carregar créditos: ${error.message}`);
-      else qc.invalidateQueries({ queryKey: ["credits", wsId] });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [wsId, qc]);
-
-  const { data: credits } = useQuery({
-    queryKey: ["credits", wsId],
-    enabled: !!wsId,
-    queryFn: async () => {
-      const now = new Date();
-      const { data, error } = await (supabase as any)
-        .from("customization_credits")
-        .select("*")
-        .eq("workspace_id", wsId!)
-        .eq("period_month", now.getMonth() + 1)
-        .eq("period_year", now.getFullYear())
-        .maybeSingle();
-      if (error) throw error;
-      return data as { credits_included: number; credits_used: number } | null;
-    },
-  });
-
   const { data: requests } = useQuery({
     queryKey: ["customization-requests", wsId],
     enabled: !!wsId,
@@ -123,12 +81,6 @@ function CustomizationsPage() {
 
   const cust = useCustomizations(wsId);
 
-  const remaining = credits ? credits.credits_included - credits.credits_used : 0;
-  const pct =
-    credits && credits.credits_included > 0
-      ? (credits.credits_used / credits.credits_included) * 100
-      : 0;
-
   const submitMut = useMutation({
     mutationFn: async () => {
       if (!wsId) throw new Error("Sem workspace");
@@ -138,7 +90,6 @@ function CustomizationsPage() {
       setText("");
       qc.invalidateQueries({ queryKey: ["customization-requests", wsId] });
       qc.invalidateQueries({ queryKey: ["customizations", wsId] });
-      qc.invalidateQueries({ queryKey: ["credits", wsId] });
       qc.invalidateQueries({ queryKey: ["active-test", wsId] });
       qc.invalidateQueries({ queryKey: ["categories", wsId] });
       qc.invalidateQueries({ queryKey: ["transactions", wsId] });
@@ -225,32 +176,24 @@ function CustomizationsPage() {
     <PageContainer>
       <PageHeader
         title="Personalizações"
-        description="Peça mudanças no app em linguagem natural. Personalizações simples são aplicadas na hora consumindo créditos do mês."
+        description="Peça mudanças no app em linguagem natural. Durante o beta, o uso de personalizações é ilimitado."
       />
 
-      {/* Credits header */}
+      {/* Unlimited beta access */}
       <Card className="mb-6">
-        <CardContent className="p-5 grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium">Créditos do mês</span>
-              <Badge variant="secondary">
-                {PLAN_LABELS[workspace.plan ?? "personal"] ?? "Pessoal"}
-              </Badge>
+        <CardContent className="p-5">
+          <div className="flex items-start gap-3">
+            <Sparkles className="mt-0.5 h-5 w-5 text-primary" />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Personalizações ilimitadas</span>
+                <Badge variant="secondary">Beta</Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Por enquanto, você pode enviar e aprovar mudanças sem limite de créditos. Os
+                pedidos continuam passando pelo fluxo de teste e segurança.
+              </p>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="font-display text-2xl tabular-nums">{remaining}</span>
-              <span className="text-sm text-muted-foreground">
-                de {credits?.credits_included ?? 0} restantes
-              </span>
-            </div>
-            <Progress value={pct} className="mt-2" />
-          </div>
-          <div className="text-xs text-muted-foreground md:text-right">
-            Usados: {credits?.credits_used ?? 0}
-            <br />
-            Reinicia no próximo mês
           </div>
         </CardContent>
       </Card>
