@@ -91,7 +91,7 @@ function Page() {
     }
     return true;
   }), [items, stockFilter, typeFilter, query]);
-  const summary = useMemo(() => items.reduce((acc, item: any) => {
+  const summary = useMemo(() => items.reduce((acc: { active: number; low: number; expired: number; value: number }, item: any) => {
     const quantity = Number(item.quantity_available || 0);
     const cost = Number(item.unit_cost || 0);
     acc.value += quantity * cost;
@@ -100,7 +100,7 @@ function Page() {
     if (item.expiration_date && item.expiration_date <= new Date().toISOString().slice(0, 10)) acc.expired += 1;
     return acc;
   }, { active: 0, low: 0, expired: 0, value: 0 }), [items]);
-  const types = useMemo(() => [...new Set(items.map((item: any) => item.material_type).filter(Boolean))].sort(), [items]);
+  const types = useMemo<string[]>(() => [...new Set(items.map((item: any) => String(item.material_type ?? "")).filter(Boolean))].sort(), [items]);
 
   const save = useMutation({
     mutationFn: async () => {
