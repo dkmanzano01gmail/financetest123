@@ -100,7 +100,7 @@ function Page() {
     if (item.expiration_date && item.expiration_date <= new Date().toISOString().slice(0, 10)) acc.expired += 1;
     return acc;
   }, { active: 0, low: 0, expired: 0, value: 0 }), [items]);
-  const types = useMemo<string[]>(() => [...new Set(items.map((item: any) => String(item.material_type ?? "")).filter(Boolean))].sort(), [items]);
+  const types = useMemo<string[]>(() => Array.from(new Set((items as any[]).map((item: any) => String(item.material_type ?? "")).filter(Boolean))).sort(), [items]);
 
   const save = useMutation({
     mutationFn: async () => {
