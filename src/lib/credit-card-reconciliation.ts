@@ -12,7 +12,7 @@ export type ReconciliationTransaction = {
   reversal_of_transaction_id?: string | null;
   status?: string | null;
   categories?: { name?: string | null } | null;
-  accounts?: { type?: string | null } | null;
+  accounts?: { type?: string | null; name?: string | null } | null;
 };
 
 export type ReconciliationCard = {
