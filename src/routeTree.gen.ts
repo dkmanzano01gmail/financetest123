@@ -25,6 +25,7 @@ import { Route as AuthenticatedCustomizationsRouteImport } from './routes/_authe
 import { Route as AuthenticatedCategoriesRouteImport } from './routes/_authenticated/categories'
 import { Route as AuthenticatedCardsRouteImport } from './routes/_authenticated/cards'
 import { Route as AuthenticatedBudgetAnalysisRouteImport } from './routes/_authenticated/budget-analysis'
+import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedAccountsRouteImport } from './routes/_authenticated/accounts'
 import { Route as AuthenticatedSuperAdminCustomizationsRouteImport } from './routes/_authenticated/super-admin.customizations'
 import { Route as AuthenticatedAtelierWorkshopPricingRouteImport } from './routes/_authenticated/atelier.workshop-pricing'
@@ -121,6 +122,11 @@ const AuthenticatedBudgetAnalysisRoute =
     path: '/budget-analysis',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedBillingRoute = AuthenticatedBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAccountsRoute = AuthenticatedAccountsRouteImport.update({
   id: '/accounts',
   path: '/accounts',
@@ -198,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/accounts': typeof AuthenticatedAccountsRoute
+  '/billing': typeof AuthenticatedBillingRoute
   '/budget-analysis': typeof AuthenticatedBudgetAnalysisRoute
   '/cards': typeof AuthenticatedCardsRoute
   '/categories': typeof AuthenticatedCategoriesRoute
@@ -227,6 +234,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/accounts': typeof AuthenticatedAccountsRoute
+  '/billing': typeof AuthenticatedBillingRoute
   '/budget-analysis': typeof AuthenticatedBudgetAnalysisRoute
   '/cards': typeof AuthenticatedCardsRoute
   '/categories': typeof AuthenticatedCategoriesRoute
@@ -258,6 +266,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/accounts': typeof AuthenticatedAccountsRoute
+  '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/budget-analysis': typeof AuthenticatedBudgetAnalysisRoute
   '/_authenticated/cards': typeof AuthenticatedCardsRoute
   '/_authenticated/categories': typeof AuthenticatedCategoriesRoute
@@ -289,6 +298,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/reset-password'
     | '/accounts'
+    | '/billing'
     | '/budget-analysis'
     | '/cards'
     | '/categories'
@@ -318,6 +328,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/reset-password'
     | '/accounts'
+    | '/billing'
     | '/budget-analysis'
     | '/cards'
     | '/categories'
@@ -348,6 +359,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/reset-password'
     | '/_authenticated/accounts'
+    | '/_authenticated/billing'
     | '/_authenticated/budget-analysis'
     | '/_authenticated/cards'
     | '/_authenticated/categories'
@@ -494,6 +506,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBudgetAnalysisRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/billing': {
+      id: '/_authenticated/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof AuthenticatedBillingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/accounts': {
       id: '/_authenticated/accounts'
       path: '/accounts'
@@ -583,6 +602,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAccountsRoute: typeof AuthenticatedAccountsRoute
+  AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedBudgetAnalysisRoute: typeof AuthenticatedBudgetAnalysisRoute
   AuthenticatedCardsRoute: typeof AuthenticatedCardsRoute
   AuthenticatedCategoriesRoute: typeof AuthenticatedCategoriesRoute
@@ -609,6 +629,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAccountsRoute: AuthenticatedAccountsRoute,
+  AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedBudgetAnalysisRoute: AuthenticatedBudgetAnalysisRoute,
   AuthenticatedCardsRoute: AuthenticatedCardsRoute,
   AuthenticatedCategoriesRoute: AuthenticatedCategoriesRoute,
