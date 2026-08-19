@@ -366,7 +366,7 @@ export function suggestForTransaction(
   // 1) History
   const historyMatch = similarHistory(tx, ctx.history);
   const h = historyMatch?.entry;
-  if (h?.category_id) {
+  if (historyMatch && h?.category_id) {
     const cat = catsById.get(h.category_id);
     if (cat && cat.type === tx.type) {
       const importance = h.importance_level ?? cat.importance_level;
