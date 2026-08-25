@@ -96,6 +96,7 @@ function Page() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [printStudent, setPrintStudent] = useState<string | null>(null);
+  const [reportPhotosByStudent, setReportPhotosByStudent] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState(empty());
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
@@ -210,13 +211,36 @@ function Page() {
   useEffect(() => {
     if (!printStudent) return;
     document.body.classList.add("printing-student-materials");
+    let cancelled = false;
     const finish = () => {
       document.body.classList.remove("printing-student-materials");
       setPrintStudent(null);
     };
     window.addEventListener("afterprint", finish, { once: true });
-    const timer = window.setTimeout(() => window.print(), 100);
+    const timer = window.setTimeout(async () => {
+      const images = Array.from(
+        document.querySelectorAll<HTMLImageElement>(
+          '[data-print-statement="selected"] img[data-report-piece-photo="true"]',
+        ),
+      );
+      await Promise.race([
+        Promise.all(
+          images.map(
+            (image) =>
+              image.complete
+                ? Promise.resolve()
+                : new Promise<void>((resolve) => {
+                    image.addEventListener("load", () => resolve(), { once: true });
+                    image.addEventListener("error", () => resolve(), { once: true });
+                  }),
+          ),
+        ),
+        new Promise((resolve) => window.setTimeout(resolve, 3000)),
+      ]);
+      if (!cancelled) window.print();
+    }, 100);
     return () => {
+      cancelled = true;
       window.clearTimeout(timer);
       window.removeEventListener("afterprint", finish);
       document.body.classList.remove("printing-student-materials");
@@ -699,6 +723,10 @@ function Page() {
               currency={currency}
               privacy={privacy}
               selectedForPrint={printStudent === item.student}
+              includePhotos={reportPhotosByStudent[item.student] ?? false}
+              onIncludePhotosChange={(includePhotos) =>
+                setReportPhotosByStudent((current) => ({ ...current, [item.student]: includePhotos }))
+              }
               onPrint={() => setPrintStudent(item.student)}
             />
           ))}
@@ -802,6 +830,8 @@ function StudentStatement({
   currency,
   privacy,
   selectedForPrint,
+  includePhotos,
+  onIncludePhotosChange,
   onPrint,
 }: {
   item: any;
@@ -809,8 +839,11 @@ function StudentStatement({
   currency: string;
   privacy: boolean;
   selectedForPrint: boolean;
+  includePhotos: boolean;
+  onIncludePhotosChange: (includePhotos: boolean) => void;
   onPrint: () => void;
 }) {
+  const photoCount = item.pieces.filter((piece: any) => Boolean(piece.photo_url)).length;
   return (
     <Card data-print-statement={selectedForPrint ? "selected" : "idle"} className="overflow-hidden">
       <CardHeader className="border-b bg-muted/20 pb-4">
@@ -819,9 +852,22 @@ function StudentStatement({
             <CardTitle className="text-xl">{item.student}</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">{item.group || "Aulas regulares"} · {period} · {item.quantity} {item.quantity === 1 ? "peça" : "peças"}</p>
           </div>
-          <Button data-print-hide="true" type="button" variant="outline" size="sm" onClick={onPrint}>
-            <Printer className="mr-1 h-4 w-4" />Imprimir / salvar PDF
-          </Button>
+          <div data-print-hide="true" className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
+              <Switch
+                checked={includePhotos}
+                disabled={photoCount === 0}
+                onCheckedChange={onIncludePhotosChange}
+                aria-label="Incluir fotos das peças no relatório"
+              />
+              <span className="text-sm">
+                {photoCount > 0 ? `Incluir fotos das peças (${photoCount})` : "Nenhuma foto cadastrada"}
+              </span>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={onPrint}>
+              <Printer className="mr-1 h-4 w-4" />Imprimir / salvar PDF
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-4 md:p-5">
@@ -852,15 +898,25 @@ function StudentStatement({
           {item.pieces.map((piece: any) => {
             const unitCalculated = piece.calculated / piece.quantity;
             return (
-              <div key={piece.id} className="rounded-xl border bg-card p-4">
+              <div key={piece.id} className="break-inside-avoid rounded-xl border bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold">{piece.piece_name || "Peça sem nome"}</h3>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${piece.payment_status === "paid" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}>{statusLabel(piece.payment_status)}</span>
-                      {piece.resistance_only && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Somente resistências</span>}
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    {includePhotos && piece.photo_url && (
+                      <img
+                        src={piece.photo_url}
+                        alt={`Foto de ${piece.piece_name || "peça"}`}
+                        data-report-piece-photo="true"
+                        className="h-24 w-24 shrink-0 rounded-lg border object-cover"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold">{piece.piece_name || "Peça sem nome"}</h3>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${piece.payment_status === "paid" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}>{statusLabel(piece.payment_status)}</span>
+                        {piece.resistance_only && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Somente resistências</span>}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {piece.quantity} {piece.quantity === 1 ? "unidade" : "unidades"} · {Number(piece.clay_weight_kg || 0) * 1000} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {piece.quantity} {piece.quantity === 1 ? "unidade" : "unidades"} · {Number(piece.clay_weight_kg || 0) * 1000} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
                   </div>
                   <div className="text-right">
                     <div className="text-xs text-muted-foreground">Custo calculado por peça</div>
