@@ -26,7 +26,7 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, formatDate, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { calculateClassPieceCost } from "@/lib/orna-logic";
-import { Calculator, Package, Pencil, Plus, Printer, Settings2, Trash2, Users } from "lucide-react";
+import { Calculator, Camera, ImagePlus, Package, Pencil, Plus, Printer, Settings2, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/atelier/class-materials")({ component: Page });
@@ -62,7 +62,24 @@ const empty = () => ({
   payment_date: "",
   payment_notes: "",
   comments: "",
+  photo_path: "",
+  photo_url: "",
 });
+
+const PHOTO_BUCKET = "class-piece-photos";
+const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
+const ALLOWED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
+
+function photoExtension(file: File) {
+  const byType: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/heic": "heic",
+    "image/heif": "heif",
+  };
+  return byType[file.type] ?? "jpg";
+}
 
 function Page() {
   const { workspace } = useCurrentWorkspace();
@@ -80,6 +97,8 @@ function Page() {
   const [editId, setEditId] = useState<string | null>(null);
   const [printStudent, setPrintStudent] = useState<string | null>(null);
   const [form, setForm] = useState(empty());
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
   const [settingsForm, setSettingsForm] = useState({
     margin_percent: "0",
     fixed_monthly_fee: "600",
@@ -96,9 +115,44 @@ function Page() {
         .eq("workspace_id", wsId)
         .order("usage_date", { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      const result = data ?? [];
+      const paths = [...new Set(result.map((row: { photo_path?: string | null }) => row.photo_path).filter(Boolean))] as string[];
+      if (paths.length === 0) return result;
+      const { data: signedPhotos, error: signedPhotosError } = await supabase.storage
+        .from(PHOTO_BUCKET)
+        .createSignedUrls(paths, 60 * 60);
+      if (signedPhotosError) throw signedPhotosError;
+      const signedByPath = new Map((signedPhotos ?? []).map((photo) => [photo.path, photo.signedUrl]));
+      return result.map((row: { photo_path?: string | null }) => ({
+        ...row,
+        photo_url: row.photo_path ? signedByPath.get(row.photo_path) ?? "" : "",
+      }));
     },
   });
+
+  useEffect(() => {
+    if (!photoFile) {
+      setPhotoPreviewUrl(form.photo_url);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(photoFile);
+    setPhotoPreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [photoFile, form.photo_url]);
+
+  function choosePhoto(file?: File) {
+    if (!file) return;
+    if (!ALLOWED_PHOTO_TYPES.has(file.type)) {
+      toast.error("Use uma foto JPG, PNG, WebP, HEIC ou HEIF.");
+      return;
+    }
+    if (file.size > MAX_PHOTO_SIZE) {
+      toast.error("A foto deve ter no máximo 10 MB.");
+      return;
+    }
+    setPhotoFile(file);
+  }
+
   const { data: students = [] } = useQuery({
     queryKey: ["students", wsId, "class-materials"],
     enabled: !!wsId,
@@ -392,6 +446,7 @@ function Page() {
 
   const save = useMutation({
     mutationFn: async () => {
+      if (!wsId) throw new Error("Selecione um workspace.");
       if (!form.student_name) throw new Error("Selecione o aluno.");
       if (!form.piece_name.trim()) throw new Error("Informe o nome da peça.");
       if ((kilns as any[]).length > 0 && !selectedKiln?.id) throw new Error("Selecione o forno.");
@@ -403,6 +458,19 @@ function Page() {
           ? 0
           : n(form.amount_paid);
       const pending = form.payment_status === "waived" ? 0 : Math.max(0, chargedInput - paidInput);
+      let photoPath = form.photo_path || null;
+      let uploadedPhotoPath: string | null = null;
+      if (photoFile) {
+        if (!ALLOWED_PHOTO_TYPES.has(photoFile.type)) throw new Error("Use uma foto JPG, PNG, WebP, HEIC ou HEIF.");
+        if (photoFile.size > MAX_PHOTO_SIZE) throw new Error("A foto deve ter no máximo 10 MB.");
+        uploadedPhotoPath = `${wsId}/${crypto.randomUUID()}.${photoExtension(photoFile)}`;
+        const { error: uploadError } = await supabase.storage.from(PHOTO_BUCKET).upload(uploadedPhotoPath, photoFile, {
+          upsert: false,
+          contentType: photoFile.type,
+        });
+        if (uploadError) throw uploadError;
+        photoPath = uploadedPhotoPath;
+      }
       const payload = {
         workspace_id: wsId,
         usage_date: form.usage_date,
@@ -445,6 +513,7 @@ function Page() {
           paidInput > 0 ? form.payment_date || new Date().toISOString().slice(0, 10) : null,
         payment_notes: form.payment_notes.trim() || null,
         comments: form.comments.trim() || null,
+        photo_path: photoPath,
       };
       const { error } = editId
         ? await sb
@@ -453,13 +522,17 @@ function Page() {
             .eq("id", editId)
             .eq("workspace_id", wsId)
         : await sb.from("class_materials_usage").insert(payload);
-      if (error) throw error;
+      if (error) {
+        if (uploadedPhotoPath) await supabase.storage.from(PHOTO_BUCKET).remove([uploadedPhotoPath]);
+        throw error;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["class_materials_usage"] });
       setOpen(false);
       setEditId(null);
       setForm(empty());
+      setPhotoFile(null);
       toast.success("Peça e cobrança salvas");
     },
     onError: (error: Error) => toast.error(error.message),
@@ -513,6 +586,7 @@ function Page() {
 
   function edit(row: any) {
     setEditId(row.id);
+    setPhotoFile(null);
     setForm({
       usage_date: row.usage_date,
       student_name: row.student_name,
@@ -539,6 +613,8 @@ function Page() {
       payment_date: row.payment_date ?? "",
       payment_notes: row.payment_notes ?? "",
       comments: row.comments ?? "",
+      photo_path: row.photo_path ?? "",
+      photo_url: row.photo_url ?? "",
     });
     setOpen(true);
   }
@@ -564,7 +640,7 @@ function Page() {
             <Button variant="outline" onClick={() => setSettingsOpen(true)}>
               <Settings2 className="mr-1 h-4 w-4" />Parâmetros
             </Button>
-            <Button onClick={() => { setEditId(null); setForm(empty()); setOpen(true); }}>
+            <Button onClick={() => { setEditId(null); setPhotoFile(null); setForm(empty()); setOpen(true); }}>
               <Plus className="mr-1 h-4 w-4" />Nova peça
             </Button>
           </div>
@@ -636,15 +712,30 @@ function Page() {
           <CardHeader><CardTitle className="text-base">Peças e cobranças</CardTitle></CardHeader>
           <CardContent className="overflow-x-auto p-0">
             <table className="w-full text-sm"><thead className="bg-muted/40"><tr className="text-left"><th className="p-3">Data</th><th className="p-3">Aluno</th><th className="p-3">Peça</th><th className="p-3">Produção</th><th className="p-3">Forno</th><th className="p-3">Materiais</th><th className="p-3 text-right">Custo</th><th className="p-3 text-right">Cobrança</th><th className="p-3 text-right">Pendente</th><th className="p-3">Pagamento</th><th className="p-3" /></tr></thead>
-              <tbody>{filtered.map((row: any) => <tr key={row.id} className="border-t"><td className="p-3 font-mono">{row.usage_date}</td><td className="p-3 font-medium">{row.student_name}</td><td className="p-3">{row.piece_name || "—"}<div className="text-xs text-muted-foreground">{row.quantity ?? 1} un.</div></td><td className="p-3">{productionLabel(row.production_status)}</td><td className="p-3">{(kilns as any[]).find((kiln) => kiln.id === row.kiln_id)?.name || "Padrão legado"}</td><td className="p-3 text-xs">{row.clay_type || "—"}<br />{row.glaze_name || "—"}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.total_cost || 0), currency, privacy)}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.amount_charged || 0), currency, privacy)}</td><td className="p-3 text-right font-mono text-expense">{formatCurrency(Number(row.amount_pending ?? Math.max(0, Number(row.amount_charged || 0) - Number(row.amount_paid || 0))), currency, privacy)}</td><td className="p-3">{statusLabel(row.payment_status)}</td><td className="p-3"><div className="flex justify-end gap-1">{row.payment_status !== "paid" && row.payment_status !== "waived" && <Button variant="outline" size="sm" onClick={() => markPaid.mutate(row)}>Marcar pago</Button>}<Button variant="ghost" size="icon" onClick={() => edit(row)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => remove.mutate(row.id)}><Trash2 className="h-4 w-4" /></Button></div></td></tr>)}</tbody>
+              <tbody>{filtered.map((row: any) => <tr key={row.id} className="border-t"><td className="p-3 font-mono">{row.usage_date}</td><td className="p-3 font-medium">{row.student_name}</td><td className="p-3"><div className="flex min-w-44 items-center gap-3">{row.photo_url ? <img src={row.photo_url} alt={`Foto de ${row.piece_name || "peça"}`} className="h-12 w-12 rounded-lg border object-cover" loading="lazy" /> : <div className="flex h-12 w-12 items-center justify-center rounded-lg border bg-muted/40 text-muted-foreground"><ImagePlus className="h-5 w-5" /></div>}<div>{row.piece_name || "—"}<div className="text-xs text-muted-foreground">{row.quantity ?? 1} un.</div></div></div></td><td className="p-3">{productionLabel(row.production_status)}</td><td className="p-3">{(kilns as any[]).find((kiln) => kiln.id === row.kiln_id)?.name || "Padrão legado"}</td><td className="p-3 text-xs">{row.clay_type || "—"}<br />{row.glaze_name || "—"}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.total_cost || 0), currency, privacy)}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.amount_charged || 0), currency, privacy)}</td><td className="p-3 text-right font-mono text-expense">{formatCurrency(Number(row.amount_pending ?? Math.max(0, Number(row.amount_charged || 0) - Number(row.amount_paid || 0))), currency, privacy)}</td><td className="p-3">{statusLabel(row.payment_status)}</td><td className="p-3"><div className="flex justify-end gap-1">{row.payment_status !== "paid" && row.payment_status !== "waived" && <Button variant="outline" size="sm" onClick={() => markPaid.mutate(row)}>Marcar pago</Button>}<Button variant="ghost" size="icon" onClick={() => edit(row)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => remove.mutate(row.id)}><Trash2 className="h-4 w-4" /></Button></div></td></tr>)}</tbody>
             </table>
           </CardContent>
         </Card>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setPhotoFile(null); }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader><DialogTitle>{editId ? "Editar peça" : "Nova peça/material"}</DialogTitle></DialogHeader>
+          <div className="rounded-xl border bg-muted/20 p-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              {photoPreviewUrl ? <img src={photoPreviewUrl} alt="Prévia da foto da peça" className="h-28 w-28 rounded-xl border bg-background object-cover" /> : <div className="flex h-28 w-28 items-center justify-center rounded-xl border border-dashed bg-background text-muted-foreground"><ImagePlus className="h-8 w-8" /></div>}
+              <div className="flex-1 space-y-2">
+                <div><Label>Foto da peça</Label><p className="mt-1 text-xs text-muted-foreground">Tire uma foto agora ou escolha uma imagem do aparelho. Máximo de 10 MB.</p></div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" asChild><label htmlFor="piece-camera" className="cursor-pointer"><Camera className="mr-1 h-4 w-4" />Tirar foto</label></Button>
+                  <Input id="piece-camera" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" capture="environment" className="hidden" onChange={(event) => { choosePhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+                  <Button type="button" variant="outline" asChild><label htmlFor="piece-upload" className="cursor-pointer"><ImagePlus className="mr-1 h-4 w-4" />Enviar arquivo</label></Button>
+                  <Input id="piece-upload" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" className="hidden" onChange={(event) => { choosePhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+                  {photoPreviewUrl && <Button type="button" variant="ghost" onClick={() => { setPhotoFile(null); setForm({ ...form, photo_path: "", photo_url: "" }); }}><X className="mr-1 h-4 w-4" />Remover</Button>}
+                </div>
+              </div>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <Field label="Data"><Input type="date" value={form.usage_date} onChange={(event) => setForm({ ...form, usage_date: event.target.value })} /></Field>
             <Field label="Aluno"><Select value={form.student_name || "none"} onValueChange={(value) => setForm({ ...form, student_name: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Selecione</SelectItem>{students.map((student: any) => <SelectItem key={student.id} value={student.name}>{student.name}</SelectItem>)}</SelectContent></Select></Field>

@@ -624,6 +624,7 @@ export type Database = {
           payment_notes: string | null
           payment_status: string
           piece_name: string | null
+          photo_path: string | null
           production_status: string
           quantity: number
           resistance_only: boolean
@@ -667,6 +668,7 @@ export type Database = {
           payment_notes?: string | null
           payment_status?: string
           piece_name?: string | null
+          photo_path?: string | null
           production_status?: string
           quantity?: number
           resistance_only?: boolean
@@ -710,6 +712,7 @@ export type Database = {
           payment_notes?: string | null
           payment_status?: string
           piece_name?: string | null
+          photo_path?: string | null
           production_status?: string
           quantity?: number
           resistance_only?: boolean
