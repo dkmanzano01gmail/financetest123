@@ -563,6 +563,7 @@ export type Database = {
           fixed_monthly_fee: number
           kiln_firing_profit_percent: number
           margin_percent: number
+          resistance_base_cost_per_firing: number
           updated_at: string
           workspace_id: string
         }
@@ -570,6 +571,7 @@ export type Database = {
           fixed_monthly_fee?: number
           kiln_firing_profit_percent?: number
           margin_percent?: number
+          resistance_base_cost_per_firing?: number
           updated_at?: string
           workspace_id: string
         }
@@ -577,6 +579,7 @@ export type Database = {
           fixed_monthly_fee?: number
           kiln_firing_profit_percent?: number
           margin_percent?: number
+          resistance_base_cost_per_firing?: number
           updated_at?: string
           workspace_id?: string
         }

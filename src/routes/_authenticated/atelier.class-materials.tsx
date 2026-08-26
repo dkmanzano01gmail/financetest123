@@ -104,6 +104,7 @@ function Page() {
     margin_percent: "0",
     fixed_monthly_fee: "600",
     kiln_firing_profit_percent: "100",
+    resistance_base_cost_per_firing: "1,50",
   });
 
   const { data: rows = [] } = useQuery({
@@ -196,6 +197,7 @@ function Page() {
         margin_percent: 0,
         fixed_monthly_fee: 600,
         kiln_firing_profit_percent: 100,
+        resistance_base_cost_per_firing: 1.5,
       };
     },
   });
@@ -205,6 +207,9 @@ function Page() {
       margin_percent: String(classSettings.margin_percent ?? 0),
       fixed_monthly_fee: String(classSettings.fixed_monthly_fee ?? 600),
       kiln_firing_profit_percent: String(classSettings.kiln_firing_profit_percent ?? 100),
+      resistance_base_cost_per_firing: String(
+        classSettings.resistance_base_cost_per_firing ?? 1.5,
+      ),
     });
   }, [classSettings]);
 
@@ -311,7 +316,7 @@ function Page() {
         ? Number(glaze.unit_cost || 0) / 1000
         : Number(glaze.unit_cost || 0)
       : 1;
-    return calculateClassPieceCost({
+    const calculated = calculateClassPieceCost({
       quantity: n(form.quantity),
       clayWeightKg: n(form.clay_weight_g) / 1000,
       clayUnitCost: clayPerKg,
@@ -329,6 +334,56 @@ function Page() {
       marginRate: Number(classSettings?.margin_percent ?? 0) / 100,
       freightRate: 0.1,
     });
+    const resistanceBasePerFiring = Math.max(
+      0,
+      Number(classSettings?.resistance_base_cost_per_firing ?? 1.5),
+    );
+    const kilnProfit = Math.max(
+      0,
+      Number(classSettings?.kiln_firing_profit_percent ?? 100) / 100,
+    );
+    const bisqueResistanceBaseAdded = form.charge_biscuit
+      ? Math.max(0, resistanceBasePerFiring - calculated.bisqueResistanceCost)
+      : 0;
+    const glazeResistanceBaseAdded = form.charge_glaze
+      ? Math.max(0, resistanceBasePerFiring - calculated.glazeResistanceCost)
+      : 0;
+    const bisqueInternalCost = calculated.bisqueInternalCost + bisqueResistanceBaseAdded;
+    const glazeInternalCost = calculated.glazeInternalCost + glazeResistanceBaseAdded;
+    const bisqueBillingCost = form.charge_biscuit
+      ? bisqueInternalCost * (1 + kilnProfit)
+      : 0;
+    const glazeBillingCost = form.charge_glaze
+      ? glazeInternalCost * (1 + kilnProfit)
+      : 0;
+    const unitBase =
+      calculated.clayCost +
+      calculated.glazeCost +
+      bisqueBillingCost +
+      glazeBillingCost +
+      calculated.otherCosts;
+    const freightCost = unitBase * calculated.freightRate;
+    const unitTotal = unitBase + freightCost;
+    const totalCost = unitTotal * calculated.quantity;
+    const chargeAmount =
+      totalCost * (1 + Math.max(0, Number(classSettings?.margin_percent ?? 0) / 100));
+    return {
+      ...calculated,
+      resistanceBasePerFiring,
+      bisqueResistanceBaseAdded,
+      glazeResistanceBaseAdded,
+      fixedResistanceBaseAdded:
+        bisqueResistanceBaseAdded + glazeResistanceBaseAdded,
+      bisqueInternalCost,
+      glazeInternalCost,
+      bisqueBillingCost,
+      glazeBillingCost,
+      unitBase,
+      freightCost,
+      unitTotal,
+      totalCost,
+      chargeAmount,
+    };
   }, [form, materials, selectedKiln, classSettings]);
 
   const totals = useMemo(
@@ -594,11 +649,18 @@ function Page() {
   });
   const saveSettings = useMutation({
     mutationFn: async () => {
+      const resistanceBaseCost = n(
+        settingsForm.resistance_base_cost_per_firing,
+      );
+      if (resistanceBaseCost < 0) {
+        throw new Error("O custo base de resistências não pode ser negativo.");
+      }
       const { error } = await sb.from("class_material_settings").upsert({
         workspace_id: wsId,
         margin_percent: n(settingsForm.margin_percent),
         fixed_monthly_fee: n(settingsForm.fixed_monthly_fee),
         kiln_firing_profit_percent: n(settingsForm.kiln_firing_profit_percent),
+        resistance_base_cost_per_firing: resistanceBaseCost,
       });
       if (error) throw error;
     },
@@ -808,6 +870,7 @@ function Page() {
               <p><strong className="text-foreground">Esmalte — resistência:</strong> {formatCurrency(calculation.glazeProfile.resistanceCost, currency, privacy)} ÷ {calculation.glazeProfile.resistanceBurns} queimas × ocupação = {formatCurrency(calculation.glazeResistanceCost, currency, privacy)}.</p>
               {!calculation.resistanceOnly && <p><strong className="text-foreground">Modo completo:</strong> soma energia ({formatCurrency(calculation.bisqueEnergyCost + calculation.glazeEnergyCost, currency, privacy)}), resistências e buffer ({formatCurrency(calculation.bisqueBufferCost + calculation.glazeBufferCost, currency, privacy)}).</p>}
               {calculation.resistanceOnly && <p><strong className="text-foreground">Modo selecionado:</strong> somente a parcela das resistências entra na base das queimas; energia e buffer são R$ 0,00 para esta cobrança.</p>}
+              <p><strong className="text-foreground">Piso de resistências:</strong> cada queima cobrada inclui pelo menos {formatCurrency(calculation.resistanceBasePerFiring, currency, privacy)} por peça, independentemente das dimensões. Complemento aplicado nesta peça: {formatCurrency(calculation.fixedResistanceBaseAdded, currency, privacy)}.</p>
               <p><strong className="text-foreground">Cobrança das queimas:</strong> custo selecionado × (1 + {Number(classSettings?.kiln_firing_profit_percent ?? 100).toFixed(0)}%). <strong className="text-foreground">Frete:</strong> base da peça × 10% = {formatCurrency(calculation.freightCost, currency, privacy)} por unidade.</p>
             </CardContent>
           </Card>
@@ -824,7 +887,7 @@ function Page() {
       </Dialog>
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Parâmetros de cobrança</DialogTitle></DialogHeader><div className="space-y-3"><Field label="Margem sobre materiais (%)"><Input value={settingsForm.margin_percent} onChange={(event) => setSettingsForm({ ...settingsForm, margin_percent: event.target.value })} /></Field><Field label="Mensalidade padrão"><Input value={settingsForm.fixed_monthly_fee} onChange={(event) => setSettingsForm({ ...settingsForm, fixed_monthly_fee: event.target.value })} /></Field><Field label="Lucro sobre as queimas (%)"><Input value={settingsForm.kiln_firing_profit_percent} onChange={(event) => setSettingsForm({ ...settingsForm, kiln_firing_profit_percent: event.target.value })} /></Field></div><DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>Cancelar</Button><Button onClick={() => saveSettings.mutate()}>Salvar</Button></DialogFooter></DialogContent>
+        <DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Parâmetros de cobrança</DialogTitle></DialogHeader><div className="space-y-3"><Field label="Margem sobre materiais (%)"><Input value={settingsForm.margin_percent} onChange={(event) => setSettingsForm({ ...settingsForm, margin_percent: event.target.value })} /></Field><Field label="Mensalidade padrão"><Input value={settingsForm.fixed_monthly_fee} onChange={(event) => setSettingsForm({ ...settingsForm, fixed_monthly_fee: event.target.value })} /></Field><Field label="Lucro sobre as queimas (%)"><Input value={settingsForm.kiln_firing_profit_percent} onChange={(event) => setSettingsForm({ ...settingsForm, kiln_firing_profit_percent: event.target.value })} /></Field><Field label="Custo base de resistências por peça/queima"><Input inputMode="decimal" value={settingsForm.resistance_base_cost_per_firing} onChange={(event) => setSettingsForm({ ...settingsForm, resistance_base_cost_per_firing: event.target.value })} /><p className="text-xs text-muted-foreground">Piso aplicado em cada queima cobrada, mesmo para peças pequenas. Padrão: R$ 1,50.</p></Field></div><DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>Cancelar</Button><Button onClick={() => saveSettings.mutate()}>Salvar</Button></DialogFooter></DialogContent>
       </Dialog>
     </PageContainer>
   );
