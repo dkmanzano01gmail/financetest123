@@ -44,7 +44,7 @@ const empty = () => ({
   production_status: "in_progress",
   completed_at: "",
   quantity: "1",
-  clay_weight_kg: "0",
+  clay_weight_g: "0",
   clay_type: "",
   length_cm: "0",
   depth_cm: "0",
@@ -313,7 +313,7 @@ function Page() {
       : 1;
     return calculateClassPieceCost({
       quantity: n(form.quantity),
-      clayWeightKg: n(form.clay_weight_kg),
+      clayWeightKg: n(form.clay_weight_g) / 1000,
       clayUnitCost: clayPerKg,
       glazeAmount: n(form.glaze_quantity),
       glazeUnitCost: glazePerGram,
@@ -474,6 +474,8 @@ function Page() {
       if (!form.student_name) throw new Error("Selecione o aluno.");
       if (!form.piece_name.trim()) throw new Error("Informe o nome da peça.");
       if ((kilns as any[]).length > 0 && !selectedKiln?.id) throw new Error("Selecione o forno.");
+      const clayWeightGrams = n(form.clay_weight_g);
+      if (clayWeightGrams < 0) throw new Error("A quantidade de argila não pode ser negativa.");
       const chargedInput = form.amount_charged.trim() ? parseLocaleAmount(form.amount_charged) : calculation.chargeAmount;
       if (!Number.isFinite(chargedInput) || chargedInput < 0) throw new Error("Valor cobrado inválido.");
       const paidInput = form.payment_status === "paid"
@@ -509,8 +511,8 @@ function Page() {
             : null,
         quantity: Math.max(1, Math.round(n(form.quantity))),
         material: form.clay_type || form.glaze_name || "Peça cerâmica",
-        grams: n(form.clay_weight_kg) * 1000,
-        clay_weight_kg: n(form.clay_weight_kg),
+        grams: clayWeightGrams,
+        clay_weight_kg: clayWeightGrams / 1000,
         clay_type: form.clay_type || null,
         clay_cost: calculation.clayCost,
         length_cm: n(form.length_cm),
@@ -619,7 +621,11 @@ function Page() {
       production_status: row.production_status ?? "in_progress",
       completed_at: row.completed_at ?? "",
       quantity: String(row.quantity ?? 1),
-      clay_weight_kg: String(row.clay_weight_kg ?? Number(row.grams || 0) / 1000),
+      clay_weight_g: String(
+        row.grams != null
+          ? Number(row.grams || 0)
+          : Number(row.clay_weight_kg || 0) * 1000,
+      ),
       clay_type: row.clay_type ?? row.material ?? "",
       length_cm: String(row.length_cm ?? 0),
       depth_cm: String(row.depth_cm ?? 0),
@@ -772,7 +778,7 @@ function Page() {
             <Field label="Forno"><Select value={form.kiln_id || selectedKiln?.id || "legacy"} onValueChange={(value) => setForm({ ...form, kiln_id: value === "legacy" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(kilns as any[]).length === 0 && <SelectItem value="legacy">Parâmetros antigos</SelectItem>}{(kilns as any[]).map((kiln) => <SelectItem key={kiln.id} value={kiln.id}>{kiln.name}{kiln.is_default ? " · padrão" : ""}</SelectItem>)}</SelectContent></Select></Field>
             {["completed", "delivered"].includes(form.production_status) && <Field label="Data de conclusão"><Input type="date" value={form.completed_at} onChange={(event) => setForm({ ...form, completed_at: event.target.value })} /></Field>}
             <Field label="Quantidade"><Input type="number" min={1} value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></Field>
-            <Field label="Argila (kg)"><Input inputMode="decimal" value={form.clay_weight_kg} onChange={(event) => setForm({ ...form, clay_weight_kg: event.target.value })} /></Field>
+            <Field label="Argila utilizada (gramas)"><Input type="number" min={0} step={1} inputMode="numeric" value={form.clay_weight_g} onChange={(event) => setForm({ ...form, clay_weight_g: event.target.value })} /></Field>
             <Field label="Tipo de argila"><Select value={form.clay_type || "none"} onValueChange={(value) => setForm({ ...form, clay_type: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Selecione</SelectItem>{clayMaterials.map((material: any) => <SelectItem key={material.id} value={material.name}>{material.name}</SelectItem>)}</SelectContent></Select></Field>
             <Field label="Comprimento (cm)"><Input value={form.length_cm} onChange={(event) => setForm({ ...form, length_cm: event.target.value })} /></Field>
             <Field label="Profundidade (cm)"><Input value={form.depth_cm} onChange={(event) => setForm({ ...form, depth_cm: event.target.value })} /></Field>
