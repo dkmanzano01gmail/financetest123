@@ -796,6 +796,7 @@ function Page() {
                 setReportPhotosByStudent((current) => ({ ...current, [item.student]: includePhotos }))
               }
               onPrint={() => setPrintStudent(item.student)}
+              onEdit={edit}
             />
           ))}
         </section>
@@ -902,6 +903,7 @@ function StudentStatement({
   includePhotos,
   onIncludePhotosChange,
   onPrint,
+  onEdit,
 }: {
   item: any;
   period: string;
@@ -911,6 +913,7 @@ function StudentStatement({
   includePhotos: boolean;
   onIncludePhotosChange: (includePhotos: boolean) => void;
   onPrint: () => void;
+  onEdit: (piece: any) => void;
 }) {
   const photoCount = item.pieces.filter((piece: any) => Boolean(piece.photo_url)).length;
   return (
@@ -987,9 +990,20 @@ function StudentStatement({
                       <p className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {piece.quantity} {piece.quantity === 1 ? "unidade" : "unidades"} · {Number(piece.clay_weight_kg || 0) * 1000} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs text-muted-foreground">Custo calculado por peça</div>
-                    <div className="font-mono text-xl font-bold text-primary">{formatCurrency(unitCalculated, currency, privacy)}</div>
+                  <div className="flex items-start gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      data-print-hide="true"
+                      onClick={() => onEdit(piece)}
+                    >
+                      <Pencil className="mr-1 h-4 w-4" />Editar
+                    </Button>
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground">Custo calculado por peça</div>
+                      <div className="font-mono text-xl font-bold text-primary">{formatCurrency(unitCalculated, currency, privacy)}</div>
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-5 gap-y-2 py-3 text-sm md:grid-cols-5">
