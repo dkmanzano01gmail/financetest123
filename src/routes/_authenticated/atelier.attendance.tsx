@@ -400,13 +400,15 @@ function Page() {
         }
       }
 
-      const selectedStudent = students.find((student) => student.name === form.student_name);
+      const matchingStudents = students.filter((student) => student.name === form.student_name);
+      const selectedStudent = matchingStudents.length === 1 ? matchingStudents[0] : undefined;
       const payload = {
         workspace_id: wsId,
         session_date: form.session_date,
         weekday: form.weekday,
         session_time: form.session_time || null,
         student_name: form.student_name.trim(),
+        student_id: selectedStudent?.id ?? null,
         class_name: form.class_name || selectedStudent?.class_name || null,
         record_type: form.record_type,
         status: form.status,
@@ -470,12 +472,15 @@ function Page() {
       const confirmedAt = new Date().toISOString();
 
       selected.forEach((row) => {
+        const matchingStudents = students.filter((student) => student.name === row.studentName);
+        const selectedStudent = matchingStudents.length === 1 ? matchingStudents[0] : undefined;
         const payload = {
           workspace_id: wsId,
           session_date: row.date,
           weekday: weekdayFromDate(row.date),
           session_time: null,
           student_name: row.studentName,
+          student_id: selectedStudent?.id ?? null,
           class_name: row.className || null,
           record_type: "class",
           status: row.status,

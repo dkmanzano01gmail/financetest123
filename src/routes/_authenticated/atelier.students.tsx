@@ -46,6 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { sendStudentPortalInvite, revokeStudentPortalAccess } from "@/lib/student-portal.functions";
 
 export const Route = createFileRoute("/_authenticated/atelier/students")({ component: Page });
 
@@ -65,6 +66,7 @@ const emptyStudent = () => ({
   photo_url: "",
   is_active: true,
   notes: "",
+  email: "",
 });
 const emptyPayment = () => ({
   payment_date: new Date().toISOString().slice(0, 10),
@@ -144,6 +146,17 @@ function Page() {
         .select("*")
         .eq("workspace_id", wsId)
         .order("payment_date", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const { data: portalAccess = [] } = useQuery({
+    queryKey: ["student_portal_access", wsId],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await sb.from("student_portal_access")
+        .select("id,student_id,invited_email,status,invited_at,expires_at,accepted_at,revoked_at")
+        .eq("workspace_id", wsId);
       if (error) throw error;
       return data ?? [];
     },
@@ -302,6 +315,7 @@ function Page() {
         photo_url: photoUrl,
         is_active: form.is_active,
         notes: form.notes.trim() || null,
+        email: form.email.trim().toLowerCase() || null,
       };
       if (editId) {
         const { data, error } = await sb
@@ -377,9 +391,30 @@ function Page() {
       photo_url: student.photo_url ?? "",
       is_active: !!student.is_active,
       notes: student.notes ?? "",
+      email: student.email ?? "",
     });
     setOpen(true);
   }
+
+  const portalInvite = useMutation({
+    mutationFn: async () => {
+      if (!wsId || !selectedId) throw new Error("Aluno não selecionado.");
+      const inviteEmail = String(selected?.email || "").trim();
+      if (!inviteEmail) throw new Error("Cadastre o e-mail do aluno antes de enviar o convite.");
+      return sendStudentPortalInvite({ data: { workspaceId: wsId, studentId: selectedId, email: inviteEmail } });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["student_portal_access"] }); toast.success("Convite enviado por e-mail"); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const portalRevoke = useMutation({
+    mutationFn: async () => {
+      if (!wsId || !selectedId) throw new Error("Aluno não selecionado.");
+      return revokeStudentPortalAccess({ data: { workspaceId: wsId, studentId: selectedId } });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["student_portal_access"] }); toast.success("Acesso revogado sem apagar dados"); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const selectedPortal = (portalAccess as any[]).find((item) => item.student_id === selectedId);
 
   return (
     <PageContainer>
@@ -566,6 +601,7 @@ function Page() {
             <Field label="Data de início"><Input type="date" value={form.enrollment_date} onChange={(event) => setForm({ ...form, enrollment_date: event.target.value })} /></Field>
             <Field label="Mensalidade"><Input inputMode="decimal" value={form.monthly_fee} onChange={(event) => setForm({ ...form, monthly_fee: event.target.value })} /></Field>
             <Field label="Celular"><Input type="tel" placeholder="(11) 99999-9999" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
+            <Field label="E-mail do portal"><Input type="email" placeholder="aluno@email.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
             <Field label="Instagram"><Input placeholder="@usuario" value={form.instagram} onChange={(event) => setForm({ ...form, instagram: event.target.value })} /></Field>
             <div className="sm:col-span-2"><Field label="Outra rede social / site"><Input type="url" placeholder="https://..." value={form.social_link} onChange={(event) => setForm({ ...form, social_link: event.target.value })} /></Field></div>
             <div className="sm:col-span-2"><Field label="Notas"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field></div>
@@ -592,6 +628,17 @@ function Page() {
               </div>
               <PeriodMetrics title="Desde o início" metrics={selectedLifetime} currency={currency} privacy={privacy} />
               <PeriodMetrics title={`${monthLabel(month)} de ${year}`} metrics={selectedMonth} currency={currency} privacy={privacy} />
+              <div className="rounded-lg border p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div><div className="font-medium">Portal do aluno</div><div className="text-xs text-muted-foreground">{selected.email || "E-mail não cadastrado"}</div></div>
+                  <Badge variant={selectedPortal?.status === "ativo" ? "default" : "secondary"}>{portalStatus(selectedPortal)}</Badge>
+                </div>
+                {selectedPortal && <div className="mt-2 text-xs text-muted-foreground">Convite: {formatDate(selectedPortal.invited_at)}{selectedPortal.accepted_at ? ` · Ativado: ${formatDate(selectedPortal.accepted_at)}` : ""}</div>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => portalInvite.mutate()} disabled={portalInvite.isPending || !selected.email}>{selectedPortal ? "Reenviar convite" : "Enviar convite"}</Button>
+                  {selectedPortal && selectedPortal.status !== "revogado" && <Button size="sm" variant="outline" onClick={() => portalRevoke.mutate()} disabled={portalRevoke.isPending}>Revogar acesso</Button>}
+                </div>
+              </div>
               <div className="rounded-lg border">
                 <div className="flex items-center justify-between border-b p-3">
                   <div><div className="font-medium">Pagamentos registrados</div><div className="text-xs text-muted-foreground">Mensalidades e outros pagamentos do aluno. Materiais são calculados automaticamente pelas peças.</div></div>
@@ -667,4 +714,9 @@ function formatDate(value?: string | null) {
 }
 function paymentTypeLabel(value: string) {
   return value === "tuition" ? "Mensalidade" : value === "material" ? "Material avulso" : "Outro";
+}
+function portalStatus(access?: any) {
+  if (!access) return "Não convidado";
+  if (access.status === "convite_pendente" && access.expires_at && new Date(access.expires_at) < new Date()) return "Expirado";
+  return access.status === "ativo" ? "Ativo" : access.status === "revogado" ? "Revogado" : "Convite pendente";
 }

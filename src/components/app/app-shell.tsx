@@ -64,6 +64,8 @@ import {
 } from "@/components/ui/sheet";
 import { ProductTour } from "@/components/app/product-tour";
 import { QuickFeedbackButton } from "@/components/app/quick-feedback-button";
+import { useStudentPortalAccess } from "@/hooks/use-student-portal";
+import { StudentPortalShell } from "@/components/app/student-portal-shell";
 
 const baseNavDef = [
   { to: "/dashboard", icon: LayoutDashboard, key: "nav.dashboard", label: "Dashboard" },
@@ -161,6 +163,7 @@ export function AppShell() {
   const { data: isSuperAdmin } = useIsSuperAdmin();
   const { data: labels } = useLabelOverrides(workspace?.id);
   const { hiddenNav, navOrder } = useCustomizedUI(workspace?.id);
+  const { data: studentPortal, isLoading: studentPortalLoading } = useStudentPortalAccess();
   const isAtelierWorkspace = workspace?.is_atelier === true;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () =>
@@ -220,6 +223,12 @@ export function AppShell() {
       navigate({ to: "/onboarding" });
     }
   }, [loading, workspaces.length, pathname, navigate]);
+
+  useEffect(() => {
+    if (studentPortal && !pathname.startsWith("/student")) {
+      navigate({ to: "/student", replace: true });
+    }
+  }, [navigate, pathname, studentPortal]);
 
   async function signOut() {
     if (isSigningOut) return;
@@ -312,6 +321,8 @@ export function AppShell() {
     );
   }
 
+  if (studentPortalLoading) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  if (studentPortal) return <StudentPortalShell access={studentPortal} />;
   if (pathname === "/onboarding") return <Outlet />;
 
   return (
