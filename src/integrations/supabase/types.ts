@@ -599,6 +599,7 @@ export type Database = {
           amount_paid: number
           amount_pending: number
           biscuit_firing_cost: number
+          bisque_weight_g: number | null
           charge_biscuit: boolean
           charge_glaze: boolean
           clay_cost: number
@@ -615,6 +616,7 @@ export type Database = {
           glaze_firing_cost: number
           glaze_name: string | null
           glaze_quantity: number
+          glazed_weight_g: number | null
           grams: number
           height_cm: number
           id: string
@@ -622,6 +624,7 @@ export type Database = {
           legacy_source_id: string | null
           length_cm: number
           material: string
+          modeled_weight_g: number | null
           other_cost: number
           payment_date: string | null
           payment_notes: string | null
@@ -643,6 +646,7 @@ export type Database = {
           amount_paid?: number
           amount_pending?: number
           biscuit_firing_cost?: number
+          bisque_weight_g?: number | null
           charge_biscuit?: boolean
           charge_glaze?: boolean
           clay_cost?: number
@@ -659,6 +663,7 @@ export type Database = {
           glaze_firing_cost?: number
           glaze_name?: string | null
           glaze_quantity?: number
+          glazed_weight_g?: number | null
           grams?: number
           height_cm?: number
           id?: string
@@ -666,6 +671,7 @@ export type Database = {
           legacy_source_id?: string | null
           length_cm?: number
           material: string
+          modeled_weight_g?: number | null
           other_cost?: number
           payment_date?: string | null
           payment_notes?: string | null
@@ -687,6 +693,7 @@ export type Database = {
           amount_paid?: number
           amount_pending?: number
           biscuit_firing_cost?: number
+          bisque_weight_g?: number | null
           charge_biscuit?: boolean
           charge_glaze?: boolean
           clay_cost?: number
@@ -703,6 +710,7 @@ export type Database = {
           glaze_firing_cost?: number
           glaze_name?: string | null
           glaze_quantity?: number
+          glazed_weight_g?: number | null
           grams?: number
           height_cm?: number
           id?: string
@@ -710,6 +718,7 @@ export type Database = {
           legacy_source_id?: string | null
           length_cm?: number
           material?: string
+          modeled_weight_g?: number | null
           other_cost?: number
           payment_date?: string | null
           payment_notes?: string | null

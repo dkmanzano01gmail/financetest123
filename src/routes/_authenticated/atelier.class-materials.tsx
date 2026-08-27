@@ -44,7 +44,9 @@ const empty = () => ({
   production_status: "in_progress",
   completed_at: "",
   quantity: "1",
-  clay_weight_g: "0",
+  modeled_weight_g: "0",
+  bisque_weight_g: "",
+  glazed_weight_g: "",
   clay_type: "",
   length_cm: "0",
   depth_cm: "0",
@@ -316,11 +318,16 @@ function Page() {
         ? Number(glaze.unit_cost || 0) / 1000
         : Number(glaze.unit_cost || 0)
       : 1;
+    const hasStageWeights =
+      form.bisque_weight_g.trim() !== "" && form.glazed_weight_g.trim() !== "";
+    const glazeWeightGrams = hasStageWeights
+      ? Math.max(0, n(form.glazed_weight_g) - n(form.bisque_weight_g))
+      : n(form.glaze_quantity);
     const calculated = calculateClassPieceCost({
       quantity: n(form.quantity),
-      clayWeightKg: n(form.clay_weight_g) / 1000,
+      clayWeightKg: n(form.modeled_weight_g) / 1000,
       clayUnitCost: clayPerKg,
-      glazeAmount: n(form.glaze_quantity),
+      glazeAmount: glazeWeightGrams,
       glazeUnitCost: glazePerGram,
       lengthCm: n(form.length_cm),
       depthCm: n(form.depth_cm),
@@ -369,6 +376,8 @@ function Page() {
       totalCost * (1 + Math.max(0, Number(classSettings?.margin_percent ?? 0) / 100));
     return {
       ...calculated,
+      glazeWeightGrams,
+      hasStageWeights,
       resistanceBasePerFiring,
       bisqueResistanceBaseAdded,
       glazeResistanceBaseAdded,
@@ -529,8 +538,15 @@ function Page() {
       if (!form.student_name) throw new Error("Selecione o aluno.");
       if (!form.piece_name.trim()) throw new Error("Informe o nome da peça.");
       if ((kilns as any[]).length > 0 && !selectedKiln?.id) throw new Error("Selecione o forno.");
-      const clayWeightGrams = n(form.clay_weight_g);
-      if (clayWeightGrams < 0) throw new Error("A quantidade de argila não pode ser negativa.");
+      const modeledWeightGrams = n(form.modeled_weight_g);
+      const bisqueWeightGrams = form.bisque_weight_g.trim() === "" ? null : n(form.bisque_weight_g);
+      const glazedWeightGrams = form.glazed_weight_g.trim() === "" ? null : n(form.glazed_weight_g);
+      if (modeledWeightGrams < 0 || (bisqueWeightGrams != null && bisqueWeightGrams < 0) || (glazedWeightGrams != null && glazedWeightGrams < 0)) {
+        throw new Error("Os pesos da peça não podem ser negativos.");
+      }
+      if (bisqueWeightGrams != null && glazedWeightGrams != null && glazedWeightGrams < bisqueWeightGrams) {
+        throw new Error("O peso após a esmaltação deve ser igual ou maior que o peso após o biscoito.");
+      }
       const chargedInput = form.amount_charged.trim() ? parseLocaleAmount(form.amount_charged) : calculation.chargeAmount;
       if (!Number.isFinite(chargedInput) || chargedInput < 0) throw new Error("Valor cobrado inválido.");
       const paidInput = form.payment_status === "paid"
@@ -566,8 +582,11 @@ function Page() {
             : null,
         quantity: Math.max(1, Math.round(n(form.quantity))),
         material: form.clay_type || form.glaze_name || "Peça cerâmica",
-        grams: clayWeightGrams,
-        clay_weight_kg: clayWeightGrams / 1000,
+        grams: modeledWeightGrams,
+        clay_weight_kg: modeledWeightGrams / 1000,
+        modeled_weight_g: modeledWeightGrams,
+        bisque_weight_g: bisqueWeightGrams,
+        glazed_weight_g: glazedWeightGrams,
         clay_type: form.clay_type || null,
         clay_cost: calculation.clayCost,
         length_cm: n(form.length_cm),
@@ -575,7 +594,7 @@ function Page() {
         height_cm: n(form.height_cm),
         glaze_cone: form.glaze_cone || null,
         glaze_name: form.glaze_name || null,
-        glaze_quantity: n(form.glaze_quantity),
+        glaze_quantity: calculation.glazeWeightGrams,
         glaze_cost: calculation.glazeCost,
         biscuit_firing_cost: calculation.bisqueBillingCost,
         glaze_firing_cost: calculation.glazeBillingCost,
@@ -683,11 +702,15 @@ function Page() {
       production_status: row.production_status ?? "in_progress",
       completed_at: row.completed_at ?? "",
       quantity: String(row.quantity ?? 1),
-      clay_weight_g: String(
-        row.grams != null
+      modeled_weight_g: String(
+        row.modeled_weight_g != null
+          ? Number(row.modeled_weight_g || 0)
+          : row.grams != null
           ? Number(row.grams || 0)
           : Number(row.clay_weight_kg || 0) * 1000,
       ),
+      bisque_weight_g: row.bisque_weight_g == null ? "" : String(row.bisque_weight_g),
+      glazed_weight_g: row.glazed_weight_g == null ? "" : String(row.glazed_weight_g),
       clay_type: row.clay_type ?? row.material ?? "",
       length_cm: String(row.length_cm ?? 0),
       depth_cm: String(row.depth_cm ?? 0),
@@ -841,14 +864,16 @@ function Page() {
             <Field label="Forno"><Select value={form.kiln_id || selectedKiln?.id || "legacy"} onValueChange={(value) => setForm({ ...form, kiln_id: value === "legacy" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(kilns as any[]).length === 0 && <SelectItem value="legacy">Parâmetros antigos</SelectItem>}{(kilns as any[]).map((kiln) => <SelectItem key={kiln.id} value={kiln.id}>{kiln.name}{kiln.is_default ? " · padrão" : ""}</SelectItem>)}</SelectContent></Select></Field>
             {["completed", "delivered"].includes(form.production_status) && <Field label="Data de conclusão"><Input type="date" value={form.completed_at} onChange={(event) => setForm({ ...form, completed_at: event.target.value })} /></Field>}
             <Field label="Quantidade"><Input type="number" min={1} value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></Field>
-            <Field label="Argila utilizada (gramas)"><Input type="number" min={0} step={1} inputMode="numeric" value={form.clay_weight_g} onChange={(event) => setForm({ ...form, clay_weight_g: event.target.value })} /></Field>
+            <Field label="Peso após modelagem (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" value={form.modeled_weight_g} onChange={(event) => setForm({ ...form, modeled_weight_g: event.target.value })} /></Field>
+            <Field label="Peso após queima biscoito (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" placeholder="Pesar após o biscoito" value={form.bisque_weight_g} onChange={(event) => setForm({ ...form, bisque_weight_g: event.target.value })} /></Field>
+            <Field label="Peso após esmaltação (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" placeholder="Pesar após esmaltar" value={form.glazed_weight_g} onChange={(event) => setForm({ ...form, glazed_weight_g: event.target.value })} /></Field>
             <Field label="Tipo de argila"><Select value={form.clay_type || "none"} onValueChange={(value) => setForm({ ...form, clay_type: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Selecione</SelectItem>{clayMaterials.map((material: any) => <SelectItem key={material.id} value={material.name}>{material.name}</SelectItem>)}</SelectContent></Select></Field>
             <Field label="Comprimento (cm)"><Input value={form.length_cm} onChange={(event) => setForm({ ...form, length_cm: event.target.value })} /></Field>
             <Field label="Profundidade (cm)"><Input value={form.depth_cm} onChange={(event) => setForm({ ...form, depth_cm: event.target.value })} /></Field>
             <Field label="Altura (cm)"><Input value={form.height_cm} onChange={(event) => setForm({ ...form, height_cm: event.target.value })} /></Field>
             <Field label="Cone do esmalte"><Input value={form.glaze_cone} onChange={(event) => setForm({ ...form, glaze_cone: event.target.value })} /></Field>
             <Field label="Esmalte"><Select value={form.glaze_name || "none"} onValueChange={(value) => setForm({ ...form, glaze_name: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Selecione</SelectItem>{glazeMaterials.map((material: any) => <SelectItem key={material.id} value={material.name}>{material.name}</SelectItem>)}</SelectContent></Select></Field>
-            <Field label="Quantidade de esmalte"><Input inputMode="decimal" value={form.glaze_quantity} onChange={(event) => setForm({ ...form, glaze_quantity: event.target.value })} /></Field>
+            <Field label="Esmalte utilizado (g)"><Input value={calculation.glazeWeightGrams.toFixed(2)} readOnly aria-readonly="true" /><p className="text-xs text-muted-foreground">{calculation.hasStageWeights ? "Calculado pelo peso após esmaltação menos o peso após biscoito." : "Informe os dois pesos finais para calcular automaticamente. Registros antigos mantêm a quantidade já salva."}</p></Field>
             <Field label="Outros custos"><Input inputMode="decimal" value={form.other_cost} onChange={(event) => setForm({ ...form, other_cost: event.target.value })} /></Field>
             <div className="flex items-center gap-2 pt-6"><Switch checked={form.charge_biscuit} onCheckedChange={(value) => setForm({ ...form, charge_biscuit: value })} /><Label>Cobrar biscoito</Label></div>
             <div className="flex items-center gap-2 pt-6"><Switch checked={form.charge_glaze} onCheckedChange={(value) => setForm({ ...form, charge_glaze: value })} /><Label>Cobrar esmaltação</Label></div>
@@ -867,6 +892,7 @@ function Page() {
             <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm"><Calculator className="h-4 w-4" />Memória de cálculo auditável</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-xs text-muted-foreground">
               <p><strong className="text-foreground">Ocupação:</strong> área elíptica da peça com 1 cm de folga em cada lado ÷ área útil do forno = {(calculation.kilnUsePercent * 100).toFixed(3)}%.</p>
+              <p><strong className="text-foreground">Materiais por peso:</strong> a argila usa {n(form.modeled_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g após a modelagem. {calculation.hasStageWeights ? `O esmalte usa ${n(form.glazed_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g − ${n(form.bisque_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g = ${calculation.glazeWeightGrams.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g.` : "O esmalte será recalculado quando os pesos pós-biscoito e pós-esmaltação forem informados."}</p>
               <p><strong className="text-foreground">Biscoito — resistência:</strong> {formatCurrency(calculation.bisqueProfile.resistanceCost, currency, privacy)} ÷ {calculation.bisqueProfile.resistanceBurns} queimas × ocupação = {formatCurrency(calculation.bisqueResistanceCost, currency, privacy)}.</p>
               <p><strong className="text-foreground">Esmalte — resistência:</strong> {formatCurrency(calculation.glazeProfile.resistanceCost, currency, privacy)} ÷ {calculation.glazeProfile.resistanceBurns} queimas × ocupação = {formatCurrency(calculation.glazeResistanceCost, currency, privacy)}.</p>
               {!calculation.resistanceOnly && <p><strong className="text-foreground">Modo completo:</strong> soma energia ({formatCurrency(calculation.bisqueEnergyCost + calculation.glazeEnergyCost, currency, privacy)}), resistências e buffer ({formatCurrency(calculation.bisqueBufferCost + calculation.glazeBufferCost, currency, privacy)}).</p>}
@@ -969,6 +995,9 @@ function StudentStatement({
         <div className="space-y-3">
           {item.pieces.map((piece: any) => {
             const unitCalculated = piece.calculated / piece.quantity;
+            const modeledWeight = Number(
+              piece.modeled_weight_g ?? piece.grams ?? Number(piece.clay_weight_kg || 0) * 1000,
+            );
             return (
               <div key={piece.id} className="break-inside-avoid rounded-xl border bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
@@ -987,7 +1016,8 @@ function StudentStatement({
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${piece.payment_status === "paid" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}>{statusLabel(piece.payment_status)}</span>
                         {piece.resistance_only && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Somente resistências</span>}
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {piece.quantity} {piece.quantity === 1 ? "unidade" : "unidades"} · {Number(piece.clay_weight_kg || 0) * 1000} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {piece.quantity} {piece.quantity === 1 ? "unidade" : "unidades"} · {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Pesos — modelagem: {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g · biscoito: {piece.bisque_weight_g == null ? "—" : `${Number(piece.bisque_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g`} · após esmaltação: {piece.glazed_weight_g == null ? "—" : `${Number(piece.glazed_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g`} · esmalte: {Number(piece.glaze_quantity || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
