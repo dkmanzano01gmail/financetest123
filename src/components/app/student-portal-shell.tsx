@@ -7,6 +7,7 @@ import {
   WalletCards,
   UserRound,
   LogOut,
+  ArrowLeft,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { StudentPortalAccess } from "@/hooks/use-student-portal";
@@ -25,6 +26,10 @@ export function StudentPortalShell({ access }: { access: StudentPortalAccess }) 
   async function signOut() {
     await supabase.auth.signOut({ scope: "local" });
     window.location.replace("/auth");
+  }
+  function leavePreview() {
+    window.sessionStorage.removeItem("student-portal-preview");
+    window.location.replace("/atelier/students");
   }
   return (
     <div className="min-h-screen bg-background md:flex">
@@ -54,21 +59,32 @@ export function StudentPortalShell({ access }: { access: StudentPortalAccess }) 
           })}
         </nav>
         <button
-          onClick={signOut}
+          onClick={access.is_preview ? leavePreview : signOut}
           className="m-3 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-sidebar-accent"
         >
-          <LogOut className="h-4 w-4" />
-          Sair
+          {access.is_preview ? <ArrowLeft className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
+          {access.is_preview ? "Voltar ao administrativo" : "Sair"}
         </button>
       </aside>
       <div className="min-w-0 flex-1 pb-20 md:pb-0">
+        {access.is_preview && (
+          <div className="flex items-center justify-between gap-3 bg-primary px-4 py-2 text-sm text-primary-foreground">
+            <span>Visualização administrativa · {access.student_name}</span>
+            <button onClick={leavePreview} className="font-medium underline underline-offset-2">
+              Sair da visualização
+            </button>
+          </div>
+        )}
         <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-background/95 px-4 py-3 backdrop-blur md:hidden">
           <div>
             <div className="font-display font-semibold">Portal do aluno</div>
             <div className="text-xs text-muted-foreground">{access.workspace_name}</div>
           </div>
-          <button onClick={signOut} aria-label="Sair">
-            <LogOut className="h-5 w-5" />
+          <button
+            onClick={access.is_preview ? leavePreview : signOut}
+            aria-label={access.is_preview ? "Voltar ao administrativo" : "Sair"}
+          >
+            {access.is_preview ? <ArrowLeft className="h-5 w-5" /> : <LogOut className="h-5 w-5" />}
           </button>
         </header>
         <Outlet />

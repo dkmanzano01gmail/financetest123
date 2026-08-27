@@ -635,6 +635,19 @@ function Page() {
                 </div>
                 {selectedPortal && <div className="mt-2 text-xs text-muted-foreground">Convite: {formatDate(selectedPortal.invited_at)}{selectedPortal.accepted_at ? ` · Ativado: ${formatDate(selectedPortal.accepted_at)}` : ""}</div>}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      window.open(
+                        `/student?previewStudentId=${encodeURIComponent(selected.id)}`,
+                        "_blank",
+                        "noopener,noreferrer",
+                      )
+                    }
+                  >
+                    <ExternalLink className="mr-1 h-4 w-4" />Visualizar como aluno
+                  </Button>
                   <Button size="sm" onClick={() => portalInvite.mutate()} disabled={portalInvite.isPending || !selected.email}>{selectedPortal ? "Reenviar convite" : "Enviar convite"}</Button>
                   {selectedPortal && selectedPortal.status !== "revogado" && <Button size="sm" variant="outline" onClick={() => portalRevoke.mutate()} disabled={portalRevoke.isPending}>Revogar acesso</Button>}
                 </div>
