@@ -319,7 +319,7 @@ function ImportPage() {
     setPrepared(items);
     const dupCount = items.filter((p) => p.duplicate || p.duplicateInBatch).length;
     toast.success(
-      `Prévia gerada: ${items.length} linhas · ${dupCount} duplicadas excluídas da importação`,
+      `Prévia gerada: ${items.length} linhas · ${dupCount} possíveis duplicatas desmarcadas`,
     );
   }
 
@@ -365,7 +365,10 @@ function ImportPage() {
         credit_card_id: target === "credit_card" ? targetId : null,
         invoice_month: target === "credit_card" ? p.invoiceMonth : null,
         source: "csv",
-        import_hash: p.hash,
+        import_hash:
+          p.duplicate || p.duplicateInBatch
+            ? `${p.hash}:confirmada:${crypto.randomUUID()}`
+            : p.hash,
         created_by,
       }));
       // Upsert with `ignoreDuplicates` against the unique index on
@@ -547,7 +550,7 @@ function ImportPage() {
             </Badge>
             <Badge variant="destructive">{lastSummary.invalid} inválidas</Badge>
             <Badge variant="outline">
-              {lastSummary.duplicates} duplicadas excluídas da importação
+              {lastSummary.duplicates} possíveis duplicatas detectadas
             </Badge>
           </CardContent>
         </Card>
@@ -559,7 +562,7 @@ function ImportPage() {
             <EmptyState
               icon={Upload}
               title="Envie um arquivo CSV"
-              description="Selecione o destino, escolha o arquivo e mapeie as colunas. A prévia mostra duplicidades detectadas por hash."
+              description="Selecione o destino, escolha o arquivo e mapeie as colunas. A prévia compara data, valor e descrição e deixa você decidir o que importar."
             />
           </CardContent>
         </Card>
@@ -581,12 +584,12 @@ function ImportPage() {
               </Badge>
               <Badge className="bg-amber-500/10 text-amber-700 hover:bg-amber-500/10">
                 <AlertTriangle className="w-3 h-3 mr-1" />
-                {summary.duplicates} duplicadas excluídas
+                {summary.duplicates} possíveis duplicatas
               </Badge>
               <Badge variant="outline">{summary.selected} selecionadas</Badge>
               <div className="ml-auto flex gap-2">
                 <Button variant="ghost" size="sm" onClick={() => toggleAll(true)}>
-                  Selecionar todas
+                  Selecionar somente novas
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => toggleAll(false)}>
                   Limpar
@@ -602,6 +605,12 @@ function ImportPage() {
                 </Button>
               </div>
             </div>
+            {summary.duplicates > 0 && (
+              <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                Possíveis duplicatas começam desmarcadas. Confira valor e descrição e marque
+                individualmente somente aquelas que deseja importar mesmo assim.
+              </div>
+            )}
             <div className="max-h-[60vh] overflow-auto">
               <Table>
                 <TableHeader>
@@ -621,7 +630,7 @@ function ImportPage() {
                       <TableCell>
                         <Checkbox
                           checked={p.selected}
-                          disabled={!p.valid || p.duplicate || p.duplicateInBatch}
+                          disabled={!p.valid}
                           onCheckedChange={(v) =>
                             setPrepared((prev) =>
                               prev.map((x) => (x.index === p.index ? { ...x, selected: !!v } : x)),
@@ -670,11 +679,15 @@ function ImportPage() {
                       <TableCell>
                         {p.duplicate ? (
                           <Badge className="bg-amber-500/15 text-amber-700 hover:bg-amber-500/15">
-                            Já existe · excluída
+                            {p.selected
+                              ? "Possível duplicata · será importada"
+                              : "Possível duplicata · desmarcada"}
                           </Badge>
                         ) : p.duplicateInBatch ? (
                           <Badge className="bg-amber-500/15 text-amber-700 hover:bg-amber-500/15">
-                            Repetida no arquivo · excluída
+                            {p.selected
+                              ? "Repetida no arquivo · será importada"
+                              : "Repetida no arquivo · desmarcada"}
                           </Badge>
                         ) : !p.valid ? (
                           <Badge variant="destructive" title={p.invalidReasons.join("; ")}>
