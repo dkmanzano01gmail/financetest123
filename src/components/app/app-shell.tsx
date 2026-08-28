@@ -219,10 +219,16 @@ export function AppShell() {
 
   // Redirect to onboarding if no workspace
   useEffect(() => {
-    if (!loading && workspaces.length === 0 && pathname !== "/onboarding") {
+    if (
+      !loading &&
+      !studentPortalLoading &&
+      !studentPortal &&
+      workspaces.length === 0 &&
+      pathname !== "/onboarding"
+    ) {
       navigate({ to: "/onboarding" });
     }
-  }, [loading, workspaces.length, pathname, navigate]);
+  }, [loading, navigate, pathname, studentPortal, studentPortalLoading, workspaces.length]);
 
   useEffect(() => {
     if (studentPortal && !pathname.startsWith("/student")) {

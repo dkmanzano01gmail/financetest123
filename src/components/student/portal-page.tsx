@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { ImageOff } from "lucide-react";
 
 export function PortalPage({
   title,
@@ -22,6 +23,37 @@ export function PortalPage({
       </div>
       {children}
     </main>
+  );
+}
+
+export function PiecePhoto({
+  src,
+  alt,
+  className = "",
+}: {
+  src?: string | null;
+  alt: string;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <div
+        className={`flex items-center justify-center gap-2 bg-muted text-xs text-muted-foreground ${className}`}
+        aria-label={`${alt}: sem foto registrada`}
+      >
+        <ImageOff className="h-4 w-4" />
+        Sem foto registrada
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={`object-cover ${className}`}
+      onError={() => setFailed(true)}
+    />
   );
 }
 
