@@ -36,6 +36,12 @@ const n = (value: string) => {
   const parsed = parseLocaleAmount(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+const BISQUE_FIRING_INDEX = 0.009;
+const GLAZE_FIRING_INDEXES: Record<string, number> = {
+  "6": 0.013,
+  "7": 0.014,
+  "10": 0.017,
+};
 const empty = () => ({
   usage_date: new Date().toISOString().slice(0, 10),
   student_name: "",
@@ -364,19 +370,25 @@ function Page() {
       0,
       Number(classSettings?.kiln_firing_profit_percent ?? 100) / 100,
     );
-    const bisqueResistanceBaseAdded = form.charge_biscuit
+    const firingSizeFactor = effectiveLengthCm * effectiveDepthCm * effectiveHeightCm;
+    const glazeFiringIndex = GLAZE_FIRING_INDEXES[form.glaze_cone.trim()] ?? 0.013;
+    const bisqueResistanceBaseAdded = form.charge_biscuit && form.resistance_only
       ? Math.max(0, resistanceBasePerFiring - calculated.bisqueResistanceCost)
       : 0;
-    const glazeResistanceBaseAdded = form.charge_glaze
+    const glazeResistanceBaseAdded = form.charge_glaze && form.resistance_only
       ? Math.max(0, resistanceBasePerFiring - calculated.glazeResistanceCost)
       : 0;
     const bisqueInternalCost = calculated.bisqueInternalCost + bisqueResistanceBaseAdded;
     const glazeInternalCost = calculated.glazeInternalCost + glazeResistanceBaseAdded;
     const bisqueBillingCost = form.charge_biscuit
-      ? bisqueInternalCost * (1 + kilnProfit)
+      ? form.resistance_only
+        ? bisqueInternalCost * (1 + kilnProfit)
+        : firingSizeFactor * BISQUE_FIRING_INDEX
       : 0;
     const glazeBillingCost = form.charge_glaze
-      ? glazeInternalCost * (1 + kilnProfit)
+      ? form.resistance_only
+        ? glazeInternalCost * (1 + kilnProfit)
+        : firingSizeFactor * glazeFiringIndex
       : 0;
     const unitBase =
       calculated.clayCost +
@@ -398,6 +410,9 @@ function Page() {
       effectiveLengthCm,
       effectiveDepthCm,
       effectiveHeightCm,
+      firingSizeFactor,
+      bisqueFiringIndex: BISQUE_FIRING_INDEX,
+      glazeFiringIndex,
       glazeWeightGrams,
       hasStageWeights,
       kilnProfit,
@@ -934,17 +949,18 @@ function Page() {
                 />
               </CalculationSection>
 
-              <CalculationSection title="2. Ocupação do forno">
-                <CalculationLine title="Área projetada da peça" formula={`π × ((${calculation.effectiveLengthCm.toLocaleString("pt-BR")} + 2 cm) ÷ 2) × ((${calculation.effectiveDepthCm.toLocaleString("pt-BR")} + 2 cm) ÷ 2) = ${calculation.bisquePieceArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm²`} detail={`Sem dimensões informadas, o sistema assume uma peça média circular de 7 cm de diâmetro e 5 cm de altura. A fórmula de ocupação usa a projeção horizontal; a altura considerada (${calculation.effectiveHeightCm.toLocaleString("pt-BR")} cm) fica registrada para transparência, mas não altera a área.`} sources={<><SourceTag kind={n(form.length_cm) > 0 ? "input" : "assumed"}>{n(form.length_cm) > 0 ? "Comprimento da peça" : "Comprimento padrão: 7 cm"}</SourceTag><SourceTag kind={n(form.depth_cm) > 0 ? "input" : "assumed"}>{n(form.depth_cm) > 0 ? "Profundidade da peça" : "Profundidade padrão: 7 cm"}</SourceTag><SourceTag kind={n(form.height_cm) > 0 ? "input" : "assumed"}>{n(form.height_cm) > 0 ? "Altura da peça" : "Altura padrão: 5 cm"}</SourceTag><SourceTag kind="assumed">Folga fixa: 1 cm/lado</SourceTag></>} />
-                <CalculationLine title="Área útil e ocupação" formula={`π × (${calculation.bisqueProfile.ovenDiameter.toLocaleString("pt-BR")} cm ÷ 2)² ÷ ${calculation.bisqueProfile.areaAdjustment.toLocaleString("pt-BR")} = ${calculation.bisqueOvenArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm²; ${calculation.bisquePieceArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ÷ ${calculation.bisqueOvenArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} = ${(calculation.kilnUsePercent * 100).toFixed(3)}%`} sources={<SourceTag kind={selectedKiln ? "config" : "assumed"}>{selectedKiln ? `Forno: ${selectedKiln.name}` : "Parâmetros padrão do sistema"}</SourceTag>} />
+              <CalculationSection title="2. Dimensões e ocupação do forno">
+                <CalculationLine title="Dimensões consideradas" formula={`${calculation.effectiveLengthCm.toLocaleString("pt-BR")} cm de comprimento × ${calculation.effectiveDepthCm.toLocaleString("pt-BR")} cm de profundidade × ${calculation.effectiveHeightCm.toLocaleString("pt-BR")} cm de altura`} detail="Cada campo informado é usado diretamente. Para qualquer dimensão vazia ou igual a zero, o sistema assume respectivamente 7 cm de comprimento, 7 cm de profundidade e 5 cm de altura." sources={<><SourceTag kind={n(form.length_cm) > 0 ? "input" : "assumed"}>{n(form.length_cm) > 0 ? "Comprimento da peça" : "Comprimento padrão: 7 cm"}</SourceTag><SourceTag kind={n(form.depth_cm) > 0 ? "input" : "assumed"}>{n(form.depth_cm) > 0 ? "Profundidade da peça" : "Profundidade padrão: 7 cm"}</SourceTag><SourceTag kind={n(form.height_cm) > 0 ? "input" : "assumed"}>{n(form.height_cm) > 0 ? "Altura da peça" : "Altura padrão: 5 cm"}</SourceTag></>} />
+                <CalculationLine title="Área projetada para o modo resistência" formula={`π × ((${calculation.effectiveLengthCm.toLocaleString("pt-BR")} + 2 cm) ÷ 2) × ((${calculation.effectiveDepthCm.toLocaleString("pt-BR")} + 2 cm) ÷ 2) = ${calculation.bisquePieceArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm²`} detail="Esta área com 1 cm de folga em cada lado é usada apenas no rateio do modo ‘somente resistências’." sources={<SourceTag kind="assumed">Folga fixa: 1 cm/lado</SourceTag>} />
+                <CalculationLine title="Área útil e ocupação" formula={`π × (${calculation.bisqueProfile.ovenDiameter.toLocaleString("pt-BR")} cm ÷ 2)² ÷ ${calculation.bisqueProfile.areaAdjustment.toLocaleString("pt-BR")} = ${calculation.bisqueOvenArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm²; ${calculation.bisquePieceArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ÷ ${calculation.bisqueOvenArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} = ${(calculation.kilnUsePercent * 100).toFixed(3)}%`} detail="A ocupação do forno é usada somente quando o modo ‘somente resistências’ está ativo. Na cobrança completa, o cálculo usa o índice dimensional abaixo." sources={<SourceTag kind={selectedKiln ? "config" : "assumed"}>{selectedKiln ? `Forno: ${selectedKiln.name}` : "Parâmetros padrão do sistema"}</SourceTag>} />
               </CalculationSection>
 
               <CalculationSection title="3. Queima biscoito">
-                <FiringBreakdown label="Biscoito" profile={calculation.bisqueProfile} usePercent={calculation.kilnUsePercent} energyCost={calculation.bisqueEnergyCost} resistanceCost={calculation.bisqueResistanceCost} bufferCost={calculation.bisqueBufferCost} baseAdded={calculation.bisqueResistanceBaseAdded} internalCost={calculation.bisqueInternalCost} billingCost={calculation.bisqueBillingCost} enabled={form.charge_biscuit} resistanceOnly={calculation.resistanceOnly} resistanceBase={calculation.resistanceBasePerFiring} profitRate={calculation.kilnProfit} currency={currency} privacy={privacy} configured={!!selectedKiln} settingsSaved={calculation.settingsSaved} />
+                <FiringBreakdown label="Biscoito" profile={calculation.bisqueProfile} usePercent={calculation.kilnUsePercent} energyCost={calculation.bisqueEnergyCost} resistanceCost={calculation.bisqueResistanceCost} bufferCost={calculation.bisqueBufferCost} baseAdded={calculation.bisqueResistanceBaseAdded} internalCost={calculation.bisqueInternalCost} billingCost={calculation.bisqueBillingCost} enabled={form.charge_biscuit} resistanceOnly={calculation.resistanceOnly} resistanceBase={calculation.resistanceBasePerFiring} profitRate={calculation.kilnProfit} currency={currency} privacy={privacy} configured={!!selectedKiln} settingsSaved={calculation.settingsSaved} lengthCm={calculation.effectiveLengthCm} depthCm={calculation.effectiveDepthCm} heightCm={calculation.effectiveHeightCm} firingIndex={calculation.bisqueFiringIndex} />
               </CalculationSection>
 
               <CalculationSection title={`4. Queima de esmalte — cone ${form.glaze_cone || "6"}`}>
-                <FiringBreakdown label="Esmalte" profile={calculation.glazeProfile} usePercent={calculation.kilnUsePercent} energyCost={calculation.glazeEnergyCost} resistanceCost={calculation.glazeResistanceCost} bufferCost={calculation.glazeBufferCost} baseAdded={calculation.glazeResistanceBaseAdded} internalCost={calculation.glazeInternalCost} billingCost={calculation.glazeBillingCost} enabled={form.charge_glaze} resistanceOnly={calculation.resistanceOnly} resistanceBase={calculation.resistanceBasePerFiring} profitRate={calculation.kilnProfit} currency={currency} privacy={privacy} configured={!!selectedKiln} settingsSaved={calculation.settingsSaved} />
+                <FiringBreakdown label="Esmalte" profile={calculation.glazeProfile} usePercent={calculation.kilnUsePercent} energyCost={calculation.glazeEnergyCost} resistanceCost={calculation.glazeResistanceCost} bufferCost={calculation.glazeBufferCost} baseAdded={calculation.glazeResistanceBaseAdded} internalCost={calculation.glazeInternalCost} billingCost={calculation.glazeBillingCost} enabled={form.charge_glaze} resistanceOnly={calculation.resistanceOnly} resistanceBase={calculation.resistanceBasePerFiring} profitRate={calculation.kilnProfit} currency={currency} privacy={privacy} configured={!!selectedKiln} settingsSaved={calculation.settingsSaved} lengthCm={calculation.effectiveLengthCm} depthCm={calculation.effectiveDepthCm} heightCm={calculation.effectiveHeightCm} firingIndex={calculation.glazeFiringIndex} />
               </CalculationSection>
 
               <CalculationSection title="5. Total e cobrança sugerida">
@@ -1134,14 +1150,22 @@ function CalculationLine({ title, formula, detail, sources }: { title: string; f
   return <div className="space-y-1 py-2 first:pt-0 last:pb-0"><div className="font-medium text-foreground">{title}</div><div className="break-words font-mono text-[11px] text-foreground">{formula}</div>{detail && <div className="text-muted-foreground">{detail}</div>}{sources && <div className="flex flex-wrap gap-1.5 pt-0.5">{sources}</div>}</div>;
 }
 
-function FiringBreakdown({ label, profile, usePercent, energyCost, resistanceCost, bufferCost, baseAdded, internalCost, billingCost, enabled, resistanceOnly, resistanceBase, profitRate, currency, privacy, configured, settingsSaved }: { label: string; profile: any; usePercent: number; energyCost: number; resistanceCost: number; bufferCost: number; baseAdded: number; internalCost: number; billingCost: number; enabled: boolean; resistanceOnly: boolean; resistanceBase: number; profitRate: number; currency: string; privacy: boolean; configured: boolean; settingsSaved: boolean }) {
+function FiringBreakdown({ label, profile, usePercent, energyCost, resistanceCost, bufferCost, baseAdded, internalCost, billingCost, enabled, resistanceOnly, resistanceBase, profitRate, currency, privacy, configured, settingsSaved, lengthCm, depthCm, heightCm, firingIndex }: { label: string; profile: any; usePercent: number; energyCost: number; resistanceCost: number; bufferCost: number; baseAdded: number; internalCost: number; billingCost: number; enabled: boolean; resistanceOnly: boolean; resistanceBase: number; profitRate: number; currency: string; privacy: boolean; configured: boolean; settingsSaved: boolean; lengthCm: number; depthCm: number; heightCm: number; firingIndex: number }) {
   const source = <SourceTag kind={configured ? "config" : "assumed"}>{configured ? "Parâmetros do forno selecionado" : "Parâmetros padrão do sistema"}</SourceTag>;
+  if (!resistanceOnly) {
+    return <CalculationLine
+      title={`Valor cobrado por ${label.toLowerCase()}`}
+      formula={enabled ? `${lengthCm.toLocaleString("pt-BR")} cm de comprimento × ${depthCm.toLocaleString("pt-BR")} cm de profundidade × ${heightCm.toLocaleString("pt-BR")} cm de altura × ${firingIndex.toLocaleString("pt-BR", { minimumFractionDigits: 3 })} = ${formatCurrency(billingCost, currency, privacy)}` : `${lengthCm.toLocaleString("pt-BR")} × ${depthCm.toLocaleString("pt-BR")} × ${heightCm.toLocaleString("pt-BR")} × ${firingIndex.toLocaleString("pt-BR", { minimumFractionDigits: 3 })} × 0 = ${formatCurrency(0, currency, privacy)}`}
+      detail={enabled ? "Índice dimensional de cobrança. O índice já inclui 100% de lucro; nenhum lucro adicional sobre a queima é aplicado." : "A opção de cobrar esta queima está desligada; o valor não compõe o total."}
+      sources={<><SourceTag kind="config">Índice fixo por tipo de queima/cone</SourceTag><SourceTag kind="input">Comprimento, profundidade e altura da peça</SourceTag></>}
+    />;
+  }
   return <>
     <CalculationLine title="Energia" formula={`${profile.powerKw.toLocaleString("pt-BR")} kW × ${profile.hours.toLocaleString("pt-BR")} h × ${(profile.utilization * 100).toFixed(2)}% de utilização × ${formatCurrency(profile.kwhCost, currency, privacy)}/kWh × ${(usePercent * 100).toFixed(3)}% de ocupação = ${formatCurrency(energyCost, currency, privacy)}`} sources={source} />
     <CalculationLine title="Resistências rateadas" formula={`${formatCurrency(profile.resistanceCost, currency, privacy)} ÷ ${profile.resistanceBurns.toLocaleString("pt-BR")} queimas × ${(usePercent * 100).toFixed(3)}% de ocupação = ${formatCurrency(resistanceCost, currency, privacy)}`} sources={source} />
     <CalculationLine title="Buffer operacional" formula={`(${formatCurrency(energyCost, currency, privacy)} energia + ${formatCurrency(resistanceCost, currency, privacy)} resistências) × ${(profile.finalBuffer * 100).toFixed(2)}% = ${formatCurrency(bufferCost, currency, privacy)}`} sources={source} />
-    <CalculationLine title="Piso de resistência" formula={`máx(${formatCurrency(resistanceBase, currency, privacy)} − ${formatCurrency(resistanceCost, currency, privacy)}, R$ 0,00) = ${formatCurrency(baseAdded, currency, privacy)} de complemento`} detail="O piso é aplicado por peça e por queima cobrada, independentemente da dimensão." sources={<SourceTag kind={settingsSaved ? "config" : "assumed"}>{settingsSaved ? "Parâmetro de cobrança do ateliê" : "Padrão do sistema: R$ 1,50"}</SourceTag>} />
-    <CalculationLine title={`Custo interno de ${label.toLowerCase()}`} formula={resistanceOnly ? `${formatCurrency(resistanceCost, currency, privacy)} resistências + ${formatCurrency(baseAdded, currency, privacy)} complemento = ${formatCurrency(internalCost, currency, privacy)}` : `${formatCurrency(energyCost, currency, privacy)} energia + ${formatCurrency(resistanceCost, currency, privacy)} resistências + ${formatCurrency(bufferCost, currency, privacy)} buffer + ${formatCurrency(baseAdded, currency, privacy)} complemento = ${formatCurrency(internalCost, currency, privacy)}`} detail={resistanceOnly ? "Modo “somente resistências” ativo: energia e buffer são exibidos para auditoria, mas não entram nesta cobrança." : "Modo completo ativo: energia, resistências e buffer entram na cobrança."} />
+    <CalculationLine title="Piso de resistência" formula={`máx(${formatCurrency(resistanceBase, currency, privacy)} − ${formatCurrency(resistanceCost, currency, privacy)}, R$ 0,00) = ${formatCurrency(baseAdded, currency, privacy)} de complemento`} detail="O padrão é zero. Um complemento só existe se um piso manual tiver sido configurado." sources={<SourceTag kind={settingsSaved ? "config" : "assumed"}>{settingsSaved ? "Parâmetro de cobrança do ateliê" : "Padrão do sistema: R$ 0,00"}</SourceTag>} />
+    <CalculationLine title={`Custo interno de ${label.toLowerCase()}`} formula={`${formatCurrency(resistanceCost, currency, privacy)} resistências + ${formatCurrency(baseAdded, currency, privacy)} complemento = ${formatCurrency(internalCost, currency, privacy)}`} detail="Modo “somente resistências” ativo: energia e buffer são exibidos para auditoria, mas não entram nesta cobrança." />
     <CalculationLine title={`Valor cobrado por ${label.toLowerCase()}`} formula={enabled ? `${formatCurrency(internalCost, currency, privacy)} × (1 + ${(profitRate * 100).toFixed(2)}%) = ${formatCurrency(billingCost, currency, privacy)}` : `${formatCurrency(internalCost, currency, privacy)} × 0 = ${formatCurrency(0, currency, privacy)}`} detail={enabled ? "A queima está marcada para cobrança." : "A opção de cobrar esta queima está desligada; o custo é calculado para auditoria, mas não compõe o total."} sources={<SourceTag kind={settingsSaved ? "config" : "assumed"}>{settingsSaved ? "Lucro sobre queimas do ateliê" : "Lucro padrão do sistema: 100%"}</SourceTag>} />
   </>;
 }
