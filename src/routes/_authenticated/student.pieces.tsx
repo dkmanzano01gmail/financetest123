@@ -23,16 +23,13 @@ function Pieces() {
   const [year, setYear] = useState("all");
   const [clay, setClay] = useState("all");
   const [glaze, setGlaze] = useState("all");
-  const { data: pieces = [] } = useQuery<any[]>({
+  const { data: pieces = [], isLoading, error } = useQuery<any[]>({
     queryKey: ["student-pieces", access?.id],
     enabled: !!access,
     queryFn: async () => {
-      const result = await sb
-        .from("class_materials_usage")
-        .select("*")
-        .eq("workspace_id", access!.workspace_id)
-        .eq("student_id", access!.student_id)
-        .order("usage_date", { ascending: false });
+      const result = await sb.rpc("student_portal_pieces", {
+        _student_id: access!.is_preview ? access!.student_id : null,
+      });
       if (result.error) throw result.error;
       const rows: any[] = result.data ?? [];
       const paths = rows.map((r: any) => r.photo_path).filter(Boolean);
@@ -40,8 +37,10 @@ function Pieces() {
         const signed = await supabase.storage
           .from("class-material-photos")
           .createSignedUrls(paths, 3600);
-        const urls = new Map((signed.data ?? []).map((r: any) => [r.path, r.signedUrl]));
-        return rows.map((r: any) => ({ ...r, photo_url: urls.get(r.photo_path) }));
+        if (!signed.error) {
+          const urls = new Map((signed.data ?? []).map((r: any) => [r.path, r.signedUrl]));
+          return rows.map((r: any) => ({ ...r, photo_url: urls.get(r.photo_path) }));
+        }
       }
       return rows;
     },
@@ -61,6 +60,10 @@ function Pieces() {
   );
   return (
     <PortalPage title="Minhas peças">
+      {isLoading && <p className="mb-4 text-sm text-muted-foreground">Carregando peças…</p>}
+      {error && (
+        <p className="mb-4 text-sm text-destructive">Não foi possível carregar as peças.</p>
+      )}
       <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger>
@@ -143,10 +146,20 @@ function Pieces() {
                   Dimensões: {p.length_cm || 0} × {p.depth_cm || 0} × {p.height_cm || 0} cm
                 </div>
               )}
-              {p.clay_weight_kg > 0 && (
-                <div className="text-sm">Peso: {Number(p.clay_weight_kg) * 1000} g</div>
+              {Number(p.modeled_weight_g || p.grams || p.clay_weight_kg * 1000) > 0 && (
+                <div className="text-sm">
+                  Peso após modelagem:{" "}
+                  {Number(p.modeled_weight_g || p.grams || p.clay_weight_kg * 1000)} g
+                </div>
+              )}
+              {Number(p.bisque_weight_g) > 0 && (
+                <div className="text-sm">Peso após biscoito: {Number(p.bisque_weight_g)} g</div>
+              )}
+              {Number(p.glazed_weight_g) > 0 && (
+                <div className="text-sm">Peso após esmaltação: {Number(p.glazed_weight_g)} g</div>
               )}
               {p.glaze_name && <div className="text-sm">Esmalte: {p.glaze_name}</div>}
+              {p.material && <div className="text-sm">Material: {p.material}</div>}
               {p.comments && <p className="text-sm text-muted-foreground">{p.comments}</p>}
             </CardContent>
           </Card>
