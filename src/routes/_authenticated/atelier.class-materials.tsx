@@ -376,8 +376,15 @@ function Page() {
       totalCost * (1 + Math.max(0, Number(classSettings?.margin_percent ?? 0) / 100));
     return {
       ...calculated,
+      clayPerKg,
+      glazePerGram,
+      clayMaterialFound: !!clay,
+      glazeMaterialFound: !!glaze,
       glazeWeightGrams,
       hasStageWeights,
+      kilnProfit,
+      marginRate: Math.max(0, Number(classSettings?.margin_percent ?? 0) / 100),
+      settingsSaved: !!classSettings?.id,
       resistanceBasePerFiring,
       bisqueResistanceBaseAdded,
       glazeResistanceBaseAdded,
@@ -889,16 +896,46 @@ function Page() {
           </div>
           <Card><CardContent className="grid grid-cols-2 gap-x-6 gap-y-1 p-4 text-sm md:grid-cols-4"><Cost label="Argila" value={calculation.clayCost} currency={currency} privacy={privacy} /><Cost label="Esmalte" value={calculation.glazeCost} currency={currency} privacy={privacy} /><Cost label="Biscoito" value={calculation.bisqueBillingCost} currency={currency} privacy={privacy} /><Cost label="Queima esmalte" value={calculation.glazeBillingCost} currency={currency} privacy={privacy} /><Cost label="Outros" value={calculation.otherCosts} currency={currency} privacy={privacy} /><Cost label="Base da peça" value={calculation.unitBase} currency={currency} privacy={privacy} /><Cost label="Frete (10%)" value={calculation.freightCost} currency={currency} privacy={privacy} /><Cost label="Cobrança sugerida" value={calculation.chargeAmount} currency={currency} privacy={privacy} /></CardContent></Card>
           <Card className="border-dashed">
-            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-sm"><Calculator className="h-4 w-4" />Memória de cálculo auditável</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-xs text-muted-foreground">
-              <p><strong className="text-foreground">Ocupação:</strong> área elíptica da peça com 1 cm de folga em cada lado ÷ área útil do forno = {(calculation.kilnUsePercent * 100).toFixed(3)}%.</p>
-              <p><strong className="text-foreground">Materiais por peso:</strong> a argila usa {n(form.modeled_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g após a modelagem. {calculation.hasStageWeights ? `O esmalte usa ${n(form.glazed_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g − ${n(form.bisque_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g = ${calculation.glazeWeightGrams.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g.` : "O esmalte será recalculado quando os pesos pós-biscoito e pós-esmaltação forem informados."}</p>
-              <p><strong className="text-foreground">Biscoito — resistência:</strong> {formatCurrency(calculation.bisqueProfile.resistanceCost, currency, privacy)} ÷ {calculation.bisqueProfile.resistanceBurns} queimas × ocupação = {formatCurrency(calculation.bisqueResistanceCost, currency, privacy)}.</p>
-              <p><strong className="text-foreground">Esmalte — resistência:</strong> {formatCurrency(calculation.glazeProfile.resistanceCost, currency, privacy)} ÷ {calculation.glazeProfile.resistanceBurns} queimas × ocupação = {formatCurrency(calculation.glazeResistanceCost, currency, privacy)}.</p>
-              {!calculation.resistanceOnly && <p><strong className="text-foreground">Modo completo:</strong> soma energia ({formatCurrency(calculation.bisqueEnergyCost + calculation.glazeEnergyCost, currency, privacy)}), resistências e buffer ({formatCurrency(calculation.bisqueBufferCost + calculation.glazeBufferCost, currency, privacy)}).</p>}
-              {calculation.resistanceOnly && <p><strong className="text-foreground">Modo selecionado:</strong> somente a parcela das resistências entra na base das queimas; energia e buffer são R$ 0,00 para esta cobrança.</p>}
-              <p><strong className="text-foreground">Piso de resistências:</strong> cada queima cobrada inclui pelo menos {formatCurrency(calculation.resistanceBasePerFiring, currency, privacy)} por peça, independentemente das dimensões. Complemento aplicado nesta peça: {formatCurrency(calculation.fixedResistanceBaseAdded, currency, privacy)}.</p>
-              <p><strong className="text-foreground">Cobrança das queimas:</strong> custo selecionado × (1 + {Number(classSettings?.kiln_firing_profit_percent ?? 100).toFixed(0)}%). <strong className="text-foreground">Frete:</strong> base da peça × 10% = {formatCurrency(calculation.freightCost, currency, privacy)} por unidade.</p>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm"><Calculator className="h-4 w-4" />Memória de cálculo completa</CardTitle>
+              <p className="text-xs text-muted-foreground">Cada linha mostra a fórmula, todos os números usados e a origem dos valores. Os cálculos abaixo são por peça, salvo quando indicado.</p>
+              <div className="flex flex-wrap gap-2 pt-1"><SourceTag kind="input">Informado na peça</SourceTag><SourceTag kind="config">Configuração</SourceTag><SourceTag kind="assumed">Assumido por falta de input</SourceTag></div>
+            </CardHeader>
+            <CardContent className="space-y-4 text-xs">
+              <CalculationSection title="1. Materiais">
+                <CalculationLine
+                  title="Argila"
+                  formula={`${n(form.modeled_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g ÷ 1.000 × ${formatCurrency(calculation.clayPerKg, currency, privacy)}/kg = ${formatCurrency(calculation.clayCost, currency, privacy)}`}
+                  sources={<><SourceTag kind={n(form.modeled_weight_g) > 0 ? "input" : "assumed"}>{n(form.modeled_weight_g) > 0 ? "Peso após modelagem" : "Peso não informado: 0 g"}</SourceTag><SourceTag kind={calculation.clayMaterialFound ? "config" : "assumed"}>{calculation.clayMaterialFound ? `Preço de ${form.clay_type}` : "Preço padrão: R$ 7,70/kg"}</SourceTag></>}
+                />
+                <CalculationLine
+                  title="Esmalte"
+                  formula={`${calculation.glazeWeightGrams.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g × ${formatCurrency(calculation.glazePerGram, currency, privacy)}/g = ${formatCurrency(calculation.glazeCost, currency, privacy)}`}
+                  detail={calculation.hasStageWeights ? `${n(form.glazed_weight_g).toLocaleString("pt-BR")} g após esmaltação − ${n(form.bisque_weight_g).toLocaleString("pt-BR")} g após biscoito = ${calculation.glazeWeightGrams.toLocaleString("pt-BR")} g` : n(form.glaze_quantity) > 0 ? "Usada a quantidade salva no registro antigo porque os dois pesos finais não foram informados." : "Os dois pesos finais não foram informados; quantidade assumida como 0 g."}
+                  sources={<><SourceTag kind={calculation.hasStageWeights || n(form.glaze_quantity) > 0 ? "input" : "assumed"}>{calculation.hasStageWeights ? "Pesos da peça" : n(form.glaze_quantity) > 0 ? "Quantidade do registro antigo" : "Quantidade: 0 g"}</SourceTag><SourceTag kind={calculation.glazeMaterialFound ? "config" : "assumed"}>{calculation.glazeMaterialFound ? `Preço de ${form.glaze_name}` : "Preço padrão: R$ 1,00/g"}</SourceTag></>}
+                />
+              </CalculationSection>
+
+              <CalculationSection title="2. Ocupação do forno">
+                <CalculationLine title="Área projetada da peça" formula={`π × ((${n(form.length_cm).toLocaleString("pt-BR")} + 2 cm) ÷ 2) × ((${n(form.depth_cm).toLocaleString("pt-BR")} + 2 cm) ÷ 2) = ${calculation.bisquePieceArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm²`} detail="A fórmula acrescenta automaticamente 1 cm de folga em cada lado. A altura é registrada, mas não participa do cálculo atual." sources={<><SourceTag kind={n(form.length_cm) > 0 ? "input" : "assumed"}>{n(form.length_cm) > 0 ? "Comprimento da peça" : "Comprimento: 0 cm"}</SourceTag><SourceTag kind={n(form.depth_cm) > 0 ? "input" : "assumed"}>{n(form.depth_cm) > 0 ? "Profundidade da peça" : "Profundidade: 0 cm"}</SourceTag><SourceTag kind="assumed">Folga fixa: 1 cm/lado</SourceTag></>} />
+                <CalculationLine title="Área útil e ocupação" formula={`π × (${calculation.bisqueProfile.ovenDiameter.toLocaleString("pt-BR")} cm ÷ 2)² ÷ ${calculation.bisqueProfile.areaAdjustment.toLocaleString("pt-BR")} = ${calculation.bisqueOvenArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm²; ${calculation.bisquePieceArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ÷ ${calculation.bisqueOvenArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} = ${(calculation.kilnUsePercent * 100).toFixed(3)}%`} sources={<SourceTag kind={selectedKiln ? "config" : "assumed"}>{selectedKiln ? `Forno: ${selectedKiln.name}` : "Parâmetros padrão do sistema"}</SourceTag>} />
+              </CalculationSection>
+
+              <CalculationSection title="3. Queima biscoito">
+                <FiringBreakdown label="Biscoito" profile={calculation.bisqueProfile} usePercent={calculation.kilnUsePercent} energyCost={calculation.bisqueEnergyCost} resistanceCost={calculation.bisqueResistanceCost} bufferCost={calculation.bisqueBufferCost} baseAdded={calculation.bisqueResistanceBaseAdded} internalCost={calculation.bisqueInternalCost} billingCost={calculation.bisqueBillingCost} enabled={form.charge_biscuit} resistanceOnly={calculation.resistanceOnly} resistanceBase={calculation.resistanceBasePerFiring} profitRate={calculation.kilnProfit} currency={currency} privacy={privacy} configured={!!selectedKiln} settingsSaved={calculation.settingsSaved} />
+              </CalculationSection>
+
+              <CalculationSection title={`4. Queima de esmalte — cone ${form.glaze_cone || "6"}`}>
+                <FiringBreakdown label="Esmalte" profile={calculation.glazeProfile} usePercent={calculation.kilnUsePercent} energyCost={calculation.glazeEnergyCost} resistanceCost={calculation.glazeResistanceCost} bufferCost={calculation.glazeBufferCost} baseAdded={calculation.glazeResistanceBaseAdded} internalCost={calculation.glazeInternalCost} billingCost={calculation.glazeBillingCost} enabled={form.charge_glaze} resistanceOnly={calculation.resistanceOnly} resistanceBase={calculation.resistanceBasePerFiring} profitRate={calculation.kilnProfit} currency={currency} privacy={privacy} configured={!!selectedKiln} settingsSaved={calculation.settingsSaved} />
+              </CalculationSection>
+
+              <CalculationSection title="5. Total e cobrança sugerida">
+                <CalculationLine title="Outros custos" formula={`${formatCurrency(calculation.otherCosts, currency, privacy)}`} sources={<SourceTag kind={calculation.otherCosts > 0 ? "input" : "assumed"}>{calculation.otherCosts > 0 ? "Informado na peça" : "Não informado: R$ 0,00"}</SourceTag>} />
+                <CalculationLine title="Base unitária" formula={`${formatCurrency(calculation.clayCost, currency, privacy)} argila + ${formatCurrency(calculation.glazeCost, currency, privacy)} esmalte + ${formatCurrency(calculation.bisqueBillingCost, currency, privacy)} biscoito + ${formatCurrency(calculation.glazeBillingCost, currency, privacy)} queima esmalte + ${formatCurrency(calculation.otherCosts, currency, privacy)} outros = ${formatCurrency(calculation.unitBase, currency, privacy)}`} />
+                <CalculationLine title="Frete" formula={`${formatCurrency(calculation.unitBase, currency, privacy)} × 10% = ${formatCurrency(calculation.freightCost, currency, privacy)}`} sources={<SourceTag kind="assumed">Percentual fixo do sistema: 10%</SourceTag>} />
+                <CalculationLine title="Total para a quantidade" formula={`(${formatCurrency(calculation.unitBase, currency, privacy)} + ${formatCurrency(calculation.freightCost, currency, privacy)}) × ${calculation.quantity} unidade(s) = ${formatCurrency(calculation.totalCost, currency, privacy)}`} sources={<SourceTag kind={n(form.quantity) > 0 ? "input" : "assumed"}>{n(form.quantity) > 0 ? "Quantidade da peça" : "Quantidade mínima assumida: 1"}</SourceTag>} />
+                <CalculationLine title="Cobrança sugerida" formula={`${formatCurrency(calculation.totalCost, currency, privacy)} × (1 + ${(calculation.marginRate * 100).toFixed(2)}%) = ${formatCurrency(calculation.chargeAmount, currency, privacy)}`} sources={<SourceTag kind={calculation.settingsSaved ? "config" : "assumed"}>{calculation.settingsSaved ? "Margem configurada no ateliê" : "Margem padrão: 0%"}</SourceTag>} />
+              </CalculationSection>
             </CardContent>
           </Card>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -1060,6 +1097,35 @@ function StudentStatement({
 
 function Breakdown({ label, value, currency, privacy }: { label: string; value: number; currency: string; privacy: boolean }) {
   return <div className="rounded-xl bg-muted/60 p-3"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 font-mono font-semibold">{formatCurrency(value, currency, privacy)}</div></div>;
+}
+
+function SourceTag({ kind, children }: { kind: "input" | "config" | "assumed"; children: ReactNode }) {
+  const tone = kind === "input"
+    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+    : kind === "config"
+      ? "border-sky-300 bg-sky-50 text-sky-800"
+      : "border-amber-300 bg-amber-50 text-amber-900";
+  return <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${tone}`}>{children}</span>;
+}
+
+function CalculationSection({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="rounded-xl border bg-background p-3"><h4 className="mb-2 font-semibold text-foreground">{title}</h4><div className="divide-y">{children}</div></section>;
+}
+
+function CalculationLine({ title, formula, detail, sources }: { title: string; formula: string; detail?: string; sources?: ReactNode }) {
+  return <div className="space-y-1 py-2 first:pt-0 last:pb-0"><div className="font-medium text-foreground">{title}</div><div className="break-words font-mono text-[11px] text-foreground">{formula}</div>{detail && <div className="text-muted-foreground">{detail}</div>}{sources && <div className="flex flex-wrap gap-1.5 pt-0.5">{sources}</div>}</div>;
+}
+
+function FiringBreakdown({ label, profile, usePercent, energyCost, resistanceCost, bufferCost, baseAdded, internalCost, billingCost, enabled, resistanceOnly, resistanceBase, profitRate, currency, privacy, configured, settingsSaved }: { label: string; profile: any; usePercent: number; energyCost: number; resistanceCost: number; bufferCost: number; baseAdded: number; internalCost: number; billingCost: number; enabled: boolean; resistanceOnly: boolean; resistanceBase: number; profitRate: number; currency: string; privacy: boolean; configured: boolean; settingsSaved: boolean }) {
+  const source = <SourceTag kind={configured ? "config" : "assumed"}>{configured ? "Parâmetros do forno selecionado" : "Parâmetros padrão do sistema"}</SourceTag>;
+  return <>
+    <CalculationLine title="Energia" formula={`${profile.powerKw.toLocaleString("pt-BR")} kW × ${profile.hours.toLocaleString("pt-BR")} h × ${(profile.utilization * 100).toFixed(2)}% de utilização × ${formatCurrency(profile.kwhCost, currency, privacy)}/kWh × ${(usePercent * 100).toFixed(3)}% de ocupação = ${formatCurrency(energyCost, currency, privacy)}`} sources={source} />
+    <CalculationLine title="Resistências rateadas" formula={`${formatCurrency(profile.resistanceCost, currency, privacy)} ÷ ${profile.resistanceBurns.toLocaleString("pt-BR")} queimas × ${(usePercent * 100).toFixed(3)}% de ocupação = ${formatCurrency(resistanceCost, currency, privacy)}`} sources={source} />
+    <CalculationLine title="Buffer operacional" formula={`(${formatCurrency(energyCost, currency, privacy)} energia + ${formatCurrency(resistanceCost, currency, privacy)} resistências) × ${(profile.finalBuffer * 100).toFixed(2)}% = ${formatCurrency(bufferCost, currency, privacy)}`} sources={source} />
+    <CalculationLine title="Piso de resistência" formula={`máx(${formatCurrency(resistanceBase, currency, privacy)} − ${formatCurrency(resistanceCost, currency, privacy)}, R$ 0,00) = ${formatCurrency(baseAdded, currency, privacy)} de complemento`} detail="O piso é aplicado por peça e por queima cobrada, independentemente da dimensão." sources={<SourceTag kind={settingsSaved ? "config" : "assumed"}>{settingsSaved ? "Parâmetro de cobrança do ateliê" : "Padrão do sistema: R$ 1,50"}</SourceTag>} />
+    <CalculationLine title={`Custo interno de ${label.toLowerCase()}`} formula={resistanceOnly ? `${formatCurrency(resistanceCost, currency, privacy)} resistências + ${formatCurrency(baseAdded, currency, privacy)} complemento = ${formatCurrency(internalCost, currency, privacy)}` : `${formatCurrency(energyCost, currency, privacy)} energia + ${formatCurrency(resistanceCost, currency, privacy)} resistências + ${formatCurrency(bufferCost, currency, privacy)} buffer + ${formatCurrency(baseAdded, currency, privacy)} complemento = ${formatCurrency(internalCost, currency, privacy)}`} detail={resistanceOnly ? "Modo “somente resistências” ativo: energia e buffer são exibidos para auditoria, mas não entram nesta cobrança." : "Modo completo ativo: energia, resistências e buffer entram na cobrança."} />
+    <CalculationLine title={`Valor cobrado por ${label.toLowerCase()}`} formula={enabled ? `${formatCurrency(internalCost, currency, privacy)} × (1 + ${(profitRate * 100).toFixed(2)}%) = ${formatCurrency(billingCost, currency, privacy)}` : `${formatCurrency(internalCost, currency, privacy)} × 0 = ${formatCurrency(0, currency, privacy)}`} detail={enabled ? "A queima está marcada para cobrança." : "A opção de cobrar esta queima está desligada; o custo é calculado para auditoria, mas não compõe o total."} sources={<SourceTag kind={settingsSaved ? "config" : "assumed"}>{settingsSaved ? "Lucro sobre queimas do ateliê" : "Lucro padrão do sistema: 100%"}</SourceTag>} />
+  </>;
 }
 
 function statusLabel(value: string) {
