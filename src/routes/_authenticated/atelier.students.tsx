@@ -535,6 +535,20 @@ function Page() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate font-semibold">{student.name}</span>
                       {!student.is_active && <Badge variant="secondary">Inativo</Badge>}
+                      {(portalAccess as any[]).some((item) => item.student_id === student.id) && (
+                        <Badge
+                          variant={
+                            (portalAccess as any[]).find((item) => item.student_id === student.id)
+                              ?.status === "ativo"
+                              ? "default"
+                              : "secondary"
+                          }
+                        >
+                          Portal: {portalStatus(
+                            (portalAccess as any[]).find((item) => item.student_id === student.id),
+                          )}
+                        </Badge>
+                      )}
                     </div>
                     <div className="text-sm text-muted-foreground">{student.class_name || "Turma não informada"}</div>
                     <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">

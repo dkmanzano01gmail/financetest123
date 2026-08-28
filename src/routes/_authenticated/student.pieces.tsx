@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useStudentPortalAccess } from "@/hooks/use-student-portal";
-import { PortalPage, pieceStatus, date } from "@/components/student/portal-page";
+import { PortalPage, PiecePhoto, pieceStatus, date } from "@/components/student/portal-page";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/student/pieces")({ component: Pieces });
 const sb = supabase as any;
@@ -23,7 +24,12 @@ function Pieces() {
   const [year, setYear] = useState("all");
   const [clay, setClay] = useState("all");
   const [glaze, setGlaze] = useState("all");
-  const { data: pieces = [], isLoading, error } = useQuery<any[]>({
+  const [selected, setSelected] = useState<any | null>(null);
+  const {
+    data: pieces = [],
+    isLoading,
+    error,
+  } = useQuery<any[]>({
     queryKey: ["student-pieces", access?.id],
     enabled: !!access,
     queryFn: async () => {
@@ -122,14 +128,21 @@ function Pieces() {
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((p: any) => (
-          <Card key={p.id} className="overflow-hidden">
-            {p.photo_url && (
-              <img
-                src={p.photo_url}
-                alt={p.piece_name || "Peça"}
-                className="aspect-[4/3] w-full object-cover"
-              />
-            )}
+          <Card
+            key={p.id}
+            className="cursor-pointer overflow-hidden transition hover:border-primary/50 hover:shadow-md"
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelected(p)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") setSelected(p);
+            }}
+          >
+            <PiecePhoto
+              src={p.photo_url}
+              alt={p.piece_name || "Peça"}
+              className="aspect-[4/3] w-full"
+            />
             <CardContent className="space-y-2 p-4">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -161,6 +174,7 @@ function Pieces() {
               {p.glaze_name && <div className="text-sm">Esmalte: {p.glaze_name}</div>}
               {p.material && <div className="text-sm">Material: {p.material}</div>}
               {p.comments && <p className="text-sm text-muted-foreground">{p.comments}</p>}
+              <div className="pt-1 text-xs font-medium text-primary">Ver ficha completa</div>
             </CardContent>
           </Card>
         ))}
@@ -168,6 +182,61 @@ function Pieces() {
           <p className="text-sm text-muted-foreground">Nenhuma peça encontrada.</p>
         )}
       </div>
+      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          {selected && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selected.piece_name || "Peça sem nome"}</DialogTitle>
+              </DialogHeader>
+              <PiecePhoto
+                src={selected.photo_url}
+                alt={selected.piece_name || "Peça"}
+                className="aspect-video w-full rounded-lg"
+              />
+              <div className="grid gap-3 text-sm sm:grid-cols-2">
+                <Detail label="Data" value={date(selected.usage_date)} />
+                <Detail
+                  label="Status"
+                  value={pieceStatus[selected.production_status] || selected.production_status}
+                />
+                <Detail label="Argila" value={selected.clay_type} />
+                <Detail label="Esmalte" value={selected.glaze_name} />
+                <Detail label="Cone" value={selected.glaze_cone} />
+                <Detail label="Turma" value={selected.class_name} />
+                <Detail
+                  label="Dimensões"
+                  value={`${Number(selected.length_cm || 0)} × ${Number(selected.depth_cm || 0)} × ${Number(selected.height_cm || 0)} cm`}
+                />
+                <Detail
+                  label="Peso após modelagem"
+                  value={weight(
+                    selected.modeled_weight_g || selected.grams || selected.clay_weight_kg * 1000,
+                  )}
+                />
+                <Detail label="Peso após biscoito" value={weight(selected.bisque_weight_g)} />
+                <Detail label="Peso após esmaltação" value={weight(selected.glazed_weight_g)} />
+                <Detail label="Material" value={selected.material} />
+                <Detail label="Observações" value={selected.comments} />
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </PortalPage>
+  );
+}
+
+function weight(value: unknown) {
+  const number = Number(value || 0);
+  return number > 0 ? `${number} g` : "—";
+}
+
+function Detail({ label, value }: { label: string; value?: unknown }) {
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1">{String(value || "—")}</div>
+    </div>
   );
 }

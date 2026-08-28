@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -19,16 +20,26 @@ export type StudentPortalAccess = {
 
 export function useStudentPortalAccess() {
   const { user } = useAuth();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [previewStudentId, setPreviewStudentId] = useState<string | null>(null);
   useEffect(() => {
+    if (!pathname.startsWith("/student")) {
+      setPreviewStudentId(null);
+      return;
+    }
     const requestedPreview = new URLSearchParams(window.location.search).get("previewStudentId");
     if (requestedPreview) window.sessionStorage.setItem("student-portal-preview", requestedPreview);
     setPreviewStudentId(
       requestedPreview || window.sessionStorage.getItem("student-portal-preview"),
     );
-  }, []);
+  }, [pathname]);
   return useQuery({
-    queryKey: ["student-portal-access", user?.id, previewStudentId],
+    queryKey: [
+      "student-portal-access",
+      user?.id,
+      pathname.startsWith("/student"),
+      previewStudentId,
+    ],
     enabled: !!user,
     queryFn: async () => {
       if (previewStudentId) {

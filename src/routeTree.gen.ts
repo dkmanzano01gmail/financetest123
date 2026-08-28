@@ -39,6 +39,7 @@ import { Route as AuthenticatedAtelierRawMaterialsRouteImport } from './routes/_
 import { Route as AuthenticatedAtelierRenovationRouteImport } from './routes/_authenticated/atelier.renovation'
 import { Route as AuthenticatedAtelierStudentsRouteImport } from './routes/_authenticated/atelier.students'
 import { Route as AuthenticatedAtelierWorkshopPricingRouteImport } from './routes/_authenticated/atelier.workshop-pricing'
+import { Route as AuthenticatedStudentIndexRouteImport } from './routes/_authenticated/student.index'
 import { Route as AuthenticatedStudentAccountRouteImport } from './routes/_authenticated/student.account'
 import { Route as AuthenticatedStudentClassesRouteImport } from './routes/_authenticated/student.classes'
 import { Route as AuthenticatedStudentPaymentsRouteImport } from './routes/_authenticated/student.payments'
@@ -209,6 +210,12 @@ const AuthenticatedAtelierWorkshopPricingRoute =
     path: '/atelier/workshop-pricing',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedStudentIndexRoute =
+  AuthenticatedStudentIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedStudentRoute,
+  } as any)
 const AuthenticatedStudentAccountRoute =
   AuthenticatedStudentAccountRouteImport.update({
     id: '/account',
@@ -282,6 +289,7 @@ export interface FileRoutesByFullPath {
   '/student/pieces': typeof AuthenticatedStudentPiecesRoute
   '/student/projects': typeof AuthenticatedStudentProjectsRoute
   '/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
+  '/student/': typeof AuthenticatedStudentIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -300,7 +308,6 @@ export interface FileRoutesByTo {
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/reconciliation': typeof AuthenticatedReconciliationRoute
   '/settings': typeof AuthenticatedSettingsRoute
-  '/student': typeof AuthenticatedStudentRouteWithChildren
   '/transactions': typeof AuthenticatedTransactionsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/atelier/attendance': typeof AuthenticatedAtelierAttendanceRoute
@@ -319,6 +326,7 @@ export interface FileRoutesByTo {
   '/student/pieces': typeof AuthenticatedStudentPiecesRoute
   '/student/projects': typeof AuthenticatedStudentProjectsRoute
   '/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
+  '/student': typeof AuthenticatedStudentIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -358,6 +366,7 @@ export interface FileRoutesById {
   '/_authenticated/student/pieces': typeof AuthenticatedStudentPiecesRoute
   '/_authenticated/student/projects': typeof AuthenticatedStudentProjectsRoute
   '/_authenticated/super-admin/customizations': typeof AuthenticatedSuperAdminCustomizationsRoute
+  '/_authenticated/student/': typeof AuthenticatedStudentIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -397,6 +406,7 @@ export interface FileRouteTypes {
     | '/student/pieces'
     | '/student/projects'
     | '/super-admin/customizations'
+    | '/student/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -415,7 +425,6 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/reconciliation'
     | '/settings'
-    | '/student'
     | '/transactions'
     | '/auth/callback'
     | '/atelier/attendance'
@@ -434,6 +443,7 @@ export interface FileRouteTypes {
     | '/student/pieces'
     | '/student/projects'
     | '/super-admin/customizations'
+    | '/student'
   id:
     | '__root__'
     | '/'
@@ -472,6 +482,7 @@ export interface FileRouteTypes {
     | '/_authenticated/student/pieces'
     | '/_authenticated/student/projects'
     | '/_authenticated/super-admin/customizations'
+    | '/_authenticated/student/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -694,6 +705,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAtelierWorkshopPricingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/student/': {
+      id: '/_authenticated/student/'
+      path: '/'
+      fullPath: '/student/'
+      preLoaderRoute: typeof AuthenticatedStudentIndexRouteImport
+      parentRoute: typeof AuthenticatedStudentRoute
+    }
     '/_authenticated/student/account': {
       id: '/_authenticated/student/account'
       path: '/account'
@@ -745,6 +763,7 @@ interface AuthenticatedStudentRouteChildren {
   AuthenticatedStudentPaymentsRoute: typeof AuthenticatedStudentPaymentsRoute
   AuthenticatedStudentPiecesRoute: typeof AuthenticatedStudentPiecesRoute
   AuthenticatedStudentProjectsRoute: typeof AuthenticatedStudentProjectsRoute
+  AuthenticatedStudentIndexRoute: typeof AuthenticatedStudentIndexRoute
 }
 
 const AuthenticatedStudentRouteChildren: AuthenticatedStudentRouteChildren = {
@@ -753,6 +772,7 @@ const AuthenticatedStudentRouteChildren: AuthenticatedStudentRouteChildren = {
   AuthenticatedStudentPaymentsRoute: AuthenticatedStudentPaymentsRoute,
   AuthenticatedStudentPiecesRoute: AuthenticatedStudentPiecesRoute,
   AuthenticatedStudentProjectsRoute: AuthenticatedStudentProjectsRoute,
+  AuthenticatedStudentIndexRoute: AuthenticatedStudentIndexRoute,
 }
 
 const AuthenticatedStudentRouteWithChildren =
