@@ -90,7 +90,7 @@ function Page() {
       (await sb.from("firing_settings").select("*").eq("workspace_id", wsId).maybeSingle()).data ?? {
         oven_diameter_cm: 57,
         area_adjustment: 1.0825,
-        resistance_cost: 2000,
+        resistance_cost: 2500,
         resistance_burns: 275,
         power_kw: 9.85,
         biscuit_hours: 9,

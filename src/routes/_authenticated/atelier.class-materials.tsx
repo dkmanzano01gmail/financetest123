@@ -106,7 +106,7 @@ function Page() {
     margin_percent: "0",
     fixed_monthly_fee: "600",
     kiln_firing_profit_percent: "100",
-    resistance_base_cost_per_firing: "1,50",
+    resistance_base_cost_per_firing: "0",
   });
 
   const { data: rows = [] } = useQuery({
@@ -199,7 +199,7 @@ function Page() {
         margin_percent: 0,
         fixed_monthly_fee: 600,
         kiln_firing_profit_percent: 100,
-        resistance_base_cost_per_firing: 1.5,
+        resistance_base_cost_per_firing: 0,
       };
     },
   });
@@ -210,7 +210,9 @@ function Page() {
       fixed_monthly_fee: String(classSettings.fixed_monthly_fee ?? 600),
       kiln_firing_profit_percent: String(classSettings.kiln_firing_profit_percent ?? 100),
       resistance_base_cost_per_firing: String(
-        classSettings.resistance_base_cost_per_firing ?? 1.5,
+        Number(classSettings.resistance_base_cost_per_firing) === 1.5
+          ? 0
+          : classSettings.resistance_base_cost_per_firing ?? 0,
       ),
     });
   }, [classSettings]);
@@ -323,16 +325,26 @@ function Page() {
     const glazeWeightGrams = hasStageWeights
       ? Math.max(0, n(form.glazed_weight_g) - n(form.bisque_weight_g))
       : n(form.glaze_quantity);
+    const effectiveLengthCm = n(form.length_cm) > 0 ? n(form.length_cm) : 7;
+    const effectiveDepthCm = n(form.depth_cm) > 0 ? n(form.depth_cm) : 7;
+    const effectiveHeightCm = n(form.height_cm) > 0 ? n(form.height_cm) : 5;
+    const firingSettings = {
+      ...(selectedKiln ?? {}),
+      resistance_cost:
+        !selectedKiln?.resistance_cost || Number(selectedKiln.resistance_cost) === 2000
+          ? 2500
+          : selectedKiln.resistance_cost,
+    };
     const calculated = calculateClassPieceCost({
       quantity: n(form.quantity),
       clayWeightKg: n(form.modeled_weight_g) / 1000,
       clayUnitCost: clayPerKg,
       glazeAmount: glazeWeightGrams,
       glazeUnitCost: glazePerGram,
-      lengthCm: n(form.length_cm),
-      depthCm: n(form.depth_cm),
+      lengthCm: effectiveLengthCm,
+      depthCm: effectiveDepthCm,
       glazeCone: form.glaze_cone,
-      firingSettings: selectedKiln,
+      firingSettings,
       chargeBisque: form.charge_biscuit,
       chargeGlaze: form.charge_glaze,
       resistanceOnly: form.resistance_only,
@@ -341,9 +353,12 @@ function Page() {
       marginRate: Number(classSettings?.margin_percent ?? 0) / 100,
       freightRate: 0.1,
     });
+    const configuredResistanceBase = Number(
+      classSettings?.resistance_base_cost_per_firing ?? 0,
+    );
     const resistanceBasePerFiring = Math.max(
       0,
-      Number(classSettings?.resistance_base_cost_per_firing ?? 1.5),
+      configuredResistanceBase === 1.5 ? 0 : configuredResistanceBase,
     );
     const kilnProfit = Math.max(
       0,
@@ -380,6 +395,9 @@ function Page() {
       glazePerGram,
       clayMaterialFound: !!clay,
       glazeMaterialFound: !!glaze,
+      effectiveLengthCm,
+      effectiveDepthCm,
+      effectiveHeightCm,
       glazeWeightGrams,
       hasStageWeights,
       kilnProfit,
@@ -917,7 +935,7 @@ function Page() {
               </CalculationSection>
 
               <CalculationSection title="2. Ocupação do forno">
-                <CalculationLine title="Área projetada da peça" formula={`π × ((${n(form.length_cm).toLocaleString("pt-BR")} + 2 cm) ÷ 2) × ((${n(form.depth_cm).toLocaleString("pt-BR")} + 2 cm) ÷ 2) = ${calculation.bisquePieceArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm²`} detail="A fórmula acrescenta automaticamente 1 cm de folga em cada lado. A altura é registrada, mas não participa do cálculo atual." sources={<><SourceTag kind={n(form.length_cm) > 0 ? "input" : "assumed"}>{n(form.length_cm) > 0 ? "Comprimento da peça" : "Comprimento: 0 cm"}</SourceTag><SourceTag kind={n(form.depth_cm) > 0 ? "input" : "assumed"}>{n(form.depth_cm) > 0 ? "Profundidade da peça" : "Profundidade: 0 cm"}</SourceTag><SourceTag kind="assumed">Folga fixa: 1 cm/lado</SourceTag></>} />
+                <CalculationLine title="Área projetada da peça" formula={`π × ((${calculation.effectiveLengthCm.toLocaleString("pt-BR")} + 2 cm) ÷ 2) × ((${calculation.effectiveDepthCm.toLocaleString("pt-BR")} + 2 cm) ÷ 2) = ${calculation.bisquePieceArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm²`} detail={`Sem dimensões informadas, o sistema assume uma peça média circular de 7 cm de diâmetro e 5 cm de altura. A fórmula de ocupação usa a projeção horizontal; a altura considerada (${calculation.effectiveHeightCm.toLocaleString("pt-BR")} cm) fica registrada para transparência, mas não altera a área.`} sources={<><SourceTag kind={n(form.length_cm) > 0 ? "input" : "assumed"}>{n(form.length_cm) > 0 ? "Comprimento da peça" : "Comprimento padrão: 7 cm"}</SourceTag><SourceTag kind={n(form.depth_cm) > 0 ? "input" : "assumed"}>{n(form.depth_cm) > 0 ? "Profundidade da peça" : "Profundidade padrão: 7 cm"}</SourceTag><SourceTag kind={n(form.height_cm) > 0 ? "input" : "assumed"}>{n(form.height_cm) > 0 ? "Altura da peça" : "Altura padrão: 5 cm"}</SourceTag><SourceTag kind="assumed">Folga fixa: 1 cm/lado</SourceTag></>} />
                 <CalculationLine title="Área útil e ocupação" formula={`π × (${calculation.bisqueProfile.ovenDiameter.toLocaleString("pt-BR")} cm ÷ 2)² ÷ ${calculation.bisqueProfile.areaAdjustment.toLocaleString("pt-BR")} = ${calculation.bisqueOvenArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm²; ${calculation.bisquePieceArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ÷ ${calculation.bisqueOvenArea.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} = ${(calculation.kilnUsePercent * 100).toFixed(3)}%`} sources={<SourceTag kind={selectedKiln ? "config" : "assumed"}>{selectedKiln ? `Forno: ${selectedKiln.name}` : "Parâmetros padrão do sistema"}</SourceTag>} />
               </CalculationSection>
 
@@ -951,7 +969,7 @@ function Page() {
       </Dialog>
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Parâmetros de cobrança</DialogTitle></DialogHeader><div className="space-y-3"><Field label="Margem sobre materiais (%)"><Input value={settingsForm.margin_percent} onChange={(event) => setSettingsForm({ ...settingsForm, margin_percent: event.target.value })} /></Field><Field label="Mensalidade padrão"><Input value={settingsForm.fixed_monthly_fee} onChange={(event) => setSettingsForm({ ...settingsForm, fixed_monthly_fee: event.target.value })} /></Field><Field label="Lucro sobre as queimas (%)"><Input value={settingsForm.kiln_firing_profit_percent} onChange={(event) => setSettingsForm({ ...settingsForm, kiln_firing_profit_percent: event.target.value })} /></Field><Field label="Custo base de resistências por peça/queima"><Input inputMode="decimal" value={settingsForm.resistance_base_cost_per_firing} onChange={(event) => setSettingsForm({ ...settingsForm, resistance_base_cost_per_firing: event.target.value })} /><p className="text-xs text-muted-foreground">Piso aplicado em cada queima cobrada, mesmo para peças pequenas. Padrão: R$ 1,50.</p></Field></div><DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>Cancelar</Button><Button onClick={() => saveSettings.mutate()}>Salvar</Button></DialogFooter></DialogContent>
+        <DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Parâmetros de cobrança</DialogTitle></DialogHeader><div className="space-y-3"><Field label="Margem sobre materiais (%)"><Input value={settingsForm.margin_percent} onChange={(event) => setSettingsForm({ ...settingsForm, margin_percent: event.target.value })} /></Field><Field label="Mensalidade padrão"><Input value={settingsForm.fixed_monthly_fee} onChange={(event) => setSettingsForm({ ...settingsForm, fixed_monthly_fee: event.target.value })} /></Field><Field label="Lucro sobre as queimas (%)"><Input value={settingsForm.kiln_firing_profit_percent} onChange={(event) => setSettingsForm({ ...settingsForm, kiln_firing_profit_percent: event.target.value })} /></Field><Field label="Complemento mínimo opcional por peça/queima"><Input inputMode="decimal" value={settingsForm.resistance_base_cost_per_firing} onChange={(event) => setSettingsForm({ ...settingsForm, resistance_base_cost_per_firing: event.target.value })} /><p className="text-xs text-muted-foreground">O padrão agora é R$ 0,00: a resistência é rateada pela ocupação calculada da peça. Use este campo somente se desejar acrescentar um piso manual.</p></Field></div><DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>Cancelar</Button><Button onClick={() => saveSettings.mutate()}>Salvar</Button></DialogFooter></DialogContent>
       </Dialog>
     </PageContainer>
   );

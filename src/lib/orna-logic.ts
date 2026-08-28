@@ -57,7 +57,7 @@ export type CashFlowDay = {
 };
 
 export const ORNA_KILN_DEFAULTS = {
-  resistanceCost: 2000,
+  resistanceCost: 2500,
   kwhCost: 1,
   powerKw: 9.85,
   ovenDiameter: 57,
