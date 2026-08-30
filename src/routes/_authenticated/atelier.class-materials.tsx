@@ -28,9 +28,7 @@ import { formatCurrency, formatDate, monthLabel, parseLocaleAmount } from "@/lib
 import { calculateClassPieceCost } from "@/lib/orna-logic";
 import { Calculator, Camera, ImagePlus, Mail, Package, Pencil, Plus, Printer, Settings2, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
-import QRCode from "qrcode";
 import { createPixPayload, SELA_PIX_KEY } from "@/lib/pix-br";
-import { createClassMaterialsPdf } from "@/lib/class-material-statement-pdf";
 import { emailClassMaterialsStatement } from "@/lib/class-material-email.functions";
 
 export const Route = createFileRoute("/_authenticated/atelier/class-materials")({ component: Page });
@@ -172,12 +170,21 @@ function Page() {
     queryKey: ["students", wsId, "class-materials"],
     enabled: !!wsId,
     queryFn: async () => {
-      const { data, error } = await sb
+      let result = await sb
         .from("students")
         .select("id,name,email,class_name,monthly_fee,is_active")
         .eq("workspace_id", wsId)
         .eq("is_active", true)
         .order("name");
+      if (result.error?.message.includes("'email' column")) {
+        result = await sb
+          .from("students")
+          .select("id,name,class_name,monthly_fee,is_active")
+          .eq("workspace_id", wsId)
+          .eq("is_active", true)
+          .order("name");
+      }
+      const { data, error } = result;
       if (error) throw error;
       return data ?? [];
     },
@@ -591,6 +598,7 @@ function Page() {
     }
     setEmailingStudent(item.student);
     try {
+      const { createClassMaterialsPdf } = await import("@/lib/class-material-statement-pdf");
       const { blob } = await createClassMaterialsPdf({ ...item, period });
       const bytes = new Uint8Array(await blob.arrayBuffer());
       let binary = "";
@@ -1200,7 +1208,8 @@ function PixPaymentBlock({ amount, studentName, currency, privacy }: { amount: n
       setQrUrl("");
       return;
     }
-    QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 420 })
+    import("qrcode")
+      .then(({ default: QRCode }) => QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 420 }))
       .then((url) => active && setQrUrl(url))
       .catch(() => active && setQrUrl(""));
     return () => { active = false; };

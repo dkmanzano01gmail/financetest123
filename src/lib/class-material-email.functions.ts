@@ -32,12 +32,20 @@ export const emailClassMaterialsStatement = createServerFn({ method: "POST" })
     if (membership.error) throw membership.error;
     if (!membership.data) throw new Error("Acesso não autorizado.");
 
-    const result = await client
+    let result = await client
       .from("students")
       .select("id,name,email")
       .eq("id", data.studentId)
       .eq("workspace_id", data.workspaceId)
       .maybeSingle();
+    if (result.error?.message.includes("'email' column")) {
+      result = await client
+        .from("students")
+        .select("id,name")
+        .eq("id", data.studentId)
+        .eq("workspace_id", data.workspaceId)
+        .maybeSingle();
+    }
     if (result.error) throw result.error;
     if (!result.data) throw new Error("Aluno não encontrado neste workspace.");
     const target = String(result.data.email || "").trim().toLowerCase();
