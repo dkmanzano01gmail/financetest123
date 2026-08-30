@@ -26,8 +26,12 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, formatDate, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { calculateClassPieceCost } from "@/lib/orna-logic";
-import { Calculator, Camera, ImagePlus, Package, Pencil, Plus, Printer, Settings2, Trash2, Users, X } from "lucide-react";
+import { Calculator, Camera, ImagePlus, Mail, Package, Pencil, Plus, Printer, Settings2, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
+import QRCode from "qrcode";
+import { createPixPayload, SELA_PIX_KEY } from "@/lib/pix-br";
+import { createClassMaterialsPdf } from "@/lib/class-material-statement-pdf";
+import { emailClassMaterialsStatement } from "@/lib/class-material-email.functions";
 
 export const Route = createFileRoute("/_authenticated/atelier/class-materials")({ component: Page });
 const sb = supabase as any;
@@ -104,6 +108,7 @@ function Page() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [printStudent, setPrintStudent] = useState<string | null>(null);
+  const [emailingStudent, setEmailingStudent] = useState<string | null>(null);
   const [reportPhotosByStudent, setReportPhotosByStudent] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState(empty());
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -169,7 +174,7 @@ function Page() {
     queryFn: async () => {
       const { data, error } = await sb
         .from("students")
-        .select("id,name,class_name,monthly_fee,is_active")
+        .select("id,name,email,class_name,monthly_fee,is_active")
         .eq("workspace_id", wsId)
         .eq("is_active", true)
         .order("name");
@@ -235,7 +240,7 @@ function Page() {
     const timer = window.setTimeout(async () => {
       const images = Array.from(
         document.querySelectorAll<HTMLImageElement>(
-          '[data-print-statement="selected"] img[data-report-piece-photo="true"]',
+          '[data-print-statement="selected"] img',
         ),
       );
       await Promise.race([
@@ -537,11 +542,13 @@ function Page() {
         paid,
         pending,
       };
+      const registeredStudent = (students as any[]).find((student) => student.name === row.student_name);
       const item = map.get(row.student_name) ?? {
         student: row.student_name,
+        studentId: registeredStudent?.id ?? "",
+        email: registeredStudent?.email ?? "",
         group:
-          (students as any[]).find((student) => student.name === row.student_name)?.class_name ||
-          "",
+          registeredStudent?.class_name || "",
         quantity: 0,
         clay: 0,
         glaze: 0,
@@ -571,6 +578,42 @@ function Page() {
       a.student.localeCompare(b.student, "pt-BR"),
     );
   }, [filtered, students]);
+
+  async function emailStatement(item: any, period: string) {
+    if (!wsId) return;
+    if (!item.studentId) {
+      toast.error("Aluno não encontrado neste workspace.");
+      return;
+    }
+    if (!item.email) {
+      toast.error("Este aluno não possui e-mail cadastrado.");
+      return;
+    }
+    setEmailingStudent(item.student);
+    try {
+      const { blob } = await createClassMaterialsPdf({ ...item, period });
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+      }
+      const safeName = item.student.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+      const result = await emailClassMaterialsStatement({
+        data: {
+          workspaceId: wsId,
+          studentId: item.studentId,
+          total: item.pending,
+          filename: `materiais-${safeName || "aluno"}.pdf`,
+          pdfBase64: btoa(binary),
+        },
+      });
+      toast.success(`Demonstrativo enviado para ${result.recipient}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o demonstrativo.");
+    } finally {
+      setEmailingStudent(null);
+    }
+  }
 
   const save = useMutation({
     mutationFn: async () => {
@@ -774,6 +817,12 @@ function Page() {
     setOpen(true);
   }
 
+  const statementPeriod = periodMode === "month"
+    ? `${monthLabel(month)} de ${year}`
+    : periodMode === "year"
+      ? String(year)
+      : "Histórico completo";
+
   return (
     <PageContainer>
       <style>{`@media print {
@@ -850,7 +899,7 @@ function Page() {
             <StudentStatement
               key={item.student}
               item={item}
-              period={periodMode === "month" ? `${monthLabel(month)} de ${year}` : periodMode === "year" ? String(year) : "Histórico completo"}
+              period={statementPeriod}
               currency={currency}
               privacy={privacy}
               selectedForPrint={printStudent === item.student}
@@ -859,6 +908,8 @@ function Page() {
                 setReportPhotosByStudent((current) => ({ ...current, [item.student]: includePhotos }))
               }
               onPrint={() => setPrintStudent(item.student)}
+              onEmail={() => emailStatement(item, statementPeriod)}
+              emailing={emailingStudent === item.student}
               onEdit={edit}
             />
           ))}
@@ -1000,6 +1051,8 @@ function StudentStatement({
   includePhotos,
   onIncludePhotosChange,
   onPrint,
+  onEmail,
+  emailing,
   onEdit,
 }: {
   item: any;
@@ -1010,6 +1063,8 @@ function StudentStatement({
   includePhotos: boolean;
   onIncludePhotosChange: (includePhotos: boolean) => void;
   onPrint: () => void;
+  onEmail: () => void;
+  emailing: boolean;
   onEdit: (piece: any) => void;
 }) {
   const photoCount = item.pieces.filter((piece: any) => Boolean(piece.photo_url)).length;
@@ -1035,6 +1090,9 @@ function StudentStatement({
             </div>
             <Button type="button" variant="outline" size="sm" onClick={onPrint}>
               <Printer className="mr-1 h-4 w-4" />Imprimir / salvar PDF
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={onEmail} disabled={emailing}>
+              <Mail className="mr-1 h-4 w-4" />{emailing ? "Enviando..." : "Enviar por e-mail"}
             </Button>
           </div>
         </div>
@@ -1124,8 +1182,45 @@ function StudentStatement({
             );
           })}
         </div>
+        <PixPaymentBlock amount={item.pending} studentName={item.student} currency={currency} privacy={privacy} />
       </CardContent>
     </Card>
+  );
+}
+
+function PixPaymentBlock({ amount, studentName, currency, privacy }: { amount: number; studentName: string; currency: string; privacy: boolean }) {
+  const payload = useMemo(
+    () => (amount > 0 ? createPixPayload({ amount, studentName }) : null),
+    [amount, studentName],
+  );
+  const [qrUrl, setQrUrl] = useState("");
+  useEffect(() => {
+    let active = true;
+    if (!payload) {
+      setQrUrl("");
+      return;
+    }
+    QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 420 })
+      .then((url) => active && setQrUrl(url))
+      .catch(() => active && setQrUrl(""));
+    return () => { active = false; };
+  }, [payload]);
+  if (!payload) {
+    return <div className="break-inside-avoid rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">Não há valor pendente; nenhuma cobrança Pix foi gerada.</div>;
+  }
+  return (
+    <section className="break-inside-avoid rounded-xl border bg-background p-4">
+      <h3 className="font-semibold">Pagamento via Pix</h3>
+      <p className="mt-1 text-sm">Valor: <strong>{formatCurrency(amount, currency, privacy)}</strong></p>
+      <div className="mt-3 flex flex-col gap-4 sm:flex-row">
+        {qrUrl && <img src={qrUrl} alt={`QR Code Pix de ${studentName}`} className="h-40 w-40 rounded-lg border bg-white p-1" />}
+        <div className="min-w-0 flex-1 text-sm">
+          <div className="font-medium">Pix Copia e Cola:</div>
+          <p className="mt-1 break-all rounded-lg bg-muted/50 p-2 font-mono text-xs">{payload}</p>
+          <p className="mt-2">Chave Pix: <strong>{SELA_PIX_KEY}</strong></p>
+        </div>
+      </div>
+    </section>
   );
 }
 
