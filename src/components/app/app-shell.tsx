@@ -34,6 +34,7 @@ import {
   ChevronRight,
   CircleHelp,
   Loader2,
+  CircleDollarSign,
 } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
@@ -95,6 +96,12 @@ const baseNavDef = [
     label: "Material Aulas",
   },
   {
+    to: "/atelier/student-payments",
+    icon: CircleDollarSign,
+    key: "nav.atelier.student_payments",
+    label: "Pagamentos de alunos",
+  },
+  {
     to: "/atelier/attendance",
     icon: CalendarCheck,
     key: "nav.atelier.attendance",
@@ -146,6 +153,7 @@ const financialNavKeys = new Set([
 const atelierNavKeys = new Set([
   "nav.atelier.raw_materials",
   "nav.atelier.class_materials",
+  "nav.atelier.student_payments",
   "nav.atelier.attendance",
   "nav.atelier.students",
   "nav.atelier.kilns",

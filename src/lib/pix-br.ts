@@ -26,13 +26,18 @@ export function pixCrc16(value: string) {
   return crc.toString(16).toUpperCase().padStart(4, "0");
 }
 
-export function createPixPayload(input: { amount: number; studentName: string }) {
+export function createPixPayload(input: {
+  amount: number;
+  studentName: string;
+  description?: string;
+}) {
   if (!Number.isFinite(input.amount) || input.amount <= 0) {
     throw new Error("O valor do Pix deve ser maior que zero.");
   }
   const key = SELA_PIX_KEY.replace(/\D/g, "");
-  const description = normalize(`Materiais Sela - ${input.studentName}`, 50);
-  const merchantAccount = field("00", "BR.GOV.BCB.PIX") + field("01", key) + field("02", description);
+  const description = normalize(input.description || `Materiais Sela - ${input.studentName}`, 50);
+  const merchantAccount =
+    field("00", "BR.GOV.BCB.PIX") + field("01", key) + field("02", description);
   const additionalData = field("05", "***");
   const payload =
     field("00", "01") +
