@@ -29,7 +29,6 @@ import { calculateClassPieceCost } from "@/lib/orna-logic";
 import { Calculator, Camera, ImagePlus, Mail, Package, Pencil, Plus, Printer, Settings2, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { createPixPayload, SELA_PIX_KEY } from "@/lib/pix-br";
-import { emailClassMaterialsStatement } from "@/lib/class-material-email.functions";
 
 export const Route = createFileRoute("/_authenticated/atelier/class-materials")({ component: Page });
 const sb = supabase as any;
@@ -170,21 +169,12 @@ function Page() {
     queryKey: ["students", wsId, "class-materials"],
     enabled: !!wsId,
     queryFn: async () => {
-      let result = await sb
+      const { data, error } = await sb
         .from("students")
-        .select("id,name,email,class_name,monthly_fee,is_active")
+        .select("id,name,class_name,monthly_fee,is_active")
         .eq("workspace_id", wsId)
         .eq("is_active", true)
         .order("name");
-      if (result.error?.message.includes("'email' column")) {
-        result = await sb
-          .from("students")
-          .select("id,name,class_name,monthly_fee,is_active")
-          .eq("workspace_id", wsId)
-          .eq("is_active", true)
-          .order("name");
-      }
-      const { data, error } = result;
       if (error) throw error;
       return data ?? [];
     },
@@ -553,7 +543,6 @@ function Page() {
       const item = map.get(row.student_name) ?? {
         student: row.student_name,
         studentId: registeredStudent?.id ?? "",
-        email: registeredStudent?.email ?? "",
         group:
           registeredStudent?.class_name || "",
         quantity: 0,
@@ -592,13 +581,12 @@ function Page() {
       toast.error("Aluno não encontrado neste workspace.");
       return;
     }
-    if (!item.email) {
-      toast.error("Este aluno não possui e-mail cadastrado.");
-      return;
-    }
     setEmailingStudent(item.student);
     try {
-      const { createClassMaterialsPdf } = await import("@/lib/class-material-statement-pdf");
+      const [{ createClassMaterialsPdf }, { emailClassMaterialsStatement }] = await Promise.all([
+        import("@/lib/class-material-statement-pdf"),
+        import("@/lib/class-material-email.functions"),
+      ]);
       const { blob } = await createClassMaterialsPdf({ ...item, period });
       const bytes = new Uint8Array(await blob.arrayBuffer());
       let binary = "";
@@ -1197,10 +1185,15 @@ function StudentStatement({
 }
 
 function PixPaymentBlock({ amount, studentName, currency, privacy }: { amount: number; studentName: string; currency: string; privacy: boolean }) {
-  const payload = useMemo(
-    () => (amount > 0 ? createPixPayload({ amount, studentName }) : null),
-    [amount, studentName],
-  );
+  const payload = useMemo(() => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    try {
+      return createPixPayload({ amount: value, studentName });
+    } catch {
+      return null;
+    }
+  }, [amount, studentName]);
   const [qrUrl, setQrUrl] = useState("");
   useEffect(() => {
     let active = true;
