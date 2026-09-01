@@ -175,6 +175,8 @@ const empty = () => ({
 });
 
 const PHOTO_BUCKET = "class-piece-photos";
+const STATEMENT_BUCKET = "class-material-statements";
+const STATEMENT_LINK_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const ALLOWED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
 
@@ -200,7 +202,7 @@ function whatsappMoney(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
-function buildStudentMaterialWhatsAppMessage(studentName: string, summary: StudentMaterialSummary) {
+function buildStudentMaterialWhatsAppMessage(studentName: string, summary: StudentMaterialSummary, pdfUrl?: string) {
   const lines = [
     `Olá, ${studentName}! Tudo bem? 😊`,
     "",
@@ -217,6 +219,9 @@ function buildStudentMaterialWhatsAppMessage(studentName: string, summary: Stude
     `Já pago: ${whatsappMoney(summary.totalPaid)}`,
     `Valor pendente: ${whatsappMoney(summary.outstandingBalance)}`,
   );
+  if (pdfUrl) {
+    lines.push("", "📄 Demonstrativo completo em PDF:", pdfUrl, "Link válido por 7 dias.");
+  }
   if (summary.outstandingBalance > 0) {
     try {
       const pixPayload = createPixPayload({ amount: summary.outstandingBalance, studentName });
@@ -1144,6 +1149,7 @@ function Page() {
               <StudentStatement
                 key={item.student}
                 item={selectedStatement}
+                workspaceId={wsId || ""}
                 availablePieces={item.pieces}
                 selectedPieceQuantities={selectedPieceQuantities}
                 onSelectedPieceQuantitiesChange={(quantities) =>
@@ -1304,6 +1310,7 @@ function Page() {
 
 function StudentStatement({
   item,
+  workspaceId,
   availablePieces,
   selectedPieceQuantities,
   onSelectedPieceQuantitiesChange,
@@ -1323,6 +1330,7 @@ function StudentStatement({
   onEdit,
 }: {
   item: any;
+  workspaceId: string;
   availablePieces: any[];
   selectedPieceQuantities: Record<string, number>;
   onSelectedPieceQuantitiesChange: (quantities: Record<string, number>) => void;
@@ -1364,17 +1372,63 @@ function StudentStatement({
     totalPaid: Number(item.paid || 0),
     outstandingBalance: Number(item.pending || 0),
   };
-  const whatsappMessage = buildStudentMaterialWhatsAppMessage(item.student, studentSummary);
   const studentWhatsAppPhone = whatsappPhone(item.phone);
   const photoCount = item.pieces.filter((piece: any) => Boolean(piece.photo_url)).length;
-  function openWhatsAppMessage() {
-    const destination = studentWhatsAppPhone
-      ? `https://wa.me/${studentWhatsAppPhone}?text=${encodeURIComponent(whatsappMessage)}`
-      : `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`;
-    window.open(destination, "_blank", "noopener,noreferrer");
+  const [preparingWhatsApp, setPreparingWhatsApp] = useState(false);
+  async function createWhatsAppMessageWithPdf() {
+    if (!workspaceId) throw new Error("Selecione um workspace.");
+    const { createClassMaterialsPdf } = await import("@/lib/class-material-statement-pdf");
+    const { blob } = await createClassMaterialsPdf(
+      { ...item, period },
+      { includeCostBreakdown },
+    );
+    const safeStudent = String(item.student || "aluno")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Za-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase();
+    const statementId = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const path = `${workspaceId}/${item.studentId || "sem-cadastro"}/${Date.now()}-${statementId}-materiais-${safeStudent || "aluno"}.pdf`;
+    const { error: uploadError } = await supabase.storage.from(STATEMENT_BUCKET).upload(path, blob, {
+      contentType: "application/pdf",
+      cacheControl: "3600",
+      upsert: false,
+    });
+    if (uploadError) throw uploadError;
+    const { data, error: signedUrlError } = await supabase.storage
+      .from(STATEMENT_BUCKET)
+      .createSignedUrl(path, STATEMENT_LINK_TTL_SECONDS);
+    if (signedUrlError || !data?.signedUrl) {
+      await supabase.storage.from(STATEMENT_BUCKET).remove([path]);
+      throw signedUrlError || new Error("Não foi possível criar o link do PDF.");
+    }
+    return buildStudentMaterialWhatsAppMessage(item.student, studentSummary, data.signedUrl);
+  }
+  async function openWhatsAppMessage() {
+    const whatsappWindow = window.open("about:blank", "_blank");
+    if (whatsappWindow) whatsappWindow.opener = null;
+    setPreparingWhatsApp(true);
+    try {
+      const whatsappMessage = await createWhatsAppMessageWithPdf();
+      const destination = studentWhatsAppPhone
+        ? `https://wa.me/${studentWhatsAppPhone}?text=${encodeURIComponent(whatsappMessage)}`
+        : `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`;
+      if (whatsappWindow) whatsappWindow.location.href = destination;
+      else window.location.href = destination;
+    } catch (error) {
+      whatsappWindow?.close();
+      toast.error(error instanceof Error ? error.message : "Não foi possível preparar o PDF para o WhatsApp.");
+    } finally {
+      setPreparingWhatsApp(false);
+    }
   }
   async function copyWhatsAppMessage() {
+    setPreparingWhatsApp(true);
     try {
+      const whatsappMessage = await createWhatsAppMessageWithPdf();
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(whatsappMessage);
       } else {
@@ -1390,7 +1444,9 @@ function StudentStatement({
       }
       toast.success("Mensagem copiada");
     } catch {
-      toast.error("Não foi possível copiar a mensagem.");
+      toast.error("Não foi possível gerar o PDF e copiar a mensagem.");
+    } finally {
+      setPreparingWhatsApp(false);
     }
   }
   function setSelectedQuantity(pieceId: string, quantity: number) {
@@ -1433,10 +1489,10 @@ function StudentStatement({
             <Button type="button" variant="outline" size="sm" onClick={onEmail} disabled={emailing || item.pieces.length === 0}>
               <Mail className="mr-1 h-4 w-4" />{emailing ? "Enviando..." : "Enviar por e-mail"}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={openWhatsAppMessage} disabled={item.pieces.length === 0} title={studentWhatsAppPhone ? "Abrir conversa com o telefone cadastrado" : "Telefone não cadastrado; escolha o contato no WhatsApp"}>
-              <MessageCircle className="mr-1 h-4 w-4" />Mensagem WhatsApp
+            <Button type="button" variant="outline" size="sm" onClick={openWhatsAppMessage} disabled={preparingWhatsApp || item.pieces.length === 0} title={studentWhatsAppPhone ? "Abrir conversa com o telefone cadastrado" : "Telefone não cadastrado; escolha o contato no WhatsApp"}>
+              <MessageCircle className="mr-1 h-4 w-4" />{preparingWhatsApp ? "Preparando PDF..." : "Mensagem WhatsApp"}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={copyWhatsAppMessage} disabled={item.pieces.length === 0}>
+            <Button type="button" variant="outline" size="sm" onClick={copyWhatsAppMessage} disabled={preparingWhatsApp || item.pieces.length === 0}>
               <Copy className="mr-1 h-4 w-4" />Copiar mensagem
             </Button>
           </div>
