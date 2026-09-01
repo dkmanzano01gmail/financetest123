@@ -1,12 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { Camera, Save } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useStudentPortalAccess } from "@/hooks/use-student-portal";
 import { PortalPage, PiecePhoto, pieceStatus, date } from "@/components/student/portal-page";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -15,16 +18,28 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/student/pieces")({ component: Pieces });
 const sb = supabase as any;
+const PHOTO_BUCKET = "class-piece-photos";
+const ALLOWED_PHOTO_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
 function Pieces() {
   const { data: access } = useStudentPortalAccess();
+  const qc = useQueryClient();
   const [status, setStatus] = useState("all");
   const [year, setYear] = useState("all");
   const [clay, setClay] = useState("all");
   const [glaze, setGlaze] = useState("all");
   const [selected, setSelected] = useState<any | null>(null);
+  const [pieceComments, setPieceComments] = useState("");
+  const [piecePhoto, setPiecePhoto] = useState<File | null>(null);
   const {
     data: pieces = [],
     isLoading,
@@ -40,9 +55,7 @@ function Pieces() {
       const rows: any[] = result.data ?? [];
       const paths = rows.map((r: any) => r.photo_path).filter(Boolean);
       if (paths.length) {
-        const signed = await supabase.storage
-          .from("class-material-photos")
-          .createSignedUrls(paths, 3600);
+        const signed = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600);
         if (!signed.error) {
           const urls = new Map((signed.data ?? []).map((r: any) => [r.path, r.signedUrl]));
           return rows.map((r: any) => ({ ...r, photo_url: urls.get(r.photo_path) }));
@@ -64,6 +77,47 @@ function Pieces() {
       ),
     [pieces, status, year, clay, glaze],
   );
+  function openPiece(piece: any) {
+    setSelected(piece);
+    setPieceComments(piece.comments || "");
+    setPiecePhoto(null);
+  }
+  const savePiece = useMutation({
+    mutationFn: async () => {
+      if (!access || !selected) throw new Error("Peça não encontrada.");
+      let photoPath: string | null = null;
+      if (piecePhoto) {
+        if (!ALLOWED_PHOTO_TYPES.has(piecePhoto.type))
+          throw new Error("Use uma foto JPG, PNG, WebP, HEIC ou HEIF.");
+        if (piecePhoto.size > 10 * 1024 * 1024) throw new Error("A foto deve ter no máximo 10 MB.");
+        const extension = piecePhoto.name.split(".").pop()?.toLowerCase() || "jpg";
+        photoPath = `${access.workspace_id}/${access.student_id}/${selected.id}/${crypto.randomUUID()}.${extension}`;
+        const upload = await supabase.storage.from(PHOTO_BUCKET).upload(photoPath, piecePhoto, {
+          upsert: false,
+          contentType: piecePhoto.type,
+        });
+        if (upload.error) throw upload.error;
+      }
+      const result = await sb.rpc("student_portal_update_piece", {
+        _piece_id: selected.id,
+        _student_id: access.is_preview ? access.student_id : null,
+        _comments: pieceComments,
+        _photo_path: photoPath,
+      });
+      if (result.error) {
+        if (photoPath) await supabase.storage.from(PHOTO_BUCKET).remove([photoPath]);
+        throw result.error;
+      }
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["student-pieces"] });
+      await qc.invalidateQueries({ queryKey: ["student-home"] });
+      setSelected(null);
+      setPiecePhoto(null);
+      toast.success("Peça atualizada");
+    },
+    onError: (cause: Error) => toast.error(cause.message || "Não foi possível atualizar a peça."),
+  });
   return (
     <PortalPage title="Minhas peças">
       {isLoading && <p className="mb-4 text-sm text-muted-foreground">Carregando peças…</p>}
@@ -133,9 +187,9 @@ function Pieces() {
             className="cursor-pointer overflow-hidden transition hover:border-primary/50 hover:shadow-md"
             role="button"
             tabIndex={0}
-            onClick={() => setSelected(p)}
+            onClick={() => openPiece(p)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") setSelected(p);
+              if (event.key === "Enter" || event.key === " ") openPiece(p);
             }}
           >
             <PiecePhoto
@@ -218,6 +272,39 @@ function Pieces() {
                 <Detail label="Peso após esmaltação" value={weight(selected.glazed_weight_g)} />
                 <Detail label="Material" value={selected.material} />
                 <Detail label="Observações" value={selected.comments} />
+              </div>
+              <div className="space-y-3 rounded-lg border p-4">
+                <div>
+                  <div className="text-sm font-medium">Sua foto e seus comentários</div>
+                  <div className="text-xs text-muted-foreground">
+                    Adicione uma foto atual da peça e observações sobre o processo.
+                  </div>
+                </div>
+                <label className="inline-flex w-fit cursor-pointer items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">
+                  <Camera className="mr-2 h-4 w-4" />
+                  {piecePhoto ? piecePhoto.name : "Tirar ou enviar foto"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                    capture="environment"
+                    className="sr-only"
+                    onChange={(event) => setPiecePhoto(event.target.files?.[0] || null)}
+                  />
+                </label>
+                <Textarea
+                  value={pieceComments}
+                  onChange={(event) => setPieceComments(event.target.value)}
+                  placeholder="Conte como foi a modelagem, esmaltação ou o que deseja lembrar…"
+                  rows={4}
+                />
+                <Button
+                  onClick={() => savePiece.mutate()}
+                  disabled={savePiece.isPending}
+                  className="w-fit"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {savePiece.isPending ? "Salvando…" : "Salvar alterações"}
+                </Button>
               </div>
             </>
           )}

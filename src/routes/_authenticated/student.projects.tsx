@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { Plus, Pencil, Archive } from "lucide-react";
+import { Plus, Pencil, Archive, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useStudentPortalAccess } from "@/hooks/use-student-portal";
 import { PortalPage } from "@/components/student/portal-page";
@@ -28,6 +28,14 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/student/projects")({ component: Projects });
 const sb = supabase as any;
+const SKETCH_BUCKET = "student-project-sketches";
+const ALLOWED_SKETCH_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
 const empty = {
   title: "",
   description: "",
@@ -46,6 +54,7 @@ function Projects() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState(empty);
+  const [sketchFiles, setSketchFiles] = useState<File[]>([]);
   const { data: projects = [] } = useQuery({
     queryKey: ["student-projects", access?.id],
     enabled: !!access,
@@ -58,7 +67,29 @@ function Projects() {
         .is("archived_at", null)
         .order("created_at", { ascending: false });
       if (result.error) throw result.error;
-      return result.data ?? [];
+      const rows = result.data ?? [];
+      if (!rows.length) return rows;
+      const images = await sb
+        .from("student_project_images")
+        .select("id,project_id,storage_path,created_at")
+        .in(
+          "project_id",
+          rows.map((project: any) => project.id),
+        )
+        .order("created_at", { ascending: true });
+      if (images.error) throw images.error;
+      const paths = (images.data ?? []).map((image: any) => image.storage_path);
+      const signed = paths.length
+        ? await supabase.storage.from(SKETCH_BUCKET).createSignedUrls(paths, 3600)
+        : { data: [], error: null };
+      if (signed.error) throw signed.error;
+      const urls = new Map((signed.data ?? []).map((image: any) => [image.path, image.signedUrl]));
+      return rows.map((project: any) => ({
+        ...project,
+        sketches: (images.data ?? [])
+          .filter((image: any) => image.project_id === project.id)
+          .map((image: any) => ({ ...image, url: urls.get(image.storage_path) })),
+      }));
     },
   });
   const save = useMutation({
@@ -86,14 +117,41 @@ function Projects() {
             .update(payload)
             .eq("id", editing)
             .eq("student_id", access.student_id)
-        : await sb.from("student_projects").insert(payload);
+            .select("id")
+            .single()
+        : await sb.from("student_projects").insert(payload).select("id").single();
       if (result.error) throw result.error;
+      const projectId = result.data?.id;
+      if (!projectId) throw new Error("Projeto não encontrado.");
+      for (const file of sketchFiles) {
+        if (!ALLOWED_SKETCH_TYPES.has(file.type))
+          throw new Error("Use imagens JPG, PNG, WebP, HEIC ou HEIF.");
+        if (file.size > 10 * 1024 * 1024) throw new Error("Cada imagem deve ter no máximo 10 MB.");
+        const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const storagePath = `${access.workspace_id}/${access.student_id}/${projectId}/${crypto.randomUUID()}.${extension}`;
+        const upload = await supabase.storage.from(SKETCH_BUCKET).upload(storagePath, file, {
+          upsert: false,
+          contentType: file.type,
+        });
+        if (upload.error) throw upload.error;
+        const image = await sb.from("student_project_images").insert({
+          workspace_id: access.workspace_id,
+          student_id: access.student_id,
+          project_id: projectId,
+          storage_path: storagePath,
+        });
+        if (image.error) {
+          await supabase.storage.from(SKETCH_BUCKET).remove([storagePath]);
+          throw image.error;
+        }
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["student-projects"] });
       setOpen(false);
       setForm(empty);
       setEditing(null);
+      setSketchFiles([]);
       toast.success("Projeto salvo");
     },
     onError: (error: Error) => toast.error(error.message),
@@ -111,6 +169,7 @@ function Projects() {
   });
   function edit(project: any) {
     setEditing(project.id);
+    setSketchFiles([]);
     setForm({
       title: project.title || "",
       description: project.description || "",
@@ -134,6 +193,7 @@ function Projects() {
           onClick={() => {
             setEditing(null);
             setForm(empty);
+            setSketchFiles([]);
             setOpen(true);
           }}
         >
@@ -145,9 +205,9 @@ function Projects() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {projects.map((project: any) => (
           <Card key={project.id} className="overflow-hidden">
-            {project.reference_image_url && (
+            {(project.sketches?.[0]?.url || project.reference_image_url) && (
               <img
-                src={project.reference_image_url}
+                src={project.sketches?.[0]?.url || project.reference_image_url}
                 alt="Referência"
                 className="aspect-video w-full object-cover"
               />
@@ -159,6 +219,18 @@ function Projects() {
               </div>
               {project.description && (
                 <p className="mt-2 text-sm text-muted-foreground">{project.description}</p>
+              )}
+              {project.sketches?.length > 1 && (
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {project.sketches.slice(1, 4).map((sketch: any) => (
+                    <img
+                      key={sketch.id}
+                      src={sketch.url}
+                      alt="Esboço do projeto"
+                      className="aspect-square rounded-md object-cover"
+                    />
+                  ))}
+                </div>
               )}
               <div className="mt-3 text-xs text-muted-foreground">
                 {[project.piece_type, project.clay, (project.glazes || []).join(", ")]
@@ -248,6 +320,24 @@ function Projects() {
                 onChange={(event) => setForm({ ...form, reference_image_url: event.target.value })}
               />
             </Field>
+            <div className="sm:col-span-2">
+              <Field label="Fotos dos esboços">
+                <label className="flex cursor-pointer items-center justify-center rounded-lg border border-dashed p-4 text-sm font-medium hover:bg-muted">
+                  <Upload className="mr-2 h-4 w-4" />
+                  {sketchFiles.length
+                    ? `${sketchFiles.length} ${sketchFiles.length === 1 ? "imagem selecionada" : "imagens selecionadas"}`
+                    : "Selecionar fotos ou usar a câmera"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                    capture="environment"
+                    multiple
+                    className="sr-only"
+                    onChange={(event) => setSketchFiles(Array.from(event.target.files || []))}
+                  />
+                </label>
+              </Field>
+            </div>
             <div className="sm:col-span-2">
               <Field label="Notas">
                 <Input

@@ -13,12 +13,9 @@ function Classes() {
     queryKey: ["student-classes", access?.id],
     enabled: !!access,
     queryFn: async () => {
-      const r = await sb
-        .from("attendance_records")
-        .select("*")
-        .eq("workspace_id", access!.workspace_id)
-        .eq("student_id", access!.student_id)
-        .order("session_date", { ascending: false });
+      const r = await sb.rpc("student_portal_attendance", {
+        _student_id: access!.is_preview ? access!.student_id : null,
+      });
       if (r.error) throw r.error;
       return r.data ?? [];
     },

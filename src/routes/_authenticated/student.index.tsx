@@ -20,19 +20,16 @@ function Dashboard() {
         sb.rpc("student_portal_pieces", {
           _student_id: access!.is_preview ? access!.student_id : null,
         }),
-        sb
-          .from("attendance_records")
-          .select("id,session_date,status,generates_makeup,makeup_completed")
-          .eq("workspace_id", access!.workspace_id)
-          .eq("student_id", access!.student_id)
-          .order("session_date", { ascending: false }),
+        sb.rpc("student_portal_attendance", {
+          _student_id: access!.is_preview ? access!.student_id : null,
+        }),
         sb
           .from("student_payments")
           .select("id,reference_month,status,payment_date")
           .eq("workspace_id", access!.workspace_id)
           .eq("student_id", access!.student_id)
           .order("reference_month", { ascending: false }),
-        sb.from("students").select("name").eq("id", access!.student_id).single(),
+        sb.from("students").select("name,class_name").eq("id", access!.student_id).single(),
       ]);
       if (pieces.error) throw pieces.error;
       const pieceRows = pieces.data ?? [];
@@ -40,7 +37,7 @@ function Dashboard() {
       let piecesWithPhotos = pieceRows;
       if (photoPaths.length) {
         const signed = await supabase.storage
-          .from("class-material-photos")
+          .from("class-piece-photos")
           .createSignedUrls(photoPaths, 3600);
         if (!signed.error) {
           const urls = new Map(
@@ -54,6 +51,7 @@ function Dashboard() {
       }
       return {
         studentName: student.data?.name || access!.student_name || "Aluno",
+        className: student.data?.class_name || "",
         pieces: piecesWithPhotos,
         attendance: attendance.error ? [] : (attendance.data ?? []),
         payments: payments.error ? [] : (payments.data ?? []),
@@ -69,9 +67,10 @@ function Dashboard() {
     ["completed", "pronta_para_retirada"].includes(p.production_status),
   ).length;
   const today = new Date().toISOString().slice(0, 10);
-  const nextClass = [...(data?.attendance ?? [])]
+  const registeredNextClass = [...(data?.attendance ?? [])]
     .filter((a: any) => a.session_date >= today)
     .sort((a: any, b: any) => a.session_date.localeCompare(b.session_date))[0];
+  const nextClass = registeredNextClass || nextClassFromGroup(data?.className);
   const makeups = (data?.attendance ?? []).filter(
     (a: any) => a.generates_makeup && !a.makeup_completed,
   ).length;
@@ -83,7 +82,13 @@ function Dashboard() {
     [Package, "Total de peças", pieces.length],
     [Clock3, "Em andamento", inProgressPieces.length],
     [CheckCircle2, "Prontas", ready],
-    [CalendarDays, "Próxima aula", nextClass ? date(nextClass.session_date) : "Sem previsão"],
+    [
+      CalendarDays,
+      "Próxima aula",
+      nextClass
+        ? `${date(nextClass.session_date)}${nextClass.session_time ? ` · ${nextClass.session_time}` : ""}`
+        : "Sem previsão",
+    ],
     [RefreshCw, "Reposições pendentes", makeups],
     [WalletCards, "Mensalidade", payment?.status === "paid" ? "Em dia" : "Pendente"],
   ] as const;
@@ -137,4 +142,36 @@ function Dashboard() {
       )}
     </PortalPage>
   );
+}
+
+function nextClassFromGroup(className?: string) {
+  const normalized = String(className || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const weekdays: Array<[string, number]> = [
+    ["domingo", 0],
+    ["segunda", 1],
+    ["terca", 2],
+    ["quarta", 3],
+    ["quinta", 4],
+    ["sexta", 5],
+    ["sabado", 6],
+  ];
+  const weekday = weekdays.find(([label]) => normalized.includes(label))?.[1];
+  if (weekday == null) return null;
+  const time = normalized.match(/(?:^|\s)(\d{1,2})(?:[:h](\d{2}))?h?(?:\s|$)/);
+  const hour = Math.min(23, Number(time?.[1] || 0));
+  const minute = Math.min(59, Number(time?.[2] || 0));
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(hour, minute, 0, 0);
+  let days = (weekday - now.getDay() + 7) % 7;
+  if (days === 0 && next.getTime() <= now.getTime()) days = 7;
+  next.setDate(now.getDate() + days);
+  const sessionDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+  return {
+    session_date: sessionDate,
+    session_time: time ? `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}` : "",
+  };
 }
