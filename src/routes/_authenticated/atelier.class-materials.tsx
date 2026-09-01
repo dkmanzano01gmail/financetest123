@@ -246,6 +246,18 @@ function whatsappPhone(phone?: string | null) {
   return digits.startsWith("55") ? digits : `55${digits}`;
 }
 
+function createStatementShareToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function sha256Hex(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function photoExtension(file: File) {
   const byType: Record<string, string> = {
     "image/jpeg": "jpg",
@@ -1398,14 +1410,27 @@ function StudentStatement({
       upsert: false,
     });
     if (uploadError) throw uploadError;
-    const { data, error: signedUrlError } = await supabase.storage
-      .from(STATEMENT_BUCKET)
-      .createSignedUrl(path, STATEMENT_LINK_TTL_SECONDS);
-    if (signedUrlError || !data?.signedUrl) {
+    const token = createStatementShareToken();
+    const tokenHash = await sha256Hex(token);
+    const expiresAt = new Date(Date.now() + STATEMENT_LINK_TTL_SECONDS * 1000).toISOString();
+    const { error: linkError } = await (supabase as any)
+      .from("class_material_statement_links")
+      .insert({
+        workspace_id: workspaceId,
+        student_id: item.studentId || null,
+        bucket_id: STATEMENT_BUCKET,
+        object_path: path,
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+      });
+    if (linkError) {
       await supabase.storage.from(STATEMENT_BUCKET).remove([path]);
-      throw signedUrlError || new Error("Não foi possível criar o link do PDF.");
+      throw linkError;
     }
-    return buildStudentMaterialWhatsAppMessage(item.student, studentSummary, data.signedUrl);
+    const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
+    if (!supabaseUrl) throw new Error("Não foi possível criar o link do PDF.");
+    const shareUrl = `${supabaseUrl}/functions/v1/class-material-statement?token=${encodeURIComponent(token)}`;
+    return buildStudentMaterialWhatsAppMessage(item.student, studentSummary, shareUrl);
   }
   async function openWhatsAppMessage() {
     const whatsappWindow = window.open("about:blank", "_blank");
