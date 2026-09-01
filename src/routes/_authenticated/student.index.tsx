@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useStudentPortalAccess } from "@/hooks/use-student-portal";
 import { PortalPage, PiecePhoto, pieceStatus, date } from "@/components/student/portal-page";
 import { Card, CardContent } from "@/components/ui/card";
+import { countPendingMakeups } from "@/lib/student-attendance";
 import { Badge } from "@/components/ui/badge";
 
 export const Route = createFileRoute("/_authenticated/student/")({ component: Dashboard });
@@ -71,9 +72,7 @@ function Dashboard() {
     .filter((a: any) => a.session_date >= today)
     .sort((a: any, b: any) => a.session_date.localeCompare(b.session_date))[0];
   const nextClass = registeredNextClass || nextClassFromGroup(data?.className);
-  const makeups = (data?.attendance ?? []).filter(
-    (a: any) => a.generates_makeup && !a.makeup_completed,
-  ).length;
+  const makeups = countPendingMakeups(data?.attendance ?? []);
   const currentMonth = new Date().toISOString().slice(0, 7);
   const payment = (data?.payments ?? []).find((p: any) =>
     String(p.reference_month || "").startsWith(currentMonth),
