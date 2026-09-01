@@ -14,7 +14,7 @@ type Statement = {
   kilnMaintenance: number;
   other: number;
   freight: number;
-  pieces: Array<{ piece_name?: string; usage_date?: string; quantity?: number; charged?: number; pending?: number }>;
+  pieces: Array<{ piece_name?: string; usage_date?: string; quantity?: number; registeredQuantity?: number; charged?: number; pending?: number }>;
 };
 
 const money = (value: number) => `R$ ${value.toFixed(2).replace(".", ",")}`;
@@ -48,6 +48,11 @@ export async function createClassMaterialsPdf(statement: Statement, options: { i
   write(`Total de materiais: ${money(statement.charged)}`, { size: 12, font: bold });
   write(`Ja pago: ${money(statement.paid)}`);
   write(`Valor devido: ${money(statement.pending)}`, { size: 12, font: bold, color: rgb(0.65, 0.08, 0.08) });
+  const totalRegisteredQuantity = statement.pieces.reduce(
+    (total, piece) => total + Math.max(Number(piece.registeredQuantity ?? piece.quantity ?? 1), Number(piece.quantity ?? 1)),
+    0,
+  );
+  write(`Quantidade cobrada neste demonstrativo: ${statement.pieces.reduce((total, piece) => total + Number(piece.quantity ?? 1), 0)} de ${totalRegisteredQuantity} pecas registradas.`, { size: 10, font: bold });
   if (options.includeCostBreakdown !== false) {
     y -= 4;
     write(`Argila: ${money(statement.clay)}   Esmalte: ${money(statement.glaze)}   Queimas: ${money(statement.firing)}`);
@@ -57,7 +62,10 @@ export async function createClassMaterialsPdf(statement: Statement, options: { i
   line();
   write("Itens", { size: 12, font: bold });
   for (const piece of statement.pieces) {
-    write(`${piece.usage_date ?? ""}  ${piece.piece_name || "Peca sem nome"}  (${piece.quantity ?? 1} un.)  Cobrado: ${money(Number(piece.charged || 0))}  Pendente: ${money(Number(piece.pending || 0))}`, { size: 9 });
+    const chargedQuantity = Number(piece.quantity ?? 1);
+    const registeredQuantity = Math.max(Number(piece.registeredQuantity ?? chargedQuantity), chargedQuantity);
+    write(`${piece.usage_date ?? ""}  ${piece.piece_name || "Peca sem nome"}`, { size: 9, font: bold });
+    write(`Quantidade cobrada: ${chargedQuantity} de ${registeredQuantity} unidades registradas.  Cobrado: ${money(Number(piece.charged || 0))}  Pendente: ${money(Number(piece.pending || 0))}`, { size: 9 });
   }
 
   let pixPayload: string | null = null;

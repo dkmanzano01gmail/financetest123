@@ -92,6 +92,7 @@ function selectStatementPieces(item: any, selectedQuantities: Record<string, num
     const ratio = selected / wholeQuantity(piece);
     return [{
       ...piece,
+      registeredQuantity: wholeQuantity(piece),
       quantity: selected,
       clay: piece.clay * ratio,
       glaze: piece.glaze * ratio,
@@ -1009,6 +1010,7 @@ function Page() {
           box-shadow: none !important; border: 0 !important; background: white !important;
         }
         body.printing-student-materials [data-print-hide="true"] { display: none !important; }
+        body.printing-student-materials [data-print-only="true"] { display: block !important; }
       }`}</style>
       <PageHeader
         title="Material Aulas Regulares"
@@ -1294,7 +1296,7 @@ function StudentStatement({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="text-xl">{item.student}</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">{item.group || "Aulas regulares"} · {period} · {item.quantity} de {totalAvailableUnits} {totalAvailableUnits === 1 ? "unidade selecionada" : "unidades selecionadas"}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{item.group || "Aulas regulares"} · {period} · {item.quantity} {item.quantity === 1 ? "unidade cobrada" : "unidades cobradas"} de {totalAvailableUnits} registradas</p>
           </div>
           <div data-print-hide="true" className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
@@ -1326,6 +1328,14 @@ function StudentStatement({
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-4 md:p-5">
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
+          <strong>Quantidade incluída nesta cobrança: {item.quantity} de {totalAvailableUnits} {totalAvailableUnits === 1 ? "peça registrada" : "peças registradas"}.</strong>
+          {totalAvailableUnits > item.quantity && (
+            <span className="ml-1 text-muted-foreground">
+              {totalAvailableUnits - item.quantity} {totalAvailableUnits - item.quantity === 1 ? "peça não está incluída" : "peças não estão incluídas"} neste demonstrativo.
+            </span>
+          )}
+        </div>
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-xl bg-primary p-4 text-primary-foreground">
             <div className="text-xs uppercase tracking-wide opacity-80">Total de materiais</div>
@@ -1369,6 +1379,9 @@ function StudentStatement({
             const chargeable = isPieceChargeable(piece);
             const selectedQuantity = Math.min(selectable, Math.max(0, Math.round(Number(selectedPieceQuantities[piece.id] || 0))));
             const selected = chargeable && selectedQuantity > 0;
+            const selectedRatio = tracked.total > 0 ? selectedQuantity / tracked.total : 0;
+            const selectedCalculated = piece.calculated * selectedRatio;
+            const selectedCharged = piece.charged * selectedRatio;
             const modeledWeight = Number(
               piece.modeled_weight_g ?? piece.grams ?? Number(piece.clay_weight_kg || 0) * 1000,
             );
@@ -1404,8 +1417,10 @@ function StudentStatement({
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${piece.payment_status === "paid" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}>{statusLabel(piece.payment_status)}</span>
                         {piece.resistance_only && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Somente resistências</span>}
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {tracked.total} total · {tracked.completed} concluída(s) · {tracked.delivered} entregue(s) · {tracked.invoiced} faturada(s) · {tracked.billable} disponível(is) · {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Pendentes: {tracked.total - tracked.completed} em produção · {tracked.completed - tracked.delivered} para entrega · {tracked.completed - tracked.invoiced} para faturar.</p>
+                      <p className="mt-1 text-sm font-semibold text-primary">Nesta cobrança: {selectedQuantity} de {tracked.total} {tracked.total === 1 ? "peça registrada" : "peças registradas"}.</p>
+                      <p data-print-hide="true" className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {tracked.total} total · {tracked.completed} concluída(s) · {tracked.delivered} entregue(s) · {tracked.invoiced} faturada(s) · {tracked.billable} disponível(is) · {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
+                      <p data-print-only="true" className="mt-1 hidden text-xs text-muted-foreground">{formatDate(piece.usage_date)} · Quantidade cobrada: {selectedQuantity} · Quantidade registrada: {tracked.total} · {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
+                      <p data-print-hide="true" className="mt-1 text-xs text-muted-foreground">Pendentes: {tracked.total - tracked.completed} em produção · {tracked.completed - tracked.delivered} para entrega · {tracked.completed - tracked.invoiced} para faturar.</p>
                       <p className="mt-1 text-xs text-muted-foreground">Pesos — modelagem: {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g · biscoito: {piece.bisque_weight_g == null ? "—" : `${Number(piece.bisque_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g`} · após esmaltação: {piece.glazed_weight_g == null ? "—" : `${Number(piece.glazed_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g`} · esmalte: {Number(piece.glaze_quantity || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g</p>
                     </div>
                   </div>
@@ -1436,10 +1451,10 @@ function StudentStatement({
                   </div>
                 )}
                 <div className="flex flex-wrap justify-end gap-x-5 gap-y-1 border-t pt-3 text-sm">
-                  <span className="text-muted-foreground">Calculado: <strong className="font-mono text-foreground">{formatCurrency(piece.calculated, currency, privacy)}</strong></span>
-                  <span className="text-muted-foreground">Cobrado: <strong className="font-mono text-foreground">{formatCurrency(piece.charged, currency, privacy)}</strong></span>
-                  <span className="text-muted-foreground">Pago: <strong className="font-mono text-income">{formatCurrency(piece.paid, currency, privacy)}</strong></span>
-                  <span className="text-muted-foreground">Pendente: <strong className="font-mono text-expense">{formatCurrency(piece.pending, currency, privacy)}</strong></span>
+                  <span className="text-muted-foreground">Calculado para {selectedQuantity} {selectedQuantity === 1 ? "peça" : "peças"}: <strong className="font-mono text-foreground">{formatCurrency(selectedCalculated, currency, privacy)}</strong></span>
+                  <span className="text-muted-foreground">Cobrado neste demonstrativo: <strong className="font-mono text-foreground">{formatCurrency(selectedCharged, currency, privacy)}</strong></span>
+                  <span className="text-muted-foreground">Pago: <strong className="font-mono text-income">{formatCurrency(0, currency, privacy)}</strong></span>
+                  <span className="text-muted-foreground">Pendente: <strong className="font-mono text-expense">{formatCurrency(selectedCharged, currency, privacy)}</strong></span>
                 </div>
               </div>
             );
