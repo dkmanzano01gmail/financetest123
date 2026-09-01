@@ -207,6 +207,7 @@ export type Database = {
           session_date: string
           session_time: string | null
           status: string
+          student_id: string | null
           student_name: string
           updated_at: string
           weekday: number | null
@@ -228,6 +229,7 @@ export type Database = {
           session_date: string
           session_time?: string | null
           status?: string
+          student_id?: string | null
           student_name: string
           updated_at?: string
           weekday?: number | null
@@ -249,12 +251,20 @@ export type Database = {
           session_date?: string
           session_time?: string | null
           status?: string
+          student_id?: string | null
           student_name?: string
           updated_at?: string
           weekday?: number | null
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "attendance_records_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "attendance_records_workspace_id_fkey"
             columns: ["workspace_id"]
@@ -593,6 +603,60 @@ export type Database = {
           },
         ]
       }
+      class_material_statement_links: {
+        Row: {
+          bucket_id: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          id: string
+          object_path: string
+          revoked_at: string | null
+          student_id: string | null
+          token_hash: string
+          workspace_id: string
+        }
+        Insert: {
+          bucket_id?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at: string
+          id?: string
+          object_path: string
+          revoked_at?: string | null
+          student_id?: string | null
+          token_hash: string
+          workspace_id: string
+        }
+        Update: {
+          bucket_id?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          object_path?: string
+          revoked_at?: string | null
+          student_id?: string | null
+          token_hash?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_material_statement_links_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_material_statement_links_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       class_materials_usage: {
         Row: {
           amount_charged: number
@@ -606,11 +670,9 @@ export type Database = {
           clay_type: string | null
           clay_weight_kg: number
           comments: string | null
-          completed_quantity: number | null
           completed_at: string | null
           created_at: string
           depth_cm: number
-          delivered_quantity: number | null
           freight_cost: number
           freight_rate: number
           glaze_cone: string | null
@@ -622,7 +684,6 @@ export type Database = {
           grams: number
           height_cm: number
           id: string
-          invoiced_quantity: number | null
           kiln_id: string | null
           legacy_source_id: string | null
           length_cm: number
@@ -632,8 +693,8 @@ export type Database = {
           payment_date: string | null
           payment_notes: string | null
           payment_status: string
-          piece_name: string | null
           photo_path: string | null
+          piece_name: string | null
           production_status: string
           quantity: number
           resistance_only: boolean
@@ -656,11 +717,9 @@ export type Database = {
           clay_type?: string | null
           clay_weight_kg?: number
           comments?: string | null
-          completed_quantity?: number | null
           completed_at?: string | null
           created_at?: string
           depth_cm?: number
-          delivered_quantity?: number | null
           freight_cost?: number
           freight_rate?: number
           glaze_cone?: string | null
@@ -672,7 +731,6 @@ export type Database = {
           grams?: number
           height_cm?: number
           id?: string
-          invoiced_quantity?: number | null
           kiln_id?: string | null
           legacy_source_id?: string | null
           length_cm?: number
@@ -682,8 +740,8 @@ export type Database = {
           payment_date?: string | null
           payment_notes?: string | null
           payment_status?: string
-          piece_name?: string | null
           photo_path?: string | null
+          piece_name?: string | null
           production_status?: string
           quantity?: number
           resistance_only?: boolean
@@ -706,11 +764,9 @@ export type Database = {
           clay_type?: string | null
           clay_weight_kg?: number
           comments?: string | null
-          completed_quantity?: number | null
           completed_at?: string | null
           created_at?: string
           depth_cm?: number
-          delivered_quantity?: number | null
           freight_cost?: number
           freight_rate?: number
           glaze_cone?: string | null
@@ -722,7 +778,6 @@ export type Database = {
           grams?: number
           height_cm?: number
           id?: string
-          invoiced_quantity?: number | null
           kiln_id?: string | null
           legacy_source_id?: string | null
           length_cm?: number
@@ -732,8 +787,8 @@ export type Database = {
           payment_date?: string | null
           payment_notes?: string | null
           payment_status?: string
-          piece_name?: string | null
           photo_path?: string | null
+          piece_name?: string | null
           production_status?: string
           quantity?: number
           resistance_only?: boolean
@@ -2420,10 +2475,212 @@ export type Database = {
           },
         ]
       }
+      student_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          due_date: string | null
+          id: string
+          notes: string | null
+          payment_date: string | null
+          payment_method: string | null
+          payment_type: string
+          reference_month: string | null
+          status: string
+          student_id: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string | null
+          payment_method?: string | null
+          payment_type?: string
+          reference_month?: string | null
+          status?: string
+          student_id: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string | null
+          payment_method?: string | null
+          payment_type?: string
+          reference_month?: string | null
+          status?: string
+          student_id?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_payments_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_payments_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      student_portal_access: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          invite_token_hash: string | null
+          invited_at: string | null
+          invited_email: string
+          requires_password: boolean
+          revoked_at: string | null
+          status: string
+          student_id: string
+          updated_at: string
+          user_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          invite_token_hash?: string | null
+          invited_at?: string | null
+          invited_email: string
+          requires_password?: boolean
+          revoked_at?: string | null
+          status?: string
+          student_id: string
+          updated_at?: string
+          user_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          invite_token_hash?: string | null
+          invited_at?: string | null
+          invited_email?: string
+          requires_password?: boolean
+          revoked_at?: string | null
+          status?: string
+          student_id?: string
+          updated_at?: string
+          user_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_portal_access_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_portal_access_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      student_projects: {
+        Row: {
+          archived_at: string | null
+          clay: string | null
+          created_at: string
+          description: string | null
+          desired_dimensions: string | null
+          glazes: string[]
+          id: string
+          notes: string | null
+          piece_type: string | null
+          reference_image_url: string | null
+          status: string
+          student_id: string
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          clay?: string | null
+          created_at?: string
+          description?: string | null
+          desired_dimensions?: string | null
+          glazes?: string[]
+          id?: string
+          notes?: string | null
+          piece_type?: string | null
+          reference_image_url?: string | null
+          status?: string
+          student_id: string
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          clay?: string | null
+          created_at?: string
+          description?: string | null
+          desired_dimensions?: string | null
+          glazes?: string[]
+          id?: string
+          notes?: string | null
+          piece_type?: string | null
+          reference_image_url?: string | null
+          status?: string
+          student_id?: string
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_projects_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_projects_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       students: {
         Row: {
           class_name: string | null
           created_at: string
+          email: string | null
           enrollment_date: string | null
           id: string
           instagram: string | null
@@ -2441,6 +2698,7 @@ export type Database = {
         Insert: {
           class_name?: string | null
           created_at?: string
+          email?: string | null
           enrollment_date?: string | null
           id?: string
           instagram?: string | null
@@ -2458,6 +2716,7 @@ export type Database = {
         Update: {
           class_name?: string | null
           created_at?: string
+          email?: string | null
           enrollment_date?: string | null
           id?: string
           instagram?: string | null
@@ -3262,6 +3521,20 @@ export type Database = {
           reserved: number
         }[]
       }
+      current_student_portal_access: {
+        Args: never
+        Returns: {
+          accepted_at: string
+          currency: string
+          id: string
+          invited_email: string
+          status: string
+          student_id: string
+          user_id: string
+          workspace_id: string
+          workspace_name: string
+        }[]
+      }
       delete_transaction_with_card_reconciliation: {
         Args: { target_transaction_id: string }
         Returns: number
@@ -3332,6 +3605,66 @@ export type Database = {
         Returns: number
       }
       seed_sela_defaults: { Args: { _workspace_id: string }; Returns: Json }
+      student_portal_pieces: {
+        Args: { _student_id?: string }
+        Returns: {
+          amount_charged: number
+          amount_paid: number
+          amount_pending: number
+          biscuit_firing_cost: number
+          bisque_weight_g: number | null
+          charge_biscuit: boolean
+          charge_glaze: boolean
+          clay_cost: number
+          clay_type: string | null
+          clay_weight_kg: number
+          comments: string | null
+          completed_at: string | null
+          created_at: string
+          depth_cm: number
+          freight_cost: number
+          freight_rate: number
+          glaze_cone: string | null
+          glaze_cost: number
+          glaze_firing_cost: number
+          glaze_name: string | null
+          glaze_quantity: number
+          glazed_weight_g: number | null
+          grams: number
+          height_cm: number
+          id: string
+          kiln_id: string | null
+          legacy_source_id: string | null
+          length_cm: number
+          material: string
+          modeled_weight_g: number | null
+          other_cost: number
+          payment_date: string | null
+          payment_notes: string | null
+          payment_status: string
+          photo_path: string | null
+          piece_name: string | null
+          production_status: string
+          quantity: number
+          resistance_only: boolean
+          student_id: string | null
+          student_name: string
+          total_cost: number
+          updated_at: string
+          usage_date: string
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "class_materials_usage"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      student_portal_student_id: {
+        Args: { _user_id?: string; _workspace_id: string }
+        Returns: string
+      }
       undo_card_payment_allocation: {
         Args: { target_allocation_id: string }
         Returns: string
