@@ -27,7 +27,7 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, formatDate, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { calculateClassPieceCost } from "@/lib/orna-logic";
-import { Calculator, Camera, ImagePlus, Mail, Package, Pencil, Plus, Printer, Settings2, Trash2, Users, X } from "lucide-react";
+import { Calculator, Camera, Copy, ImagePlus, Mail, MessageCircle, Package, Pencil, Plus, Printer, Settings2, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { createPixPayload, SELA_PIX_KEY } from "@/lib/pix-br";
 
@@ -178,6 +178,57 @@ const PHOTO_BUCKET = "class-piece-photos";
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const ALLOWED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
 
+type StudentMaterialSummary = {
+  piecesCount: number;
+  clayTotal: number;
+  glazeTotal: number;
+  firingTotal: number;
+  kilnMaintenanceTotal: number;
+  otherCostsTotal: number;
+  freightTotal: number;
+  totalCharge: number;
+  totalPaid: number;
+  outstandingBalance: number;
+};
+
+function whatsappMoney(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function buildStudentMaterialWhatsAppMessage(studentName: string, summary: StudentMaterialSummary) {
+  const lines = [
+    `Olá, ${studentName}! Tudo bem? 😊`,
+    "",
+    "Segue o resumo dos seus materiais no ateliê:",
+    "",
+    `Peças: ${summary.piecesCount}`,
+    "",
+  ];
+  if (summary.clayTotal > 0) lines.push(`Argila: ${whatsappMoney(summary.clayTotal)}`);
+  if (summary.glazeTotal > 0) lines.push(`Esmalte: ${whatsappMoney(summary.glazeTotal)}`);
+  if (summary.firingTotal > 0) lines.push(`Queimas: ${whatsappMoney(summary.firingTotal)}`);
+  if (summary.kilnMaintenanceTotal > 0) lines.push(`Manutenção do forno: ${whatsappMoney(summary.kilnMaintenanceTotal)}`);
+  if (summary.otherCostsTotal > 0) lines.push(`Outros custos: ${whatsappMoney(summary.otherCostsTotal)}`);
+  if (summary.freightTotal > 0) lines.push(`Frete: ${whatsappMoney(summary.freightTotal)}`);
+  lines.push(
+    "",
+    `Total: ${whatsappMoney(summary.totalCharge)}`,
+    `Já pago: ${whatsappMoney(summary.totalPaid)}`,
+    `Valor pendente: ${whatsappMoney(summary.outstandingBalance)}`,
+  );
+  if (summary.outstandingBalance > 0) {
+    lines.push("", "PIX para pagamento:", SELA_PIX_KEY);
+  }
+  lines.push("", "Obrigada! 🤍", "Selá Cerâmica");
+  return lines.join("\n");
+}
+
+function whatsappPhone(phone?: string | null) {
+  const digits = String(phone || "").replace(/\D/g, "").replace(/^00/, "");
+  if (!digits) return "";
+  return digits.startsWith("55") ? digits : `55${digits}`;
+}
+
 function photoExtension(file: File) {
   const byType: Record<string, string> = {
     "image/jpeg": "jpg",
@@ -272,7 +323,7 @@ function Page() {
     queryFn: async () => {
       const { data, error } = await sb
         .from("students")
-        .select("id,name,class_name,monthly_fee,is_active")
+        .select("id,name,class_name,monthly_fee,phone,is_active")
         .eq("workspace_id", wsId)
         .eq("is_active", true)
         .order("name");
@@ -647,6 +698,7 @@ function Page() {
       const item = map.get(row.student_name) ?? {
         student: row.student_name,
         studentId: registeredStudent?.id ?? "",
+        phone: registeredStudent?.phone ?? "",
         group:
           registeredStudent?.class_name || "",
         quantity: 0,
@@ -1283,7 +1335,47 @@ function StudentStatement({
     (total, piece) => total + Math.min(trackedQuantities(piece).billable, Number(selectedPieceQuantities[piece.id] || 0)),
     0,
   );
+  const studentSummary: StudentMaterialSummary = {
+    piecesCount: Number(item.quantity || 0),
+    clayTotal: Number(item.clay || 0),
+    glazeTotal: Number(item.glaze || 0),
+    firingTotal: Number(item.firing || 0),
+    kilnMaintenanceTotal: Number(item.kilnMaintenance || 0),
+    otherCostsTotal: Number(item.other || 0),
+    freightTotal: Number(item.freight || 0),
+    totalCharge: Number(item.charged || 0),
+    totalPaid: Number(item.paid || 0),
+    outstandingBalance: Number(item.pending || 0),
+  };
+  const whatsappMessage = buildStudentMaterialWhatsAppMessage(item.student, studentSummary);
+  const studentWhatsAppPhone = whatsappPhone(item.phone);
   const photoCount = item.pieces.filter((piece: any) => Boolean(piece.photo_url)).length;
+  function openWhatsAppMessage() {
+    const destination = studentWhatsAppPhone
+      ? `https://wa.me/${studentWhatsAppPhone}?text=${encodeURIComponent(whatsappMessage)}`
+      : `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`;
+    window.open(destination, "_blank", "noopener,noreferrer");
+  }
+  async function copyWhatsAppMessage() {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(whatsappMessage);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = whatsappMessage;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand("copy");
+        textarea.remove();
+        if (!copied) throw new Error("copy-failed");
+      }
+      toast.success("Mensagem copiada");
+    } catch {
+      toast.error("Não foi possível copiar a mensagem.");
+    }
+  }
   function setSelectedQuantity(pieceId: string, quantity: number) {
     const next = { ...selectedPieceQuantities };
     if (quantity > 0) next[pieceId] = quantity;
@@ -1324,6 +1416,12 @@ function StudentStatement({
             <Button type="button" variant="outline" size="sm" onClick={onEmail} disabled={emailing || item.pieces.length === 0}>
               <Mail className="mr-1 h-4 w-4" />{emailing ? "Enviando..." : "Enviar por e-mail"}
             </Button>
+            <Button type="button" variant="outline" size="sm" onClick={openWhatsAppMessage} disabled={item.pieces.length === 0} title={studentWhatsAppPhone ? "Abrir conversa com o telefone cadastrado" : "Telefone não cadastrado; escolha o contato no WhatsApp"}>
+              <MessageCircle className="mr-1 h-4 w-4" />Mensagem WhatsApp
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={copyWhatsAppMessage} disabled={item.pieces.length === 0}>
+              <Copy className="mr-1 h-4 w-4" />Copiar mensagem
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -1336,29 +1434,33 @@ function StudentStatement({
             </span>
           )}
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-xl border bg-card p-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Peças</div>
+            <div className="mt-1 font-mono text-2xl font-bold">{studentSummary.piecesCount}</div>
+          </div>
           <div className="rounded-xl bg-primary p-4 text-primary-foreground">
-            <div className="text-xs uppercase tracking-wide opacity-80">Total de materiais</div>
-            <div className="mt-1 font-mono text-2xl font-bold">{formatCurrency(item.charged, currency, privacy)}</div>
+            <div className="text-xs uppercase tracking-wide opacity-80">Cobrança total</div>
+            <div className="mt-1 font-mono text-2xl font-bold">{formatCurrency(studentSummary.totalCharge, currency, privacy)}</div>
           </div>
           <div className="rounded-xl border bg-card p-4">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">Já pago</div>
-            <div className="mt-1 font-mono text-2xl font-bold text-income">{formatCurrency(item.paid, currency, privacy)}</div>
+            <div className="mt-1 font-mono text-2xl font-bold text-income">{formatCurrency(studentSummary.totalPaid, currency, privacy)}</div>
           </div>
           <div className="rounded-xl border bg-card p-4">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">Falta pagar</div>
-            <div className="mt-1 font-mono text-2xl font-bold text-expense">{formatCurrency(item.pending, currency, privacy)}</div>
+            <div className="mt-1 font-mono text-2xl font-bold text-expense">{formatCurrency(studentSummary.outstandingBalance, currency, privacy)}</div>
           </div>
         </div>
 
         {includeCostBreakdown && (
           <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-            <Breakdown label="Argila" value={item.clay} currency={currency} privacy={privacy} />
-            <Breakdown label="Esmalte" value={item.glaze} currency={currency} privacy={privacy} />
-            <Breakdown label="Queimas" value={item.firing} currency={currency} privacy={privacy} />
-            <Breakdown label="Manutenção do forno" value={item.kilnMaintenance} currency={currency} privacy={privacy} />
-            <Breakdown label="Outros custos" value={item.other} currency={currency} privacy={privacy} />
-            <Breakdown label="Frete (10%)" value={item.freight} currency={currency} privacy={privacy} />
+            <Breakdown label="Argila" value={studentSummary.clayTotal} currency={currency} privacy={privacy} />
+            <Breakdown label="Esmalte" value={studentSummary.glazeTotal} currency={currency} privacy={privacy} />
+            <Breakdown label="Queimas" value={studentSummary.firingTotal} currency={currency} privacy={privacy} />
+            <Breakdown label="Manutenção do forno" value={studentSummary.kilnMaintenanceTotal} currency={currency} privacy={privacy} />
+            <Breakdown label="Outros custos" value={studentSummary.otherCostsTotal} currency={currency} privacy={privacy} />
+            <Breakdown label="Frete (10%)" value={studentSummary.freightTotal} currency={currency} privacy={privacy} />
           </div>
         )}
 
@@ -1460,7 +1562,7 @@ function StudentStatement({
             );
           })}
         </div>
-        <PixPaymentBlock amount={item.pending} studentName={item.student} currency={currency} privacy={privacy} />
+        <PixPaymentBlock amount={studentSummary.outstandingBalance} studentName={item.student} currency={currency} privacy={privacy} />
       </CardContent>
     </Card>
   );
