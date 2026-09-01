@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -43,6 +44,52 @@ const GLAZE_FIRING_INDEXES: Record<string, number> = {
   "7": 0.014,
   "10": 0.017,
 };
+const COMPLETED_PRODUCTION_STATUSES = new Set(["completed", "delivered"]);
+
+function isPieceChargeable(piece: any) {
+  return (
+    COMPLETED_PRODUCTION_STATUSES.has(piece.production_status) &&
+    piece.payment_status !== "waived" &&
+    Number(piece.pending || 0) > 0
+  );
+}
+
+function selectStatementPieces(item: any, selectedPieceIds: string[]) {
+  const selected = new Set(selectedPieceIds);
+  const pieces = item.pieces.filter((piece: any) => selected.has(piece.id) && isPieceChargeable(piece));
+  return pieces.reduce(
+    (statement: any, piece: any) => {
+      statement.quantity += piece.quantity;
+      statement.clay += piece.clay;
+      statement.glaze += piece.glaze;
+      statement.firing += piece.firing;
+      statement.kilnMaintenance += piece.kilnMaintenance;
+      statement.other += piece.other;
+      statement.freight += piece.freight;
+      statement.calculated += piece.calculated;
+      statement.charged += piece.charged;
+      statement.paid += piece.paid;
+      statement.pending += piece.pending;
+      statement.pieces.push(piece);
+      return statement;
+    },
+    {
+      ...item,
+      quantity: 0,
+      clay: 0,
+      glaze: 0,
+      firing: 0,
+      kilnMaintenance: 0,
+      other: 0,
+      freight: 0,
+      calculated: 0,
+      charged: 0,
+      paid: 0,
+      pending: 0,
+      pieces: [],
+    },
+  );
+}
 const empty = () => ({
   usage_date: new Date().toISOString().slice(0, 10),
   student_name: "",
@@ -108,6 +155,7 @@ function Page() {
   const [emailingStudent, setEmailingStudent] = useState<string | null>(null);
   const [reportPhotosByStudent, setReportPhotosByStudent] = useState<Record<string, boolean>>({});
   const [reportCostBreakdownByStudent, setReportCostBreakdownByStudent] = useState<Record<string, boolean>>({});
+  const [reportPieceIdsByStudent, setReportPieceIdsByStudent] = useState<Record<string, string[]>>({});
   const [form, setForm] = useState(empty());
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
@@ -897,28 +945,39 @@ function Page() {
             <h2 id="student-statements-title" className="text-lg font-semibold">Demonstrativos de materiais por aluno</h2>
             <p className="text-sm text-muted-foreground">Visão executiva pronta para imprimir ou salvar em PDF e enviar ao aluno.</p>
           </div>
-          {studentStatements.map((item) => (
-            <StudentStatement
-              key={item.student}
-              item={item}
-              period={statementPeriod}
-              currency={currency}
-              privacy={privacy}
-              selectedForPrint={printStudent === item.student}
-              includePhotos={reportPhotosByStudent[item.student] ?? false}
-              onIncludePhotosChange={(includePhotos) =>
-                setReportPhotosByStudent((current) => ({ ...current, [item.student]: includePhotos }))
-              }
-              includeCostBreakdown={reportCostBreakdownByStudent[item.student] ?? true}
-              onIncludeCostBreakdownChange={(includeCostBreakdown) =>
-                setReportCostBreakdownByStudent((current) => ({ ...current, [item.student]: includeCostBreakdown }))
-              }
-              onPrint={() => setPrintStudent(item.student)}
-              onEmail={() => emailStatement(item, statementPeriod, reportCostBreakdownByStudent[item.student] ?? true)}
-              emailing={emailingStudent === item.student}
-              onEdit={edit}
-            />
-          ))}
+          {studentStatements.map((item) => {
+            const chargeablePieceIds = item.pieces.filter(isPieceChargeable).map((piece: any) => piece.id);
+            const selectionKey = `${periodMode}:${year}:${month}:${statusFilter}:${item.student}`;
+            const selectedPieceIds = reportPieceIdsByStudent[selectionKey] ?? chargeablePieceIds;
+            const selectedStatement = selectStatementPieces(item, selectedPieceIds);
+            return (
+              <StudentStatement
+                key={item.student}
+                item={selectedStatement}
+                availablePieces={item.pieces}
+                selectedPieceIds={selectedPieceIds}
+                onSelectedPieceIdsChange={(pieceIds) =>
+                  setReportPieceIdsByStudent((current) => ({ ...current, [selectionKey]: pieceIds }))
+                }
+                period={statementPeriod}
+                currency={currency}
+                privacy={privacy}
+                selectedForPrint={printStudent === item.student}
+                includePhotos={reportPhotosByStudent[item.student] ?? false}
+                onIncludePhotosChange={(includePhotos) =>
+                  setReportPhotosByStudent((current) => ({ ...current, [item.student]: includePhotos }))
+                }
+                includeCostBreakdown={reportCostBreakdownByStudent[item.student] ?? true}
+                onIncludeCostBreakdownChange={(includeCostBreakdown) =>
+                  setReportCostBreakdownByStudent((current) => ({ ...current, [item.student]: includeCostBreakdown }))
+                }
+                onPrint={() => setPrintStudent(item.student)}
+                onEmail={() => emailStatement(selectedStatement, statementPeriod, reportCostBreakdownByStudent[item.student] ?? true)}
+                emailing={emailingStudent === item.student}
+                onEdit={edit}
+              />
+            );
+          })}
         </section>
       )}
 
@@ -1050,6 +1109,9 @@ function Page() {
 
 function StudentStatement({
   item,
+  availablePieces,
+  selectedPieceIds,
+  onSelectedPieceIdsChange,
   period,
   currency,
   privacy,
@@ -1064,6 +1126,9 @@ function StudentStatement({
   onEdit,
 }: {
   item: any;
+  availablePieces: any[];
+  selectedPieceIds: string[];
+  onSelectedPieceIdsChange: (pieceIds: string[]) => void;
   period: string;
   currency: string;
   privacy: boolean;
@@ -1077,6 +1142,8 @@ function StudentStatement({
   emailing: boolean;
   onEdit: (piece: any) => void;
 }) {
+  const selectedIds = new Set(selectedPieceIds);
+  const chargeablePieceIds = availablePieces.filter(isPieceChargeable).map((piece: any) => piece.id);
   const photoCount = item.pieces.filter((piece: any) => Boolean(piece.photo_url)).length;
   return (
     <Card data-print-statement={selectedForPrint ? "selected" : "idle"} className="overflow-hidden">
@@ -1084,7 +1151,7 @@ function StudentStatement({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="text-xl">{item.student}</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">{item.group || "Aulas regulares"} · {period} · {item.quantity} {item.quantity === 1 ? "peça" : "peças"}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{item.group || "Aulas regulares"} · {period} · {item.pieces.length} de {availablePieces.length} {availablePieces.length === 1 ? "peça selecionada" : "peças selecionadas"}</p>
           </div>
           <div data-print-hide="true" className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
@@ -1106,10 +1173,10 @@ function StudentStatement({
               />
               <span className="text-sm">{includeCostBreakdown ? "Componentes visíveis" : "Componentes ocultos"}</span>
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={onPrint}>
+            <Button type="button" variant="outline" size="sm" onClick={onPrint} disabled={item.pieces.length === 0}>
               <Printer className="mr-1 h-4 w-4" />Imprimir / salvar PDF
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={onEmail} disabled={emailing}>
+            <Button type="button" variant="outline" size="sm" onClick={onEmail} disabled={emailing || item.pieces.length === 0}>
               <Mail className="mr-1 h-4 w-4" />{emailing ? "Enviando..." : "Enviar por e-mail"}
             </Button>
           </div>
@@ -1142,16 +1209,40 @@ function StudentStatement({
           </div>
         )}
 
+        <div data-print-hide="true" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/20 p-3">
+          <p className="text-sm text-muted-foreground">Somente peças concluídas ou entregues e com valor pendente podem entrar na cobrança.</p>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => onSelectedPieceIdsChange([])}>Limpar seleção</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => onSelectedPieceIdsChange(chargeablePieceIds)}>Selecionar concluídas</Button>
+          </div>
+        </div>
+
         <div className="space-y-3">
-          {item.pieces.map((piece: any) => {
+          {availablePieces.map((piece: any) => {
             const unitCalculated = piece.calculated / piece.quantity;
+            const chargeable = isPieceChargeable(piece);
+            const selected = chargeable && selectedIds.has(piece.id);
             const modeledWeight = Number(
               piece.modeled_weight_g ?? piece.grams ?? Number(piece.clay_weight_kg || 0) * 1000,
             );
             return (
-              <div key={piece.id} className="break-inside-avoid rounded-xl border bg-card p-4">
+              <div key={piece.id} data-print-hide={selected ? undefined : "true"} className={`break-inside-avoid rounded-xl border bg-card p-4 ${selected ? "" : "opacity-60"}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
                   <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <Checkbox
+                      data-print-hide="true"
+                      checked={selected}
+                      disabled={!chargeable}
+                      onCheckedChange={(checked) =>
+                        onSelectedPieceIdsChange(
+                          checked
+                            ? [...selectedPieceIds, piece.id]
+                            : selectedPieceIds.filter((pieceId) => pieceId !== piece.id),
+                        )
+                      }
+                      aria-label={`Incluir ${piece.piece_name || "peça"} na cobrança`}
+                      className="mt-1"
+                    />
                     {includePhotos && piece.photo_url && (
                       <img
                         src={piece.photo_url}

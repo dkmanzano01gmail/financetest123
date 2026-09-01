@@ -199,9 +199,10 @@ function Page() {
       const { data, error } = await sb
         .from("class_materials_usage")
         .select(
-          "id,student_id,student_name,amount_charged,amount_paid,amount_pending,payment_status,payment_date",
+          "id,student_id,student_name,amount_charged,amount_paid,amount_pending,payment_status,payment_date,production_status",
         )
         .eq("workspace_id", wsId)
+        .in("production_status", ["completed", "delivered"])
         .gte("usage_date", materialStart)
         .lt("usage_date", nextMaterialStart);
       if (error) throw error;
