@@ -16,6 +16,29 @@ export type PaymentSuggestion = {
   difference: number;
 };
 
+export function getMaterialReferencePeriod(paymentYear: number, paymentMonth: number) {
+  const reference = new Date(paymentYear, paymentMonth - 2, 1);
+  return { year: reference.getFullYear(), month: reference.getMonth() + 1 };
+}
+
+export function allocateMaterialPayment(
+  charges: Array<{ id: string; amount: number }>,
+  paidTotal: number,
+) {
+  let remaining = Math.max(0, paidTotal);
+  return charges.map((charge) => {
+    const amount = Math.max(0, Number(charge.amount) || 0);
+    const paid = Math.min(amount, remaining);
+    remaining = Math.max(0, remaining - paid);
+    return {
+      id: charge.id,
+      amountPaid: paid,
+      amountPending: Math.max(0, amount - paid),
+      status: paid <= 0 ? "pending" : paid < amount ? "partial" : "paid",
+    };
+  });
+}
+
 export function normalizePaymentText(value: string | null | undefined) {
   return String(value ?? "")
     .normalize("NFD")

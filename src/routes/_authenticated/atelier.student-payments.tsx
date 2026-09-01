@@ -9,7 +9,9 @@ import {
   ClipboardCopy,
   Loader2,
   PackageCheck,
+  Pencil,
   QrCode,
+  RotateCcw,
   SearchCheck,
   X,
 } from "lucide-react";
@@ -39,7 +41,9 @@ import {
 import { createPixPayload } from "@/lib/pix-br";
 import { parseLocaleAmount } from "@/lib/format";
 import {
+  allocateMaterialPayment,
   findPaymentSuggestion,
+  getMaterialReferencePeriod,
   normalizePaymentText,
   type PaymentSuggestion,
   type PaymentSuggestionKind,
@@ -82,6 +86,7 @@ type MaterialRow = {
   amount_paid?: number | null;
   amount_pending?: number | null;
   payment_status?: string | null;
+  payment_date?: string | null;
 };
 type PaymentRow = {
   id: string;
@@ -139,7 +144,21 @@ function Page() {
   const [pixStudent, setPixStudent] = useState<StudentSummary | null>(null);
   const [pixTuition, setPixTuition] = useState("");
   const [pixMaterials, setPixMaterials] = useState("");
-  const { start: monthStart, next: nextMonthStart } = monthBounds(year, month);
+  const [editTarget, setEditTarget] = useState<{
+    summary: StudentSummary;
+    kind: "tuition" | "materials";
+  } | null>(null);
+  const [editPaidValue, setEditPaidValue] = useState("");
+  const { start: monthStart } = monthBounds(year, month);
+  const { year: materialReferenceYear, month: materialReferenceMonth } = getMaterialReferencePeriod(
+    year,
+    month,
+  );
+  const { start: materialStart, next: nextMaterialStart } = monthBounds(
+    materialReferenceYear,
+    materialReferenceMonth,
+  );
+  const materialReferenceLabel = `${MONTHS[materialReferenceMonth - 1]} de ${materialReferenceYear}`;
 
   const studentsQuery = useQuery({
     queryKey: ["students", wsId, "payment-control"],
@@ -168,17 +187,23 @@ function Page() {
     },
   });
   const materialsQuery = useQuery({
-    queryKey: ["class_materials_usage", wsId, "payment-control", year, month],
+    queryKey: [
+      "class_materials_usage",
+      wsId,
+      "payment-control",
+      materialReferenceYear,
+      materialReferenceMonth,
+    ],
     enabled: !!wsId,
     queryFn: async () => {
       const { data, error } = await sb
         .from("class_materials_usage")
         .select(
-          "id,student_id,student_name,amount_charged,amount_paid,amount_pending,payment_status",
+          "id,student_id,student_name,amount_charged,amount_paid,amount_pending,payment_status,payment_date",
         )
         .eq("workspace_id", wsId)
-        .gte("usage_date", monthStart)
-        .lt("usage_date", nextMonthStart);
+        .gte("usage_date", materialStart)
+        .lt("usage_date", nextMaterialStart);
       if (error) throw error;
       return (data ?? []) as MaterialRow[];
     },
@@ -364,10 +389,123 @@ function Page() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const editPaidAmount = useMutation({
+    mutationFn: async ({
+      summary,
+      kind,
+      amount,
+    }: {
+      summary: StudentSummary;
+      kind: "tuition" | "materials";
+      amount: number;
+    }) => {
+      if (!wsId) throw new Error("Workspace não encontrado.");
+      const total = kind === "tuition" ? summary.tuitionAmount : summary.materialsAmount;
+      if (!Number.isFinite(amount) || amount < 0) {
+        throw new Error("Informe um valor pago válido.");
+      }
+      if (amount > total) {
+        throw new Error(`O valor pago não pode ultrapassar ${money(total)}.`);
+      }
+
+      if (kind === "tuition") {
+        const matchingRows = (paymentsQuery.data ?? []).filter((payment) => {
+          const reference = payment.reference_month || payment.payment_date || "";
+          return (
+            payment.student_id === summary.student.id &&
+            (payment.payment_type ?? "tuition") === "tuition" &&
+            reference.slice(0, 7) === monthStart.slice(0, 7)
+          );
+        });
+        const primary = matchingRows[0];
+        const otherIds = matchingRows.slice(1).map((payment) => payment.id);
+        if (otherIds.length > 0) {
+          const { error } = await sb
+            .from("student_payments")
+            .update({ status: "pending" })
+            .in("id", otherIds)
+            .eq("workspace_id", wsId);
+          if (error) throw error;
+        }
+        if (amount === 0) {
+          if (primary) {
+            const { error } = await sb
+              .from("student_payments")
+              .update({ status: "pending" })
+              .eq("id", primary.id)
+              .eq("workspace_id", wsId);
+            if (error) throw error;
+          }
+          return;
+        }
+        const payload = {
+          workspace_id: wsId,
+          student_id: summary.student.id,
+          payment_date: primary?.payment_date || new Date().toISOString().slice(0, 10),
+          due_date: monthStart,
+          amount,
+          payment_type: "tuition",
+          reference_month: monthStart,
+          payment_method: "Editado no controle mensal",
+          status: "paid",
+          notes: "Valor pago ajustado manualmente no controle mensal.",
+        };
+        const result = primary
+          ? await sb
+              .from("student_payments")
+              .update(payload)
+              .eq("id", primary.id)
+              .eq("workspace_id", wsId)
+          : await sb.from("student_payments").insert(payload);
+        if (result.error) throw result.error;
+        return;
+      }
+
+      const allocation = allocateMaterialPayment(
+        summary.materials.map((row) => ({ id: row.id, amount: numeric(row.amount_charged) })),
+        amount,
+      );
+      const results = await Promise.all(
+        summary.materials.map((row) => {
+          const item = allocation.find((entry) => entry.id === row.id)!;
+          return sb
+            .from("class_materials_usage")
+            .update({
+              amount_paid: item.amountPaid,
+              amount_pending: item.amountPending,
+              payment_status: item.status,
+              payment_date:
+                item.amountPaid > 0
+                  ? row.payment_date || new Date().toISOString().slice(0, 10)
+                  : null,
+            })
+            .eq("id", row.id)
+            .eq("workspace_id", wsId);
+        }),
+      );
+      const failed = results.find((result) => result.error);
+      if (failed?.error) throw failed.error;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["student_payments"] }),
+        queryClient.invalidateQueries({ queryKey: ["class_materials_usage"] }),
+      ]);
+      setEditTarget(null);
+      toast.success("Valor pago atualizado");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   function openPix(summary: StudentSummary) {
     setPixStudent(summary);
     setPixTuition(summary.tuitionDue.toFixed(2));
     setPixMaterials(summary.materialsDue.toFixed(2));
+  }
+
+  function openPaymentEdit(summary: StudentSummary, kind: "tuition" | "materials") {
+    setEditTarget({ summary, kind });
+    setEditPaidValue((kind === "tuition" ? summary.tuitionPaid : summary.materialsPaid).toFixed(2));
   }
 
   const loading =
@@ -382,7 +520,7 @@ function Page() {
     <PageContainer>
       <PageHeader
         title="Pagamentos de alunos"
-        description="Controle mensal de mensalidades, materiais e sugestões encontradas nas transações."
+        description={`Controle de ${MONTHS[month - 1]}: mensalidade do mês e materiais utilizados em ${materialReferenceLabel} (M+1).`}
       />
       <div className="mb-5 grid gap-3 md:grid-cols-[180px_140px_1fr]">
         <Select value={String(month)} onValueChange={(value) => setMonth(Number(value))}>
@@ -429,7 +567,7 @@ function Page() {
           icon={<CalendarDays />}
         />
         <MetricCard
-          label="Materiais pendentes"
+          label={`Materiais pendentes · ${materialReferenceLabel}`}
           value={money(totals.materialsDue)}
           icon={<PackageCheck />}
         />
@@ -466,11 +604,13 @@ function Page() {
                 summary={summary}
                 suggestion={suggestion}
                 busy={confirmPayment.isPending}
+                materialReferenceLabel={materialReferenceLabel}
                 onConfirm={(kind, selectedSuggestion) =>
                   confirmPayment.mutate({ summary, kind, suggestion: selectedSuggestion })
                 }
                 onDismiss={() => setDismissed((current) => new Set(current).add(suggestionKey))}
                 onPix={() => openPix(summary)}
+                onEdit={(kind) => openPaymentEdit(summary, kind)}
               />
             );
           })}
@@ -483,6 +623,17 @@ function Page() {
         onTuitionChange={setPixTuition}
         onMaterialsChange={setPixMaterials}
         onClose={() => setPixStudent(null)}
+      />
+      <EditPaidDialog
+        target={editTarget}
+        value={editPaidValue}
+        busy={editPaidAmount.isPending}
+        materialReferenceLabel={materialReferenceLabel}
+        onValueChange={setEditPaidValue}
+        onClose={() => setEditTarget(null)}
+        onSave={(amount) => {
+          if (editTarget) editPaidAmount.mutate({ ...editTarget, amount });
+        }}
       />
     </PageContainer>
   );
@@ -506,16 +657,20 @@ function StudentPaymentCard({
   summary,
   suggestion,
   busy,
+  materialReferenceLabel,
   onConfirm,
   onDismiss,
   onPix,
+  onEdit,
 }: {
   summary: StudentSummary;
   suggestion: PaymentSuggestion | null;
   busy: boolean;
+  materialReferenceLabel: string;
   onConfirm: (kind: PaymentSuggestionKind, suggestion?: PaymentSuggestion | null) => void;
   onDismiss: () => void;
   onPix: () => void;
+  onEdit: (kind: "tuition" | "materials") => void;
 }) {
   const allPaid = summary.tuitionDue === 0 && summary.materialsDue === 0;
   return (
@@ -544,14 +699,17 @@ function StudentPaymentCard({
             paid={summary.tuitionPaid}
             due={summary.tuitionDue}
             onConfirm={summary.tuitionDue > 0 ? () => onConfirm("tuition") : undefined}
+            onEdit={() => onEdit("tuition")}
             busy={busy}
           />
           <PaymentBlock
-            label="Materiais"
+            label="Materiais (M+1)"
+            referenceLabel={materialReferenceLabel}
             total={summary.materialsAmount}
             paid={summary.materialsPaid}
             due={summary.materialsDue}
             onConfirm={summary.materialsDue > 0 ? () => onConfirm("materials") : undefined}
+            onEdit={summary.materialsAmount > 0 ? () => onEdit("materials") : undefined}
             busy={busy}
           />
         </div>
@@ -612,6 +770,8 @@ function PaymentBlock({
   paid,
   due,
   onConfirm,
+  onEdit,
+  referenceLabel,
   busy,
 }: {
   label: string;
@@ -619,11 +779,14 @@ function PaymentBlock({
   paid: number;
   due: number;
   onConfirm?: () => void;
+  onEdit?: () => void;
+  referenceLabel?: string;
   busy: boolean;
 }) {
   return (
     <div className="rounded-lg bg-muted/60 p-3">
       <p className="font-medium">{label}</p>
+      {referenceLabel && <p className="text-[11px] text-muted-foreground">Ref. {referenceLabel}</p>}
       <p className="mt-1 text-xs text-muted-foreground">Previsto: {money(total)}</p>
       <p className="text-xs text-emerald-700">Pago: {money(paid)}</p>
       <p
@@ -644,7 +807,99 @@ function PaymentBlock({
           Confirmar pagamento
         </Button>
       )}
+      {onEdit && (
+        <Button size="sm" variant="ghost" className="mt-1 w-full" disabled={busy} onClick={onEdit}>
+          <Pencil className="mr-1 h-3.5 w-3.5" />
+          Editar valor pago
+        </Button>
+      )}
     </div>
+  );
+}
+
+function EditPaidDialog({
+  target,
+  value,
+  busy,
+  materialReferenceLabel,
+  onValueChange,
+  onClose,
+  onSave,
+}: {
+  target: { summary: StudentSummary; kind: "tuition" | "materials" } | null;
+  value: string;
+  busy: boolean;
+  materialReferenceLabel: string;
+  onValueChange: (value: string) => void;
+  onClose: () => void;
+  onSave: (amount: number) => void;
+}) {
+  const parsed = parseLocaleAmount(value);
+  const paid = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  const total = target
+    ? target.kind === "tuition"
+      ? target.summary.tuitionAmount
+      : target.summary.materialsAmount
+    : 0;
+  const title = target?.kind === "tuition" ? "mensalidade" : "materiais";
+
+  return (
+    <Dialog
+      open={!!target}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Editar pagamento de {title}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="rounded-lg bg-muted/60 p-3 text-sm">
+            <p className="font-medium">{target?.summary.student.name}</p>
+            <p className="text-muted-foreground">
+              {target?.kind === "materials"
+                ? `Materiais utilizados em ${materialReferenceLabel}, cobrados no mês selecionado.`
+                : "Mensalidade do mês selecionado."}
+            </p>
+            <p className="mt-1">
+              Valor total: <strong>{money(total)}</strong>
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="paid-value">Valor efetivamente pago</Label>
+            <Input
+              id="paid-value"
+              inputMode="decimal"
+              value={value}
+              onChange={(event) => onValueChange(event.target.value)}
+              placeholder="0,00"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Para corrigir uma confirmação feita por engano, use “Desfazer pagamento”.
+            </p>
+          </div>
+        </div>
+        <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+          <Button variant="destructive" disabled={busy} onClick={() => onSave(0)}>
+            <RotateCcw className="mr-2 h-4 w-4" />
+            Desfazer pagamento
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={busy} onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={busy || !Number.isFinite(parsed) || paid > total}
+              onClick={() => onSave(paid)}
+            >
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar valor
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
