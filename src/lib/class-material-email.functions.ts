@@ -9,7 +9,7 @@ function uuid(value: string) {
 
 export const emailClassMaterialsStatement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((input: { workspaceId: string; studentId: string; total: number; filename: string; pdfBase64: string }) => {
+  .inputValidator((input: { workspaceId: string; studentId: string; total: number; filename: string; pdfBase64: string }) => {
     const total = Number(input.total);
     if (!Number.isFinite(total) || total < 0) throw new Error("Valor do demonstrativo inválido.");
     if (!input.pdfBase64 || input.pdfBase64.length > 14_000_000) throw new Error("PDF inválido ou maior que 10 MB.");
