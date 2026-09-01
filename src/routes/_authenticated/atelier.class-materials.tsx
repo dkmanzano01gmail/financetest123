@@ -107,6 +107,7 @@ function Page() {
   const [printStudent, setPrintStudent] = useState<string | null>(null);
   const [emailingStudent, setEmailingStudent] = useState<string | null>(null);
   const [reportPhotosByStudent, setReportPhotosByStudent] = useState<Record<string, boolean>>({});
+  const [reportCostBreakdownByStudent, setReportCostBreakdownByStudent] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState(empty());
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
@@ -505,9 +506,11 @@ function Page() {
       const quantity = Math.max(1, Number(row.quantity || 1));
       const clay = Number(row.clay_cost || 0) * quantity;
       const glaze = Number(row.glaze_cost || 0) * quantity;
-      const firing =
+      const calculatedFiring =
         (Number(row.biscuit_firing_cost || 0) + Number(row.glaze_firing_cost || 0)) *
         quantity;
+      const kilnMaintenance = row.resistance_only === true ? calculatedFiring : 0;
+      const firing = row.resistance_only === true ? 0 : calculatedFiring;
       const other = Number(row.other_cost || 0) * quantity;
       const unitBase =
         Number(row.clay_cost || 0) +
@@ -519,7 +522,7 @@ function Page() {
       const savedFreight = Number(row.freight_cost || 0);
       const freightPerUnit = savedFreight > 0 ? savedFreight : unitBase * freightRate;
       const freight = freightPerUnit * quantity;
-      const calculated = clay + glaze + firing + other + freight;
+      const calculated = clay + glaze + calculatedFiring + other + freight;
       const charged = Number(row.amount_charged ?? calculated);
       const paid = Number(
         row.amount_paid ?? (row.payment_status === "paid" ? charged : 0),
@@ -531,6 +534,7 @@ function Page() {
         clay,
         glaze,
         firing,
+        kilnMaintenance,
         other,
         freight,
         freightRate,
@@ -549,6 +553,7 @@ function Page() {
         clay: 0,
         glaze: 0,
         firing: 0,
+        kilnMaintenance: 0,
         other: 0,
         freight: 0,
         calculated: 0,
@@ -561,6 +566,7 @@ function Page() {
       item.clay += clay;
       item.glaze += glaze;
       item.firing += firing;
+      item.kilnMaintenance += kilnMaintenance;
       item.other += other;
       item.freight += freight;
       item.calculated += calculated;
@@ -575,7 +581,7 @@ function Page() {
     );
   }, [filtered, students]);
 
-  async function emailStatement(item: any, period: string) {
+  async function emailStatement(item: any, period: string, includeCostBreakdown: boolean) {
     if (!wsId) return;
     if (!item.studentId) {
       toast.error("Aluno não encontrado neste workspace.");
@@ -587,7 +593,7 @@ function Page() {
         import("@/lib/class-material-statement-pdf"),
         import("@/lib/class-material-email.functions"),
       ]);
-      const { blob } = await createClassMaterialsPdf({ ...item, period });
+      const { blob } = await createClassMaterialsPdf({ ...item, period }, { includeCostBreakdown });
       const bytes = new Uint8Array(await blob.arrayBuffer());
       let binary = "";
       for (let offset = 0; offset < bytes.length; offset += 0x8000) {
@@ -903,8 +909,12 @@ function Page() {
               onIncludePhotosChange={(includePhotos) =>
                 setReportPhotosByStudent((current) => ({ ...current, [item.student]: includePhotos }))
               }
+              includeCostBreakdown={reportCostBreakdownByStudent[item.student] ?? true}
+              onIncludeCostBreakdownChange={(includeCostBreakdown) =>
+                setReportCostBreakdownByStudent((current) => ({ ...current, [item.student]: includeCostBreakdown }))
+              }
               onPrint={() => setPrintStudent(item.student)}
-              onEmail={() => emailStatement(item, statementPeriod)}
+              onEmail={() => emailStatement(item, statementPeriod, reportCostBreakdownByStudent[item.student] ?? true)}
               emailing={emailingStudent === item.student}
               onEdit={edit}
             />
@@ -1046,6 +1056,8 @@ function StudentStatement({
   selectedForPrint,
   includePhotos,
   onIncludePhotosChange,
+  includeCostBreakdown,
+  onIncludeCostBreakdownChange,
   onPrint,
   onEmail,
   emailing,
@@ -1058,6 +1070,8 @@ function StudentStatement({
   selectedForPrint: boolean;
   includePhotos: boolean;
   onIncludePhotosChange: (includePhotos: boolean) => void;
+  includeCostBreakdown: boolean;
+  onIncludeCostBreakdownChange: (includeCostBreakdown: boolean) => void;
   onPrint: () => void;
   onEmail: () => void;
   emailing: boolean;
@@ -1084,6 +1098,14 @@ function StudentStatement({
                 {photoCount > 0 ? `Incluir fotos das peças (${photoCount})` : "Nenhuma foto cadastrada"}
               </span>
             </div>
+            <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
+              <Switch
+                checked={includeCostBreakdown}
+                onCheckedChange={onIncludeCostBreakdownChange}
+                aria-label="Incluir abertura dos componentes de custo no relatório"
+              />
+              <span className="text-sm">{includeCostBreakdown ? "Componentes visíveis" : "Componentes ocultos"}</span>
+            </div>
             <Button type="button" variant="outline" size="sm" onClick={onPrint}>
               <Printer className="mr-1 h-4 w-4" />Imprimir / salvar PDF
             </Button>
@@ -1109,13 +1131,16 @@ function StudentStatement({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-          <Breakdown label="Argila" value={item.clay} currency={currency} privacy={privacy} />
-          <Breakdown label="Esmalte" value={item.glaze} currency={currency} privacy={privacy} />
-          <Breakdown label="Queimas" value={item.firing} currency={currency} privacy={privacy} />
-          <Breakdown label="Outros custos" value={item.other} currency={currency} privacy={privacy} />
-          <Breakdown label="Frete (10%)" value={item.freight} currency={currency} privacy={privacy} />
-        </div>
+        {includeCostBreakdown && (
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+            <Breakdown label="Argila" value={item.clay} currency={currency} privacy={privacy} />
+            <Breakdown label="Esmalte" value={item.glaze} currency={currency} privacy={privacy} />
+            <Breakdown label="Queimas" value={item.firing} currency={currency} privacy={privacy} />
+            <Breakdown label="Manutenção do forno" value={item.kilnMaintenance} currency={currency} privacy={privacy} />
+            <Breakdown label="Outros custos" value={item.other} currency={currency} privacy={privacy} />
+            <Breakdown label="Frete (10%)" value={item.freight} currency={currency} privacy={privacy} />
+          </div>
+        )}
 
         <div className="space-y-3">
           {item.pieces.map((piece: any) => {
@@ -1161,13 +1186,16 @@ function StudentStatement({
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-x-5 gap-y-2 py-3 text-sm md:grid-cols-5">
-                  <Cost label="Argila" value={piece.clay / piece.quantity} currency={currency} privacy={privacy} />
-                  <Cost label="Esmalte" value={piece.glaze / piece.quantity} currency={currency} privacy={privacy} />
-                  <Cost label="Queimas" value={piece.firing / piece.quantity} currency={currency} privacy={privacy} />
-                  <Cost label="Outros" value={piece.other / piece.quantity} currency={currency} privacy={privacy} />
-                  <Cost label={`Frete (${(piece.freightRate * 100).toFixed(0)}%)`} value={piece.freight / piece.quantity} currency={currency} privacy={privacy} />
-                </div>
+                {includeCostBreakdown && (
+                  <div className="grid grid-cols-2 gap-x-5 gap-y-2 py-3 text-sm md:grid-cols-3 xl:grid-cols-6">
+                    <Cost label="Argila" value={piece.clay / piece.quantity} currency={currency} privacy={privacy} />
+                    <Cost label="Esmalte" value={piece.glaze / piece.quantity} currency={currency} privacy={privacy} />
+                    <Cost label="Queimas" value={piece.firing / piece.quantity} currency={currency} privacy={privacy} />
+                    <Cost label="Manutenção do forno" value={piece.kilnMaintenance / piece.quantity} currency={currency} privacy={privacy} />
+                    <Cost label="Outros" value={piece.other / piece.quantity} currency={currency} privacy={privacy} />
+                    <Cost label={`Frete (${(piece.freightRate * 100).toFixed(0)}%)`} value={piece.freight / piece.quantity} currency={currency} privacy={privacy} />
+                  </div>
+                )}
                 <div className="flex flex-wrap justify-end gap-x-5 gap-y-1 border-t pt-3 text-sm">
                   <span className="text-muted-foreground">Calculado: <strong className="font-mono text-foreground">{formatCurrency(piece.calculated, currency, privacy)}</strong></span>
                   <span className="text-muted-foreground">Cobrado: <strong className="font-mono text-foreground">{formatCurrency(piece.charged, currency, privacy)}</strong></span>

@@ -11,6 +11,7 @@ type Statement = {
   clay: number;
   glaze: number;
   firing: number;
+  kilnMaintenance: number;
   other: number;
   freight: number;
   pieces: Array<{ piece_name?: string; usage_date?: string; quantity?: number; charged?: number; pending?: number }>;
@@ -19,7 +20,7 @@ type Statement = {
 const money = (value: number) => `R$ ${value.toFixed(2).replace(".", ",")}`;
 const safe = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-export async function createClassMaterialsPdf(statement: Statement) {
+export async function createClassMaterialsPdf(statement: Statement, options: { includeCostBreakdown?: boolean } = {}) {
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -47,9 +48,11 @@ export async function createClassMaterialsPdf(statement: Statement) {
   write(`Total de materiais: ${money(statement.charged)}`, { size: 12, font: bold });
   write(`Ja pago: ${money(statement.paid)}`);
   write(`Valor devido: ${money(statement.pending)}`, { size: 12, font: bold, color: rgb(0.65, 0.08, 0.08) });
-  y -= 4;
-  write(`Argila: ${money(statement.clay)}   Esmalte: ${money(statement.glaze)}   Queimas: ${money(statement.firing)}`);
-  write(`Outros: ${money(statement.other)}   Frete: ${money(statement.freight)}`);
+  if (options.includeCostBreakdown !== false) {
+    y -= 4;
+    write(`Argila: ${money(statement.clay)}   Esmalte: ${money(statement.glaze)}   Queimas: ${money(statement.firing)}`);
+    write(`Manutencao do forno: ${money(statement.kilnMaintenance)}   Outros: ${money(statement.other)}   Frete: ${money(statement.freight)}`);
+  }
   y -= 5;
   line();
   write("Itens", { size: 12, font: bold });
