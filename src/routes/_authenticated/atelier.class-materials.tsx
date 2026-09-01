@@ -180,6 +180,11 @@ const ALLOWED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "i
 
 type StudentMaterialSummary = {
   piecesCount: number;
+  pieces: Array<{
+    name: string;
+    quantity: number;
+    total: number;
+  }>;
   clayTotal: number;
   glazeTotal: number;
   firingTotal: number;
@@ -201,15 +206,11 @@ function buildStudentMaterialWhatsAppMessage(studentName: string, summary: Stude
     "",
     "Segue o resumo dos seus materiais no ateliê:",
     "",
-    `Peças: ${summary.piecesCount}`,
-    "",
+    `Peças (${summary.piecesCount}):`,
   ];
-  if (summary.clayTotal > 0) lines.push(`Argila: ${whatsappMoney(summary.clayTotal)}`);
-  if (summary.glazeTotal > 0) lines.push(`Esmalte: ${whatsappMoney(summary.glazeTotal)}`);
-  if (summary.firingTotal > 0) lines.push(`Queimas: ${whatsappMoney(summary.firingTotal)}`);
-  if (summary.kilnMaintenanceTotal > 0) lines.push(`Manutenção do forno: ${whatsappMoney(summary.kilnMaintenanceTotal)}`);
-  if (summary.otherCostsTotal > 0) lines.push(`Outros custos: ${whatsappMoney(summary.otherCostsTotal)}`);
-  if (summary.freightTotal > 0) lines.push(`Frete: ${whatsappMoney(summary.freightTotal)}`);
+  summary.pieces.forEach((piece) => {
+    lines.push(`• ${piece.name} — ${piece.quantity} ${piece.quantity === 1 ? "unidade" : "unidades"} — ${whatsappMoney(piece.total)}`);
+  });
   lines.push(
     "",
     `Total: ${whatsappMoney(summary.totalCharge)}`,
@@ -217,7 +218,18 @@ function buildStudentMaterialWhatsAppMessage(studentName: string, summary: Stude
     `Valor pendente: ${whatsappMoney(summary.outstandingBalance)}`,
   );
   if (summary.outstandingBalance > 0) {
-    lines.push("", "PIX para pagamento:", SELA_PIX_KEY);
+    try {
+      const pixPayload = createPixPayload({ amount: summary.outstandingBalance, studentName });
+      lines.push(
+        "",
+        "PIX Copia e Cola:",
+        pixPayload,
+        "",
+        `Chave Pix: ${SELA_PIX_KEY}`,
+      );
+    } catch {
+      lines.push("", `Chave Pix: ${SELA_PIX_KEY}`);
+    }
   }
   lines.push("", "Obrigada! 🤍", "Selá Cerâmica");
   return lines.join("\n");
@@ -1337,6 +1349,11 @@ function StudentStatement({
   );
   const studentSummary: StudentMaterialSummary = {
     piecesCount: Number(item.quantity || 0),
+    pieces: item.pieces.map((piece: any) => ({
+      name: String(piece.piece_name || "Peça sem nome").trim(),
+      quantity: wholeQuantity(piece),
+      total: Number(piece.charged || 0),
+    })),
     clayTotal: Number(item.clay || 0),
     glazeTotal: Number(item.glaze || 0),
     firingTotal: Number(item.firing || 0),
