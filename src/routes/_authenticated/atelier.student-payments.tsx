@@ -87,6 +87,11 @@ type MaterialRow = {
   amount_pending?: number | null;
   payment_status?: string | null;
   payment_date?: string | null;
+  production_status?: string | null;
+  quantity?: number | null;
+  completed_quantity?: number | null;
+  delivered_quantity?: number | null;
+  invoiced_quantity?: number | null;
 };
 type PaymentRow = {
   id: string;
@@ -131,6 +136,18 @@ function monthBounds(year: number, month: number) {
 function numeric(value: number | null | undefined) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function materialBilledAmount(row: MaterialRow) {
+  const quantity = Math.max(1, Math.round(numeric(row.quantity) || 1));
+  const legacyInvoiced = ["completed", "delivered"].includes(row.production_status || "")
+    ? quantity
+    : 0;
+  const invoiced = Math.min(
+    quantity,
+    Math.max(0, Math.round(numeric(row.invoiced_quantity ?? legacyInvoiced))),
+  );
+  return (numeric(row.amount_charged) / quantity) * invoiced;
 }
 
 function Page() {
@@ -199,14 +216,15 @@ function Page() {
       const { data, error } = await sb
         .from("class_materials_usage")
         .select(
-          "id,student_id,student_name,amount_charged,amount_paid,amount_pending,payment_status,payment_date,production_status",
+          "id,student_id,student_name,amount_charged,amount_paid,amount_pending,payment_status,payment_date,production_status,quantity,completed_quantity,delivered_quantity,invoiced_quantity",
         )
         .eq("workspace_id", wsId)
-        .in("production_status", ["completed", "delivered"])
         .gte("usage_date", materialStart)
         .lt("usage_date", nextMaterialStart);
       if (error) throw error;
-      return (data ?? []) as MaterialRow[];
+      return ((data ?? []) as MaterialRow[]).filter(
+        (row) => row.payment_status !== "waived" && materialBilledAmount(row) > 0,
+      );
     },
   });
   const transactionsQuery = useQuery({
@@ -249,14 +267,14 @@ function Page() {
           (!row.student_id && normalizePaymentText(row.student_name) === studentName),
       );
       const materialsAmount = studentMaterials.reduce(
-        (total, row) => total + numeric(row.amount_charged),
+        (total, row) => total + materialBilledAmount(row),
         0,
       );
       const materialsPaid = studentMaterials.reduce((total, row) => {
         const paid = numeric(row.amount_paid);
         return (
           total +
-          (paid > 0 ? paid : row.payment_status === "paid" ? numeric(row.amount_charged) : 0)
+          (paid > 0 ? paid : row.payment_status === "paid" ? materialBilledAmount(row) : 0)
         );
       }, 0);
       const tuitionDue = Math.max(0, tuitionAmount - tuitionPaid);
@@ -360,7 +378,7 @@ function Page() {
       if ((kind === "materials" || kind === "combined") && summary.materialsDue > 0) {
         const pendingRows = summary.materials.filter(
           (row) =>
-            row.payment_status !== "paid" || numeric(row.amount_paid) < numeric(row.amount_charged),
+            row.payment_status !== "paid" || numeric(row.amount_paid) < materialBilledAmount(row),
         );
         const results = await Promise.all(
           pendingRows.map((row) =>
@@ -369,7 +387,7 @@ function Page() {
               .update({
                 payment_status: "paid",
                 payment_date: paymentDate,
-                amount_paid: numeric(row.amount_charged),
+                amount_paid: materialBilledAmount(row),
                 amount_pending: 0,
               })
               .eq("id", row.id)
@@ -463,7 +481,7 @@ function Page() {
       }
 
       const allocation = allocateMaterialPayment(
-        summary.materials.map((row) => ({ id: row.id, amount: numeric(row.amount_charged) })),
+        summary.materials.map((row) => ({ id: row.id, amount: materialBilledAmount(row) })),
         amount,
       );
       const results = await Promise.all(

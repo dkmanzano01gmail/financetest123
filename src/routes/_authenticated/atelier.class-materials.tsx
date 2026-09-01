@@ -46,17 +46,65 @@ const GLAZE_FIRING_INDEXES: Record<string, number> = {
 };
 const COMPLETED_PRODUCTION_STATUSES = new Set(["completed", "delivered"]);
 
-function isPieceChargeable(piece: any) {
-  return (
-    COMPLETED_PRODUCTION_STATUSES.has(piece.production_status) &&
-    piece.payment_status !== "waived" &&
-    Number(piece.pending || 0) > 0
-  );
+function wholeQuantity(piece: any) {
+  return Math.max(1, Math.round(Number(piece.quantity || 1)));
 }
 
-function selectStatementPieces(item: any, selectedPieceIds: string[]) {
-  const selected = new Set(selectedPieceIds);
-  const pieces = item.pieces.filter((piece: any) => selected.has(piece.id) && isPieceChargeable(piece));
+function trackedQuantities(piece: any) {
+  const total = wholeQuantity(piece);
+  const legacyCompleted = COMPLETED_PRODUCTION_STATUSES.has(piece.production_status) ? total : 0;
+  const completed = Math.min(total, Math.max(0, Math.round(Number(piece.completed_quantity ?? legacyCompleted))));
+  const delivered = Math.min(completed, Math.max(0, Math.round(Number(piece.delivered_quantity ?? (piece.production_status === "delivered" ? total : 0)))));
+  const invoiced = Math.min(completed, Math.max(0, Math.round(Number(piece.invoiced_quantity ?? legacyCompleted))));
+  return { total, completed, delivered, invoiced, billable: Math.max(0, completed - invoiced) };
+}
+
+function billedAmount(piece: any) {
+  const { total, invoiced } = trackedQuantities(piece);
+  return (Number(piece.amount_charged || piece.charged || 0) / total) * invoiced;
+}
+
+function selectableQuantity(piece: any) {
+  if (piece.payment_status === "waived") return 0;
+  const tracked = trackedQuantities(piece);
+  if (tracked.billable > 0) return tracked.billable;
+  const pending = Number(piece.pending ?? piece.amount_pending ?? 0);
+  return piece.invoiced_quantity == null && pending > 0 ? tracked.invoiced : 0;
+}
+
+function isPieceChargeable(piece: any) {
+  return selectableQuantity(piece) > 0;
+}
+
+function defaultPieceQuantities(pieces: any[]) {
+  return Object.fromEntries(
+    pieces
+      .map((piece) => [piece.id, selectableQuantity(piece)])
+      .filter(([, quantity]) => Number(quantity) > 0),
+  ) as Record<string, number>;
+}
+
+function selectStatementPieces(item: any, selectedQuantities: Record<string, number>) {
+  const pieces = item.pieces.flatMap((piece: any) => {
+    const available = selectableQuantity(piece);
+    const selected = Math.min(available, Math.max(0, Math.round(Number(selectedQuantities[piece.id] || 0))));
+    if (selected === 0 || !isPieceChargeable(piece)) return [];
+    const ratio = selected / wholeQuantity(piece);
+    return [{
+      ...piece,
+      quantity: selected,
+      clay: piece.clay * ratio,
+      glaze: piece.glaze * ratio,
+      firing: piece.firing * ratio,
+      kilnMaintenance: piece.kilnMaintenance * ratio,
+      other: piece.other * ratio,
+      freight: piece.freight * ratio,
+      calculated: piece.calculated * ratio,
+      charged: piece.charged * ratio,
+      paid: 0,
+      pending: piece.charged * ratio,
+    }];
+  });
   return pieces.reduce(
     (statement: any, piece: any) => {
       statement.quantity += piece.quantity;
@@ -98,6 +146,9 @@ const empty = () => ({
   production_status: "in_progress",
   completed_at: "",
   quantity: "1",
+  completed_quantity: "0",
+  delivered_quantity: "0",
+  invoiced_quantity: "0",
   modeled_weight_g: "0",
   bisque_weight_g: "",
   glazed_weight_g: "",
@@ -155,7 +206,7 @@ function Page() {
   const [emailingStudent, setEmailingStudent] = useState<string | null>(null);
   const [reportPhotosByStudent, setReportPhotosByStudent] = useState<Record<string, boolean>>({});
   const [reportCostBreakdownByStudent, setReportCostBreakdownByStudent] = useState<Record<string, boolean>>({});
-  const [reportPieceIdsByStudent, setReportPieceIdsByStudent] = useState<Record<string, string[]>>({});
+  const [reportPieceQuantitiesByStudent, setReportPieceQuantitiesByStudent] = useState<Record<string, Record<string, number>>>({});
   const [form, setForm] = useState(empty());
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
@@ -490,7 +541,7 @@ function Page() {
     () =>
       filtered.reduce(
         (acc, row: any) => {
-          const charged = Number(row.amount_charged || 0);
+          const charged = billedAmount(row);
           const paid = row.amount_paid != null
             ? Number(row.amount_paid || 0)
             : row.payment_status === "paid"
@@ -536,7 +587,7 @@ function Page() {
         paid: 0,
         pending: 0,
       };
-      const charged = Number(row.amount_charged || 0);
+      const charged = billedAmount(row);
       const paid = Number(row.amount_paid ?? (row.payment_status === "paid" ? charged : 0));
       item.pieces += Number(row.quantity || 1);
       item.cost += Number(row.total_cost || 0);
@@ -680,14 +731,41 @@ function Page() {
       if (bisqueWeightGrams != null && glazedWeightGrams != null && glazedWeightGrams < bisqueWeightGrams) {
         throw new Error("O peso após a esmaltação deve ser igual ou maior que o peso após o biscoito.");
       }
+      const quantity = Math.max(1, Math.round(n(form.quantity)));
+      const completedQuantity = Math.round(n(form.completed_quantity));
+      const deliveredQuantity = Math.round(n(form.delivered_quantity));
+      const invoicedQuantity = Math.round(n(form.invoiced_quantity));
+      if (
+        completedQuantity < 0 || completedQuantity > quantity ||
+        deliveredQuantity < 0 || deliveredQuantity > completedQuantity ||
+        invoicedQuantity < 0 || invoicedQuantity > completedQuantity
+      ) {
+        throw new Error("As quantidades devem respeitar: faturadas e entregues não podem superar as concluídas, e concluídas não podem superar o total.");
+      }
       const chargedInput = form.amount_charged.trim() ? parseLocaleAmount(form.amount_charged) : calculation.chargeAmount;
       if (!Number.isFinite(chargedInput) || chargedInput < 0) throw new Error("Valor cobrado inválido.");
+      const invoicedAmount = (chargedInput / quantity) * invoicedQuantity;
       const paidInput = form.payment_status === "paid"
-        ? chargedInput
+        ? invoicedAmount
         : form.payment_status === "waived" || form.payment_status === "pending"
           ? 0
           : n(form.amount_paid);
-      const pending = form.payment_status === "waived" ? 0 : Math.max(0, chargedInput - paidInput);
+      if (paidInput > invoicedAmount) throw new Error("O valor pago não pode superar o valor já faturado.");
+      const paymentStatus = form.payment_status === "waived"
+        ? "waived"
+        : invoicedAmount > 0 && paidInput >= invoicedAmount
+          ? "paid"
+          : paidInput > 0
+            ? "partial"
+            : "pending";
+      const pending = paymentStatus === "waived" ? 0 : Math.max(0, invoicedAmount - paidInput);
+      const productionStatus = deliveredQuantity === quantity
+        ? "delivered"
+        : completedQuantity === quantity
+          ? "completed"
+          : COMPLETED_PRODUCTION_STATUSES.has(form.production_status)
+            ? "in_progress"
+            : form.production_status;
       let photoPath = form.photo_path || null;
       let uploadedPhotoPath: string | null = null;
       if (photoFile) {
@@ -708,12 +786,15 @@ function Page() {
         student_id: (students as any[]).find((student) => student.name === form.student_name)?.id ?? null,
         kiln_id: selectedKiln?.id ?? null,
         piece_name: form.piece_name.trim(),
-        production_status: form.production_status,
+        production_status: productionStatus,
         completed_at:
-          ["completed", "delivered"].includes(form.production_status)
+          completedQuantity > 0
             ? form.completed_at || new Date().toISOString().slice(0, 10)
             : null,
-        quantity: Math.max(1, Math.round(n(form.quantity))),
+        quantity,
+        completed_quantity: completedQuantity,
+        delivered_quantity: deliveredQuantity,
+        invoiced_quantity: invoicedQuantity,
         material: form.clay_type || form.glaze_name || "Peça cerâmica",
         grams: modeledWeightGrams,
         clay_weight_kg: modeledWeightGrams / 1000,
@@ -741,7 +822,7 @@ function Page() {
         amount_charged: chargedInput,
         amount_paid: paidInput,
         amount_pending: pending,
-        payment_status: form.payment_status,
+        payment_status: paymentStatus,
         payment_date:
           paidInput > 0 ? form.payment_date || new Date().toISOString().slice(0, 10) : null,
         payment_notes: form.payment_notes.trim() || null,
@@ -784,12 +865,14 @@ function Page() {
   });
   const markPaid = useMutation({
     mutationFn: async (row: any) => {
+      const charged = billedAmount(row);
+      if (charged <= 0) throw new Error("Esta peça ainda não possui unidades faturadas.");
       const { error } = await sb
         .from("class_materials_usage")
         .update({
           payment_status: "paid",
           payment_date: new Date().toISOString().slice(0, 10),
-          amount_paid: Number(row.amount_charged || 0),
+          amount_paid: charged,
           amount_pending: 0,
         })
         .eq("id", row.id)
@@ -797,6 +880,44 @@ function Page() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["class_materials_usage"] }),
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const markInvoiced = useMutation({
+    mutationFn: async ({ pieces, quantities }: { pieces: any[]; quantities: Record<string, number>; selectionKey: string }) => {
+      if (!wsId) throw new Error("Selecione um workspace.");
+      const updates = pieces.flatMap((piece) => {
+        const tracked = trackedQuantities(piece);
+        const selected = Math.min(tracked.billable, Math.max(0, Math.round(Number(quantities[piece.id] || 0))));
+        if (selected === 0) return [];
+        const nextInvoiced = tracked.invoiced + selected;
+        const nextBilledAmount = (Number(piece.amount_charged || piece.charged || 0) / tracked.total) * nextInvoiced;
+        const paid = Math.min(nextBilledAmount, Number(piece.amount_paid || 0));
+        return [{
+          id: piece.id,
+          invoiced_quantity: nextInvoiced,
+          amount_paid: paid,
+          amount_pending: Math.max(0, nextBilledAmount - paid),
+          payment_status: paid >= nextBilledAmount && nextBilledAmount > 0 ? "paid" : paid > 0 ? "partial" : "pending",
+        }];
+      });
+      if (updates.length === 0) throw new Error("Selecione ao menos uma unidade concluída para faturar.");
+      const results = await Promise.all(
+        updates.map(({ id, ...payload }) =>
+          sb.from("class_materials_usage").update(payload).eq("id", id).eq("workspace_id", wsId),
+        ),
+      );
+      const failed = results.find((result) => result.error);
+      if (failed?.error) throw failed.error;
+    },
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ["class_materials_usage"] });
+      setReportPieceQuantitiesByStudent((current) => {
+        const next = { ...current };
+        delete next[variables.selectionKey];
+        return next;
+      });
+      toast.success("Unidades marcadas como faturadas");
+    },
     onError: (error: Error) => toast.error(error.message),
   });
   const saveSettings = useMutation({
@@ -825,6 +946,7 @@ function Page() {
   });
 
   function edit(row: any) {
+    const tracked = trackedQuantities(row);
     setEditId(row.id);
     setPhotoFile(null);
     setForm({
@@ -835,6 +957,9 @@ function Page() {
       production_status: row.production_status ?? "in_progress",
       completed_at: row.completed_at ?? "",
       quantity: String(row.quantity ?? 1),
+      completed_quantity: String(tracked.completed),
+      delivered_quantity: String(tracked.delivered),
+      invoiced_quantity: String(tracked.invoiced),
       modeled_weight_g: String(
         row.modeled_weight_g != null
           ? Number(row.modeled_weight_g || 0)
@@ -946,18 +1071,17 @@ function Page() {
             <p className="text-sm text-muted-foreground">Visão executiva pronta para imprimir ou salvar em PDF e enviar ao aluno.</p>
           </div>
           {studentStatements.map((item) => {
-            const chargeablePieceIds = item.pieces.filter(isPieceChargeable).map((piece: any) => piece.id);
             const selectionKey = `${periodMode}:${year}:${month}:${statusFilter}:${item.student}`;
-            const selectedPieceIds = reportPieceIdsByStudent[selectionKey] ?? chargeablePieceIds;
-            const selectedStatement = selectStatementPieces(item, selectedPieceIds);
+            const selectedPieceQuantities = reportPieceQuantitiesByStudent[selectionKey] ?? defaultPieceQuantities(item.pieces);
+            const selectedStatement = selectStatementPieces(item, selectedPieceQuantities);
             return (
               <StudentStatement
                 key={item.student}
                 item={selectedStatement}
                 availablePieces={item.pieces}
-                selectedPieceIds={selectedPieceIds}
-                onSelectedPieceIdsChange={(pieceIds) =>
-                  setReportPieceIdsByStudent((current) => ({ ...current, [selectionKey]: pieceIds }))
+                selectedPieceQuantities={selectedPieceQuantities}
+                onSelectedPieceQuantitiesChange={(quantities) =>
+                  setReportPieceQuantitiesByStudent((current) => ({ ...current, [selectionKey]: quantities }))
                 }
                 period={statementPeriod}
                 currency={currency}
@@ -974,6 +1098,8 @@ function Page() {
                 onPrint={() => setPrintStudent(item.student)}
                 onEmail={() => emailStatement(selectedStatement, statementPeriod, reportCostBreakdownByStudent[item.student] ?? true)}
                 emailing={emailingStudent === item.student}
+                invoicing={markInvoiced.isPending}
+                onMarkInvoiced={() => markInvoiced.mutate({ pieces: item.pieces, quantities: selectedPieceQuantities, selectionKey })}
                 onEdit={edit}
               />
             );
@@ -988,7 +1114,7 @@ function Page() {
           <CardHeader><CardTitle className="text-base">Peças e cobranças</CardTitle></CardHeader>
           <CardContent className="overflow-x-auto p-0">
             <table className="w-full text-sm"><thead className="bg-muted/40"><tr className="text-left"><th className="p-3">Data</th><th className="p-3">Aluno</th><th className="p-3">Peça</th><th className="p-3">Produção</th><th className="p-3">Forno</th><th className="p-3">Materiais</th><th className="p-3 text-right">Custo</th><th className="p-3 text-right">Cobrança</th><th className="p-3 text-right">Pendente</th><th className="p-3">Pagamento</th><th className="p-3" /></tr></thead>
-              <tbody>{filtered.map((row: any) => <tr key={row.id} className="border-t"><td className="p-3 font-mono">{row.usage_date}</td><td className="p-3 font-medium">{row.student_name}</td><td className="p-3"><div className="flex min-w-44 items-center gap-3">{row.photo_url ? <img src={row.photo_url} alt={`Foto de ${row.piece_name || "peça"}`} className="h-12 w-12 rounded-lg border object-cover" loading="lazy" /> : <div className="flex h-12 w-12 items-center justify-center rounded-lg border bg-muted/40 text-muted-foreground"><ImagePlus className="h-5 w-5" /></div>}<div>{row.piece_name || "—"}<div className="text-xs text-muted-foreground">{row.quantity ?? 1} un.</div></div></div></td><td className="p-3">{productionLabel(row.production_status)}</td><td className="p-3">{(kilns as any[]).find((kiln) => kiln.id === row.kiln_id)?.name || "Padrão legado"}</td><td className="p-3 text-xs">{row.clay_type || "—"}<br />{row.glaze_name || "—"}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.total_cost || 0), currency, privacy)}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.amount_charged || 0), currency, privacy)}</td><td className="p-3 text-right font-mono text-expense">{formatCurrency(Number(row.amount_pending ?? Math.max(0, Number(row.amount_charged || 0) - Number(row.amount_paid || 0))), currency, privacy)}</td><td className="p-3">{statusLabel(row.payment_status)}</td><td className="p-3"><div className="flex justify-end gap-1">{row.payment_status !== "paid" && row.payment_status !== "waived" && <Button variant="outline" size="sm" onClick={() => markPaid.mutate(row)}>Marcar pago</Button>}<Button variant="ghost" size="icon" onClick={() => edit(row)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => remove.mutate(row.id)}><Trash2 className="h-4 w-4" /></Button></div></td></tr>)}</tbody>
+              <tbody>{filtered.map((row: any) => { const tracked = trackedQuantities(row); const billed = billedAmount(row); return <tr key={row.id} className="border-t"><td className="p-3 font-mono">{row.usage_date}</td><td className="p-3 font-medium">{row.student_name}</td><td className="p-3"><div className="flex min-w-44 items-center gap-3">{row.photo_url ? <img src={row.photo_url} alt={`Foto de ${row.piece_name || "peça"}`} className="h-12 w-12 rounded-lg border object-cover" loading="lazy" /> : <div className="flex h-12 w-12 items-center justify-center rounded-lg border bg-muted/40 text-muted-foreground"><ImagePlus className="h-5 w-5" /></div>}<div>{row.piece_name || "—"}<div className="text-xs text-muted-foreground">{tracked.total} total · {tracked.completed} concluída(s) · {tracked.delivered} entregue(s) · {tracked.invoiced} faturada(s)</div><div className="text-xs text-muted-foreground">Pendentes: {tracked.total - tracked.completed} produção · {tracked.completed - tracked.delivered} entrega · {tracked.completed - tracked.invoiced} faturamento</div></div></div></td><td className="p-3">{productionLabel(row.production_status)}</td><td className="p-3">{(kilns as any[]).find((kiln) => kiln.id === row.kiln_id)?.name || "Padrão legado"}</td><td className="p-3 text-xs">{row.clay_type || "—"}<br />{row.glaze_name || "—"}</td><td className="p-3 text-right font-mono">{formatCurrency(Number(row.total_cost || 0), currency, privacy)}</td><td className="p-3 text-right font-mono">{formatCurrency(billed, currency, privacy)}</td><td className="p-3 text-right font-mono text-expense">{formatCurrency(Number(row.amount_pending ?? Math.max(0, billed - Number(row.amount_paid || 0))), currency, privacy)}</td><td className="p-3">{statusLabel(row.payment_status)}</td><td className="p-3"><div className="flex justify-end gap-1">{billed > Number(row.amount_paid || 0) && row.payment_status !== "waived" && <Button variant="outline" size="sm" onClick={() => markPaid.mutate(row)}>Marcar pago</Button>}<Button variant="ghost" size="icon" onClick={() => edit(row)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => remove.mutate(row.id)}><Trash2 className="h-4 w-4" /></Button></div></td></tr>; })}</tbody>
             </table>
           </CardContent>
         </Card>
@@ -1016,10 +1142,13 @@ function Page() {
             <Field label="Data"><Input type="date" value={form.usage_date} onChange={(event) => setForm({ ...form, usage_date: event.target.value })} /></Field>
             <Field label="Aluno"><Select value={form.student_name || "none"} onValueChange={(value) => setForm({ ...form, student_name: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Selecione</SelectItem>{students.map((student: any) => <SelectItem key={student.id} value={student.name}>{student.name}</SelectItem>)}</SelectContent></Select></Field>
             <Field label="Peça"><Input value={form.piece_name} onChange={(event) => setForm({ ...form, piece_name: event.target.value })} /></Field>
-            <Field label="Etapa de produção"><Select value={form.production_status} onValueChange={(value) => setForm({ ...form, production_status: value, completed_at: ["completed", "delivered"].includes(value) ? form.completed_at || new Date().toISOString().slice(0, 10) : "" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in_progress">Em produção</SelectItem><SelectItem value="drying">Secando</SelectItem><SelectItem value="bisque">Biscoito</SelectItem><SelectItem value="glazing">Esmaltação</SelectItem><SelectItem value="completed">Concluída</SelectItem><SelectItem value="delivered">Entregue</SelectItem></SelectContent></Select></Field>
+            <Field label="Etapa de produção"><Select value={form.production_status} onValueChange={(value) => { const total = String(Math.max(1, Math.round(n(form.quantity)))); setForm({ ...form, production_status: value, completed_quantity: ["completed", "delivered"].includes(value) ? total : form.completed_quantity, delivered_quantity: value === "delivered" ? total : form.delivered_quantity, completed_at: ["completed", "delivered"].includes(value) ? form.completed_at || new Date().toISOString().slice(0, 10) : form.completed_at }); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in_progress">Em produção</SelectItem><SelectItem value="drying">Secando</SelectItem><SelectItem value="bisque">Biscoito</SelectItem><SelectItem value="glazing">Esmaltação</SelectItem><SelectItem value="completed">Concluída</SelectItem><SelectItem value="delivered">Entregue</SelectItem></SelectContent></Select></Field>
             <Field label="Forno"><Select value={form.kiln_id || selectedKiln?.id || "legacy"} onValueChange={(value) => setForm({ ...form, kiln_id: value === "legacy" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(kilns as any[]).length === 0 && <SelectItem value="legacy">Parâmetros antigos</SelectItem>}{(kilns as any[]).map((kiln) => <SelectItem key={kiln.id} value={kiln.id}>{kiln.name}{kiln.is_default ? " · padrão" : ""}</SelectItem>)}</SelectContent></Select></Field>
             {["completed", "delivered"].includes(form.production_status) && <Field label="Data de conclusão"><Input type="date" value={form.completed_at} onChange={(event) => setForm({ ...form, completed_at: event.target.value })} /></Field>}
             <Field label="Quantidade"><Input type="number" min={1} value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} /></Field>
+            <Field label="Qtd. concluída"><Input type="number" min={0} max={Math.max(1, Math.round(n(form.quantity)))} value={form.completed_quantity} onChange={(event) => setForm({ ...form, completed_quantity: event.target.value })} /><p className="text-xs text-muted-foreground">Unidades prontas para cobrança.</p></Field>
+            <Field label="Qtd. entregue"><Input type="number" min={0} max={Math.max(0, Math.round(n(form.completed_quantity)))} value={form.delivered_quantity} onChange={(event) => setForm({ ...form, delivered_quantity: event.target.value })} /><p className="text-xs text-muted-foreground">Unidades já entregues ao aluno.</p></Field>
+            <Field label="Qtd. faturada"><Input type="number" min={0} max={Math.max(0, Math.round(n(form.completed_quantity)))} value={form.invoiced_quantity} onChange={(event) => setForm({ ...form, invoiced_quantity: event.target.value })} /><p className="text-xs text-muted-foreground">Unidades que já entraram em cobrança.</p></Field>
             <Field label="Peso após modelagem (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" value={form.modeled_weight_g} onChange={(event) => setForm({ ...form, modeled_weight_g: event.target.value })} /></Field>
             <Field label="Peso após queima biscoito (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" placeholder="Pesar após o biscoito" value={form.bisque_weight_g} onChange={(event) => setForm({ ...form, bisque_weight_g: event.target.value })} /></Field>
             <Field label="Peso após esmaltação (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" placeholder="Pesar após esmaltar" value={form.glazed_weight_g} onChange={(event) => setForm({ ...form, glazed_weight_g: event.target.value })} /></Field>
@@ -1110,8 +1239,8 @@ function Page() {
 function StudentStatement({
   item,
   availablePieces,
-  selectedPieceIds,
-  onSelectedPieceIdsChange,
+  selectedPieceQuantities,
+  onSelectedPieceQuantitiesChange,
   period,
   currency,
   privacy,
@@ -1123,12 +1252,14 @@ function StudentStatement({
   onPrint,
   onEmail,
   emailing,
+  onMarkInvoiced,
+  invoicing,
   onEdit,
 }: {
   item: any;
   availablePieces: any[];
-  selectedPieceIds: string[];
-  onSelectedPieceIdsChange: (pieceIds: string[]) => void;
+  selectedPieceQuantities: Record<string, number>;
+  onSelectedPieceQuantitiesChange: (quantities: Record<string, number>) => void;
   period: string;
   currency: string;
   privacy: boolean;
@@ -1140,18 +1271,30 @@ function StudentStatement({
   onPrint: () => void;
   onEmail: () => void;
   emailing: boolean;
+  onMarkInvoiced: () => void;
+  invoicing: boolean;
   onEdit: (piece: any) => void;
 }) {
-  const selectedIds = new Set(selectedPieceIds);
-  const chargeablePieceIds = availablePieces.filter(isPieceChargeable).map((piece: any) => piece.id);
+  const allChargeableQuantities = defaultPieceQuantities(availablePieces);
+  const totalAvailableUnits = availablePieces.reduce((total, piece) => total + trackedQuantities(piece).total, 0);
+  const selectedBillableUnits = availablePieces.reduce(
+    (total, piece) => total + Math.min(trackedQuantities(piece).billable, Number(selectedPieceQuantities[piece.id] || 0)),
+    0,
+  );
   const photoCount = item.pieces.filter((piece: any) => Boolean(piece.photo_url)).length;
+  function setSelectedQuantity(pieceId: string, quantity: number) {
+    const next = { ...selectedPieceQuantities };
+    if (quantity > 0) next[pieceId] = quantity;
+    else delete next[pieceId];
+    onSelectedPieceQuantitiesChange(next);
+  }
   return (
     <Card data-print-statement={selectedForPrint ? "selected" : "idle"} className="overflow-hidden">
       <CardHeader className="border-b bg-muted/20 pb-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="text-xl">{item.student}</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">{item.group || "Aulas regulares"} · {period} · {item.pieces.length} de {availablePieces.length} {availablePieces.length === 1 ? "peça selecionada" : "peças selecionadas"}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{item.group || "Aulas regulares"} · {period} · {item.quantity} de {totalAvailableUnits} {totalAvailableUnits === 1 ? "unidade selecionada" : "unidades selecionadas"}</p>
           </div>
           <div data-print-hide="true" className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
@@ -1210,18 +1353,22 @@ function StudentStatement({
         )}
 
         <div data-print-hide="true" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/20 p-3">
-          <p className="text-sm text-muted-foreground">Somente peças concluídas ou entregues e com valor pendente podem entrar na cobrança.</p>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => onSelectedPieceIdsChange([])}>Limpar seleção</Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => onSelectedPieceIdsChange(chargeablePieceIds)}>Selecionar concluídas</Button>
+          <p className="text-sm text-muted-foreground">Escolha quantas unidades concluídas ainda não faturadas entrarão nesta cobrança.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => onSelectedPieceQuantitiesChange({})}>Limpar seleção</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => onSelectedPieceQuantitiesChange(allChargeableQuantities)}>Selecionar disponíveis</Button>
+            <Button type="button" size="sm" onClick={onMarkInvoiced} disabled={invoicing || selectedBillableUnits === 0}>{invoicing ? "Faturando..." : "Marcar seleção como faturada"}</Button>
           </div>
         </div>
 
         <div className="space-y-3">
           {availablePieces.map((piece: any) => {
             const unitCalculated = piece.calculated / piece.quantity;
+            const tracked = trackedQuantities(piece);
+            const selectable = selectableQuantity(piece);
             const chargeable = isPieceChargeable(piece);
-            const selected = chargeable && selectedIds.has(piece.id);
+            const selectedQuantity = Math.min(selectable, Math.max(0, Math.round(Number(selectedPieceQuantities[piece.id] || 0))));
+            const selected = chargeable && selectedQuantity > 0;
             const modeledWeight = Number(
               piece.modeled_weight_g ?? piece.grams ?? Number(piece.clay_weight_kg || 0) * 1000,
             );
@@ -1234,15 +1381,15 @@ function StudentStatement({
                       checked={selected}
                       disabled={!chargeable}
                       onCheckedChange={(checked) =>
-                        onSelectedPieceIdsChange(
-                          checked
-                            ? [...selectedPieceIds, piece.id]
-                            : selectedPieceIds.filter((pieceId) => pieceId !== piece.id),
-                        )
+                        setSelectedQuantity(piece.id, checked ? selectable : 0)
                       }
                       aria-label={`Incluir ${piece.piece_name || "peça"} na cobrança`}
                       className="mt-1"
                     />
+                    <div data-print-hide="true" className="w-24 shrink-0">
+                      <Label htmlFor={`invoice-quantity-${piece.id}`} className="text-xs">Qtd. a cobrar</Label>
+                      <Input id={`invoice-quantity-${piece.id}`} type="number" min={0} max={selectable} disabled={!chargeable} value={selectedQuantity} onChange={(event) => setSelectedQuantity(piece.id, Math.min(selectable, Math.max(0, Math.round(Number(event.target.value || 0)))))} className="mt-1 h-8" />
+                    </div>
                     {includePhotos && piece.photo_url && (
                       <img
                         src={piece.photo_url}
@@ -1257,7 +1404,8 @@ function StudentStatement({
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${piece.payment_status === "paid" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}>{statusLabel(piece.payment_status)}</span>
                         {piece.resistance_only && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Somente resistências</span>}
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {piece.quantity} {piece.quantity === 1 ? "unidade" : "unidades"} · {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {tracked.total} total · {tracked.completed} concluída(s) · {tracked.delivered} entregue(s) · {tracked.invoiced} faturada(s) · {tracked.billable} disponível(is) · {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Pendentes: {tracked.total - tracked.completed} em produção · {tracked.completed - tracked.delivered} para entrega · {tracked.completed - tracked.invoiced} para faturar.</p>
                       <p className="mt-1 text-xs text-muted-foreground">Pesos — modelagem: {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g · biscoito: {piece.bisque_weight_g == null ? "—" : `${Number(piece.bisque_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g`} · após esmaltação: {piece.glazed_weight_g == null ? "—" : `${Number(piece.glazed_weight_g).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g`} · esmalte: {Number(piece.glaze_quantity || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g</p>
                     </div>
                   </div>

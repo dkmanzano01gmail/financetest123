@@ -606,9 +606,11 @@ export type Database = {
           clay_type: string | null
           clay_weight_kg: number
           comments: string | null
+          completed_quantity: number | null
           completed_at: string | null
           created_at: string
           depth_cm: number
+          delivered_quantity: number | null
           freight_cost: number
           freight_rate: number
           glaze_cone: string | null
@@ -620,6 +622,7 @@ export type Database = {
           grams: number
           height_cm: number
           id: string
+          invoiced_quantity: number | null
           kiln_id: string | null
           legacy_source_id: string | null
           length_cm: number
@@ -653,9 +656,11 @@ export type Database = {
           clay_type?: string | null
           clay_weight_kg?: number
           comments?: string | null
+          completed_quantity?: number | null
           completed_at?: string | null
           created_at?: string
           depth_cm?: number
+          delivered_quantity?: number | null
           freight_cost?: number
           freight_rate?: number
           glaze_cone?: string | null
@@ -667,6 +672,7 @@ export type Database = {
           grams?: number
           height_cm?: number
           id?: string
+          invoiced_quantity?: number | null
           kiln_id?: string | null
           legacy_source_id?: string | null
           length_cm?: number
@@ -700,9 +706,11 @@ export type Database = {
           clay_type?: string | null
           clay_weight_kg?: number
           comments?: string | null
+          completed_quantity?: number | null
           completed_at?: string | null
           created_at?: string
           depth_cm?: number
+          delivered_quantity?: number | null
           freight_cost?: number
           freight_rate?: number
           glaze_cone?: string | null
@@ -714,6 +722,7 @@ export type Database = {
           grams?: number
           height_cm?: number
           id?: string
+          invoiced_quantity?: number | null
           kiln_id?: string | null
           legacy_source_id?: string | null
           length_cm?: number
