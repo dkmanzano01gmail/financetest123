@@ -70,14 +70,23 @@ function Classes() {
     },
   });
 
-  const present = rows.filter((row) => row.status === "present").length;
-  const absent = rows.filter((row) => row.status === "absent").length;
-  const makeups = countPendingMakeups(rows);
-  const today = new Date().toISOString().slice(0, 10);
-  const future = rows.filter((row) => row.session_date >= today).length;
   const latestMonth = rows[0] ? parseDate(rows[0].session_date) : new Date();
   const displayedMonth = calendarMonth ?? latestMonth;
   const selectedYear = displayedMonth.getFullYear();
+  const periodRows = useMemo(
+    () =>
+      rows.filter((row) => {
+        const rowDate = parseDate(row.session_date);
+        if (rowDate.getFullYear() !== selectedYear) return false;
+        return viewMode === "year" || rowDate.getMonth() === displayedMonth.getMonth();
+      }),
+    [displayedMonth, rows, selectedYear, viewMode],
+  );
+  const present = periodRows.filter((row) => row.status === "present").length;
+  const absent = periodRows.filter((row) => row.status === "absent").length;
+  const makeups = countPendingMakeups(periodRows);
+  const today = new Date().toISOString().slice(0, 10);
+  const future = periodRows.filter((row) => row.session_date >= today).length;
   const availableYears = useMemo(() => {
     const years = new Set(rows.map((row) => parseDate(row.session_date).getFullYear()));
     years.add(new Date().getFullYear());
