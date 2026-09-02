@@ -208,11 +208,9 @@ function Pieces() {
                 </Badge>
               </div>
               {p.clay_type && <div className="text-sm">Argila: {p.clay_type}</div>}
-              {(p.length_cm || p.height_cm || p.depth_cm) && (
-                <div className="text-sm">
-                  Dimensões: {p.length_cm || 0} × {p.depth_cm || 0} × {p.height_cm || 0} cm
-                </div>
-              )}
+              <div className="text-sm">
+                Dimensões: {dimensions(p.length_cm, p.depth_cm, p.height_cm)}
+              </div>
               {Number(p.modeled_weight_g || p.grams || p.clay_weight_kg * 1000) > 0 && (
                 <div className="text-sm">
                   Peso após modelagem:{" "}
@@ -260,7 +258,7 @@ function Pieces() {
                 <Detail label="Turma" value={selected.class_name} />
                 <Detail
                   label="Dimensões"
-                  value={`${Number(selected.length_cm || 0)} × ${Number(selected.depth_cm || 0)} × ${Number(selected.height_cm || 0)} cm`}
+                  value={dimensions(selected.length_cm, selected.depth_cm, selected.height_cm)}
                 />
                 <Detail
                   label="Peso após modelagem"
@@ -317,6 +315,20 @@ function Pieces() {
 function weight(value: unknown) {
   const number = Number(value || 0);
   return number > 0 ? `${number} g` : "—";
+}
+
+function dimensions(length: unknown, depth: unknown, height: unknown) {
+  const values = [Number(length || 0), Number(depth || 0), Number(height || 0)];
+  if (values.every((value) => value <= 0)) return "Não há dimensões registradas";
+  if (values.every((value) => value > 0)) return `${values[0]} × ${values[1]} × ${values[2]} cm`;
+
+  return [
+    values[0] > 0 ? `Comprimento: ${values[0]} cm` : null,
+    values[1] > 0 ? `Profundidade: ${values[1]} cm` : null,
+    values[2] > 0 ? `Altura: ${values[2]} cm` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function Detail({ label, value }: { label: string; value?: unknown }) {
