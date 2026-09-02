@@ -46,7 +46,7 @@ const allSteps: TourStep[] = [
     key: "import",
     title: "Importe seus arquivos",
     description:
-      "Envie extratos e faturas em CSV, revise a prévia e confirme somente quando datas, valores e sinais estiverem corretos.",
+      "Envie extratos e faturas em CSV ou XLSX, revise a prévia e confirme somente quando datas, valores e sinais estiverem corretos.",
     to: "/import",
     target: "nav.import",
   },

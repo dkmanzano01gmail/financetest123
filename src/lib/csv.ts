@@ -1,6 +1,11 @@
 export type CsvRow = Record<string, string>;
 import { parseLocaleAmount } from "./format";
 
+export type ParsedTabularFile = {
+  headers: string[];
+  rows: CsvRow[];
+};
+
 /**
  * Decode an ArrayBuffer as UTF-8 (strict). Falls back to Windows-1252 when
  * invalid UTF-8 sequences are found, which is Nubank's common export encoding.

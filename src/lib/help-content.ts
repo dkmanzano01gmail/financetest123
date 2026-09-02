@@ -64,7 +64,7 @@ export const helpContent = {
   },
   "financial.import": {
     title: "Como importar arquivos",
-    summary: "Envie um CSV de conta corrente ou cartão e revise tudo antes de confirmar.",
+    summary: "Envie um CSV ou XLSX de conta corrente ou cartão e revise tudo antes de confirmar.",
     bullets: [
       "Escolha primeiro se o arquivo pertence a uma conta ou a um cartão.",
       "Confira data, descrição, valor e sinal na prévia.",

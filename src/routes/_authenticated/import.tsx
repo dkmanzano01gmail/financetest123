@@ -126,11 +126,17 @@ function ImportPage() {
     setFileName(f.name);
     setPrepared([]);
     setLastSummary(null);
-    let parsed: ReturnType<typeof parseCsv>;
+    let parsed: { headers: string[]; rows: CsvRow[] };
     try {
       const buf = await f.arrayBuffer();
-      const text = decodeCsvBuffer(buf);
-      parsed = parseCsv(text);
+      if (/\.xlsx$/i.test(f.name)) {
+        const { parseXlsx } = await import("@/lib/xlsx");
+        parsed = await parseXlsx(buf);
+      } else {
+        const text = decodeCsvBuffer(buf);
+        parsed = parseCsv(text);
+      }
+      if (parsed.headers.length === 0) throw new Error("O arquivo não contém uma planilha válida.");
     } catch (err: any) {
       toast.error(`Falha ao ler o arquivo: ${err?.message ?? err}`);
       setHeaders([]);
@@ -433,9 +439,9 @@ function ImportPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Importar CSV"
+        title="Importar transações"
         helpKey="financial.import"
-        description="Importe extratos de contas e faturas de cartões. Duplicidades são detectadas automaticamente."
+        description="Importe arquivos CSV ou XLSX de contas e cartões. Duplicidades são detectadas automaticamente."
       />
 
       <Card className="mb-4">
@@ -479,8 +485,12 @@ function ImportPage() {
               )}
             </div>
             <div>
-              <Label className="mb-2 block">Arquivo CSV</Label>
-              <Input type="file" accept=".csv,text/csv" onChange={onFile} />
+              <Label className="mb-2 block">Arquivo CSV ou XLSX</Label>
+              <Input
+                type="file"
+                accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={onFile}
+              />
               {fileName && (
                 <p className="text-xs text-muted-foreground mt-1 truncate">
                   {fileName} · {rows.length} linhas
@@ -561,7 +571,7 @@ function ImportPage() {
           <CardContent className="p-6">
             <EmptyState
               icon={Upload}
-              title="Envie um arquivo CSV"
+              title="Envie um arquivo CSV ou XLSX"
               description="Selecione o destino, escolha o arquivo e mapeie as colunas. A prévia compara data, valor e descrição e deixa você decidir o que importar."
             />
           </CardContent>
@@ -571,7 +581,7 @@ function ImportPage() {
           <CardContent className="p-0">
             {target === "credit_card" && (
               <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                <strong>Regra do CSV de cartão:</strong> valor positivo é compra/despesa; valor
+                <strong>Regra do arquivo de cartão:</strong> valor positivo é compra/despesa; valor
                 negativo é pagamento, estorno ou crédito. A data da compra é preservada, mas o mês
                 financeiro segue o fechamento e o vencimento do cartão.
               </div>
