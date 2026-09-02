@@ -286,7 +286,13 @@ function MonthView({
               formatWeekdayName,
             }}
             className="w-full p-0 [--cell-size:clamp(2.5rem,9vw,4.75rem)]"
-            classNames={{ root: "w-full", months: "w-full", month: "w-full" }}
+            classNames={{
+              root: "w-full",
+              months: "w-full",
+              month: "w-full",
+              month_grid: "w-full",
+              day: "relative flex-1 p-0 text-center",
+            }}
           />
           <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t pt-4 text-xs text-muted-foreground">
             <Legend color="bg-emerald-400" label="Presença" />
@@ -389,8 +395,10 @@ function YearView({
                   root: "w-full",
                   months: "w-full",
                   month: "w-full gap-2",
+                  month_grid: "w-full",
                   month_caption: "hidden",
                   week: "mt-1 flex w-full",
+                  day: "relative flex-1 p-0 text-center",
                 }}
               />
             </div>
