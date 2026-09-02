@@ -131,7 +131,7 @@ function Payments() {
           0,
         );
         return { name, payments, charged, paid, pending };
-      }),
+      }).filter((month) => month.charged > 0 || month.paid > 0 || month.pending > 0),
     [yearRows],
   );
 
@@ -188,6 +188,11 @@ function Payments() {
 
       {!isLoading && !error && (
         <div className="space-y-4">
+          {months.length === 0 && (
+            <p className="rounded-xl border bg-card p-5 text-sm text-muted-foreground">
+              Nenhum pagamento ou cobrança registrado em {selectedYear}.
+            </p>
+          )}
           {months.map((month) => {
             const status = !month.payments.length
               ? "Sem lançamentos"
