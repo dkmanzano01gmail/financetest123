@@ -1,6 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Package, Clock3, CheckCircle2, CalendarDays, RefreshCw, WalletCards } from "lucide-react";
+import {
+  ArrowRight,
+  Package,
+  Clock3,
+  CheckCircle2,
+  CalendarDays,
+  RefreshCw,
+  WalletCards,
+  XCircle,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useStudentPortalAccess } from "@/hooks/use-student-portal";
 import { PortalPage, PiecePhoto, pieceStatus, date } from "@/components/student/portal-page";
@@ -72,25 +81,61 @@ function Dashboard() {
     .filter((a: any) => a.session_date >= today)
     .sort((a: any, b: any) => a.session_date.localeCompare(b.session_date))[0];
   const nextClass = registeredNextClass || nextClassFromGroup(data?.className);
-  const makeups = countPendingMakeups(data?.attendance ?? []);
+  const attendance = data?.attendance ?? [];
+  const presences = attendance.filter((row: any) => row.status === "present").length;
+  const absences = attendance.filter((row: any) => row.status === "absent").length;
+  const makeups = countPendingMakeups(attendance);
   const currentMonth = new Date().toISOString().slice(0, 7);
   const payment = (data?.payments ?? []).find((p: any) =>
     String(p.reference_month || "").startsWith(currentMonth),
   );
-  const stats = [
-    [Package, "Total de peças", pieces.length],
-    [Clock3, "Em andamento", inProgressPieces.length],
-    [CheckCircle2, "Prontas", ready],
-    [
-      CalendarDays,
-      "Próxima aula",
-      nextClass
+  const highlights = [
+    {
+      icon: CalendarDays,
+      label: "Próxima aula",
+      value: nextClass
         ? `${date(nextClass.session_date)}${nextClass.session_time ? ` · ${nextClass.session_time}` : ""}`
         : "Sem previsão",
-    ],
-    [RefreshCw, "Reposições pendentes", makeups],
-    [WalletCards, "Mensalidade", payment?.status === "paid" ? "Em dia" : "Pendente"],
-  ] as const;
+      detail: data?.className || "Consulte seu calendário",
+      to: "/student/classes" as const,
+    },
+    {
+      icon: CheckCircle2,
+      label: "Prontas para retirar",
+      value: ready,
+      detail: ready === 1 ? "1 peça aguardando você" : `${ready} peças aguardando você`,
+      to: "/student/pieces" as const,
+    },
+    {
+      icon: WalletCards,
+      label: "Mensalidade do mês",
+      value: payment?.status === "paid" ? "Em dia" : "Pendente",
+      detail: "Consulte pagamentos e materiais",
+      to: "/student/payments" as const,
+    },
+  ];
+  const stats = [
+    {
+      icon: Package,
+      label: "Total de peças",
+      value: pieces.length,
+      to: "/student/pieces" as const,
+    },
+    {
+      icon: Clock3,
+      label: "Em andamento",
+      value: inProgressPieces.length,
+      to: "/student/pieces" as const,
+    },
+    { icon: CheckCircle2, label: "Presenças", value: presences, to: "/student/classes" as const },
+    { icon: XCircle, label: "Faltas", value: absences, to: "/student/classes" as const },
+    {
+      icon: RefreshCw,
+      label: "Reposições pendentes",
+      value: makeups,
+      to: "/student/classes" as const,
+    },
+  ];
   return (
     <PortalPage
       title={data?.studentName ? `Olá, ${data.studentName}` : "Início"}
@@ -102,35 +147,85 @@ function Dashboard() {
         <p className="text-sm text-destructive">Não foi possível carregar os dados do aluno.</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-            {stats.map(([Icon, label, value]) => (
-              <Card key={label}>
-                <CardContent className="p-4">
-                  <Icon className="h-5 w-5 text-primary" />
-                  <div className="mt-3 text-xs text-muted-foreground">{label}</div>
-                  <div className="mt-1 font-display text-xl font-semibold">{value}</div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <section>
+            <h2 className="mb-3 font-display text-lg font-semibold">O que você precisa saber</h2>
+            <div className="grid gap-3 lg:grid-cols-3">
+              {highlights.map(({ icon: Icon, label, value, detail, to }) => (
+                <Link key={label} to={to} className="group rounded-xl focus:outline-none">
+                  <Card className="h-full transition group-hover:border-primary/50 group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-primary">
+                    <CardContent className="flex h-full items-start justify-between gap-4 p-5">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                          <Icon className="h-5 w-5" />
+                          {label}
+                        </div>
+                        <div className="mt-3 font-display text-xl font-semibold">{value}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
+                      </div>
+                      <ArrowRight className="mt-1 h-4 w-4 text-muted-foreground transition group-hover:translate-x-1 group-hover:text-primary" />
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </section>
+
           <section className="mt-7">
-            <h2 className="mb-3 font-display text-lg font-semibold">Peças em andamento</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mb-3">
+              <h2 className="font-display text-lg font-semibold">Seu resumo</h2>
+              <p className="text-xs text-muted-foreground">
+                Selecione um indicador para abrir os detalhes.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+              {stats.map(({ icon: Icon, label, value, to }) => (
+                <Link key={label} to={to} className="group rounded-xl focus:outline-none">
+                  <Card className="h-full transition group-hover:border-primary/50 group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-primary">
+                    <CardContent className="flex h-full items-center justify-between gap-3 p-4">
+                      <div>
+                        <div className="text-xs text-muted-foreground">{label}</div>
+                        <div className="mt-1 font-display text-2xl font-semibold">{value}</div>
+                      </div>
+                      <Icon className="h-5 w-5 text-primary" />
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className="mt-7">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="font-display text-lg font-semibold">Peças em andamento</h2>
+              <Link
+                to="/student/pieces"
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Ver todas
+              </Link>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {inProgressPieces.slice(0, 4).map((p: any) => (
-                <Card key={p.id} className="overflow-hidden">
-                  <PiecePhoto
-                    src={p.photo_url}
-                    alt={p.piece_name || "Peça"}
-                    className="aspect-[4/3] w-full"
-                  />
-                  <CardContent className="p-4">
-                    <div className="font-medium">{p.piece_name || "Peça sem nome"}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{date(p.usage_date)}</div>
-                    <Badge variant="secondary" className="mt-3">
-                      {pieceStatus[p.production_status] || p.production_status}
-                    </Badge>
-                  </CardContent>
-                </Card>
+                <Link
+                  key={p.id}
+                  to="/student/pieces"
+                  className="group rounded-xl focus:outline-none"
+                >
+                  <Card className="h-full overflow-hidden transition group-hover:border-primary/50 group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-primary">
+                    <PiecePhoto
+                      src={p.photo_url}
+                      alt={p.piece_name || "Peça"}
+                      className="aspect-[4/3] w-full"
+                    />
+                    <CardContent className="p-4">
+                      <div className="font-medium">{p.piece_name || "Peça sem nome"}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{date(p.usage_date)}</div>
+                      <Badge variant="secondary" className="mt-3">
+                        {pieceStatus[p.production_status] || p.production_status}
+                      </Badge>
+                    </CardContent>
+                  </Card>
+                </Link>
               ))}
               {!inProgressPieces.length && (
                 <p className="text-sm text-muted-foreground">Nenhuma peça em andamento.</p>
