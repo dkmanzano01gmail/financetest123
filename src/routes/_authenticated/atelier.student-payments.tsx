@@ -42,7 +42,7 @@ import { createPixPayload } from "@/lib/pix-br";
 import { parseLocaleAmount } from "@/lib/format";
 import {
   allocateMaterialPayment,
-  findPaymentSuggestion,
+  findPaymentSuggestions,
   getMaterialReferencePeriod,
   normalizePaymentText,
   type PaymentSuggestion,
@@ -119,7 +119,7 @@ type StudentSummary = {
   materialsAmount: number;
   materialsPaid: number;
   materialsDue: number;
-  suggestion: PaymentSuggestion | null;
+  suggestions: PaymentSuggestion[];
 };
 
 function money(value: number) {
@@ -248,7 +248,9 @@ function Page() {
     const payments = paymentsQuery.data ?? [];
     const materials = materialsQuery.data ?? [];
     const transactions = transactionsQuery.data ?? [];
-    return (studentsQuery.data ?? []).map((student): StudentSummary => {
+    const students = studentsQuery.data ?? [];
+    const allStudentNames = students.map((student) => student.name);
+    return students.map((student): StudentSummary => {
       const tuitionAmount = numeric(student.monthly_fee) > 0 ? numeric(student.monthly_fee) : 600;
       const tuitionRows = payments.filter((payment) => {
         const reference = payment.reference_month || payment.payment_date || "";
@@ -273,8 +275,7 @@ function Page() {
       const materialsPaid = studentMaterials.reduce((total, row) => {
         const paid = numeric(row.amount_paid);
         return (
-          total +
-          (paid > 0 ? paid : row.payment_status === "paid" ? materialBilledAmount(row) : 0)
+          total + (paid > 0 ? paid : row.payment_status === "paid" ? materialBilledAmount(row) : 0)
         );
       }, 0);
       const tuitionDue = Math.max(0, tuitionAmount - tuitionPaid);
@@ -288,11 +289,12 @@ function Page() {
         materialsAmount,
         materialsPaid,
         materialsDue,
-        suggestion: findPaymentSuggestion({
+        suggestions: findPaymentSuggestions({
           studentName: student.name,
           tuitionDue,
           materialsDue,
           transactions,
+          allStudentNames,
         }),
       };
     });
@@ -612,22 +614,31 @@ function Page() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {filtered.map((summary) => {
-            const suggestionKey = summary.suggestion
-              ? `${summary.student.id}:${summary.suggestion.transaction.id}:${summary.suggestion.kind}`
-              : "";
-            const suggestion =
-              suggestionKey && !dismissed.has(suggestionKey) ? summary.suggestion : null;
+            const suggestions = summary.suggestions.filter(
+              (suggestion) =>
+                !dismissed.has(
+                  `${summary.student.id}:${suggestion.transaction.id}:${suggestion.kind}`,
+                ),
+            );
             return (
               <StudentPaymentCard
                 key={summary.student.id}
                 summary={summary}
-                suggestion={suggestion}
+                suggestions={suggestions}
                 busy={confirmPayment.isPending}
                 materialReferenceLabel={materialReferenceLabel}
                 onConfirm={(kind, selectedSuggestion) =>
                   confirmPayment.mutate({ summary, kind, suggestion: selectedSuggestion })
                 }
-                onDismiss={() => setDismissed((current) => new Set(current).add(suggestionKey))}
+                onDismiss={(suggestion) =>
+                  setDismissed((current) => {
+                    const next = new Set(current);
+                    next.add(
+                      `${summary.student.id}:${suggestion.transaction.id}:${suggestion.kind}`,
+                    );
+                    return next;
+                  })
+                }
                 onPix={() => openPix(summary)}
                 onEdit={(kind) => openPaymentEdit(summary, kind)}
               />
@@ -674,7 +685,7 @@ function MetricCard({ label, value, icon }: { label: string; value: string; icon
 
 function StudentPaymentCard({
   summary,
-  suggestion,
+  suggestions,
   busy,
   materialReferenceLabel,
   onConfirm,
@@ -683,11 +694,11 @@ function StudentPaymentCard({
   onEdit,
 }: {
   summary: StudentSummary;
-  suggestion: PaymentSuggestion | null;
+  suggestions: PaymentSuggestion[];
   busy: boolean;
   materialReferenceLabel: string;
   onConfirm: (kind: PaymentSuggestionKind, suggestion?: PaymentSuggestion | null) => void;
-  onDismiss: () => void;
+  onDismiss: (suggestion: PaymentSuggestion) => void;
   onPix: () => void;
   onEdit: (kind: "tuition" | "materials") => void;
 }) {
@@ -732,48 +743,72 @@ function StudentPaymentCard({
             busy={busy}
           />
         </div>
-        {suggestion && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-            <div className="flex items-start gap-2">
-              <SearchCheck className="mt-0.5 h-4 w-4 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold">Possível pagamento encontrado</p>
-                <p className="truncate">
-                  {suggestion.transaction.description ||
-                    suggestion.transaction.counterparty ||
-                    "Transação sem descrição"}
-                </p>
-                <p className="text-xs">
-                  {money(Math.abs(suggestion.transaction.amount))} ·{" "}
-                  {suggestion.transaction.date
-                    ? new Date(
-                        `${suggestion.transaction.date.slice(0, 10)}T12:00:00`,
-                      ).toLocaleDateString("pt-BR")
-                    : "data não informada"}
-                </p>
+        {suggestions.map((suggestion) => {
+          const destination =
+            suggestion.kind === "combined"
+              ? "mensalidade + materiais"
+              : suggestion.kind === "tuition"
+                ? "mensalidade"
+                : "materiais";
+          const confidence =
+            suggestion.confidence === "high"
+              ? "Alta confiança"
+              : suggestion.confidence === "medium"
+                ? "Média confiança"
+                : "Revisar";
+          return (
+            <div
+              key={`${suggestion.transaction.id}:${suggestion.kind}`}
+              className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+            >
+              <div className="flex items-start gap-2">
+                <SearchCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold">De/para sugerido</p>
+                    <Badge variant="outline" className="border-amber-400 bg-white text-amber-950">
+                      {confidence}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 truncate">
+                    {suggestion.transaction.description ||
+                      suggestion.transaction.counterparty ||
+                      "Transação sem descrição"}
+                  </p>
+                  <p className="text-xs">
+                    {money(Math.abs(suggestion.transaction.amount))} ·{" "}
+                    {suggestion.transaction.date
+                      ? new Date(
+                          `${suggestion.transaction.date.slice(0, 10)}T12:00:00`,
+                        ).toLocaleDateString("pt-BR")
+                      : "data não informada"}
+                    {" → "}
+                    {summary.student.name} · {destination}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-800">{suggestion.reasons.join(" · ")}</p>
+                  <p className="text-xs text-amber-800">
+                    Previsto: {money(suggestion.targetAmount)} · diferença:{" "}
+                    {money(suggestion.difference)}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => onConfirm(suggestion.kind, suggestion)}
+                >
+                  <Check className="mr-1 h-4 w-4" />
+                  Confirmar {destination}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => onDismiss(suggestion)}>
+                  <X className="mr-1 h-4 w-4" />
+                  Não corresponde
+                </Button>
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                disabled={busy}
-                onClick={() => onConfirm(suggestion.kind, suggestion)}
-              >
-                <Check className="mr-1 h-4 w-4" />
-                Confirmar{" "}
-                {suggestion.kind === "combined"
-                  ? "mensalidade + materiais"
-                  : suggestion.kind === "tuition"
-                    ? "mensalidade"
-                    : "materiais"}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={onDismiss}>
-                <X className="mr-1 h-4 w-4" />
-                Não corresponde
-              </Button>
-            </div>
-          </div>
-        )}
+          );
+        })}
         <Button className="w-full" variant="outline" disabled={allPaid} onClick={onPix}>
           <QrCode className="mr-2 h-4 w-4" />
           Gerar Pix do valor pendente
