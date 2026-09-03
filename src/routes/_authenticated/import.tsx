@@ -243,7 +243,7 @@ function ImportPage() {
       const amount = parseAmount(rawAmt);
       const sourceDescription = (r[mapping.description] ?? "").trim();
       const installment = mapping.installment
-        ? (r[mapping.installment] ?? "").trim() || null
+        ? (r[mapping.installment] ?? "").trim().slice(0, 30) || null
         : null;
       const description =
         target === "credit_card"
@@ -435,6 +435,7 @@ function ImportPage() {
         account_id: target === "account" ? targetId : null,
         credit_card_id: target === "credit_card" ? targetId : null,
         invoice_month: target === "credit_card" ? p.invoiceMonth : null,
+        installment: target === "credit_card" ? p.installment : null,
         source: "csv",
         import_hash:
           p.duplicate || p.duplicateInBatch

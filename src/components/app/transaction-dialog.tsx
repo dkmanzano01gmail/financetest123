@@ -46,6 +46,7 @@ export function TransactionDialog({
   const [categoryId, setCategoryId] = useState<string>("");
   const [accountId, setAccountId] = useState<string>("");
   const [cardId, setCardId] = useState<string>("");
+  const [installment, setInstallment] = useState("");
   const [counterparty, setCounterparty] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -105,6 +106,7 @@ export function TransactionDialog({
       setCategoryId(transaction.category_id ?? "");
       setAccountId(transaction.account_id ?? "");
       setCardId(transaction.credit_card_id ?? "");
+      setInstallment(transaction.installment ?? "");
       setCounterparty(transaction.counterparty ?? "");
       setNotes(transaction.notes ?? "");
     } else {
@@ -115,6 +117,7 @@ export function TransactionDialog({
       setCategoryId("");
       setAccountId("");
       setCardId("");
+      setInstallment("");
       setCounterparty("");
       setNotes("");
     }
@@ -141,6 +144,7 @@ export function TransactionDialog({
       const amt = parseLocaleAmount(amount);
       if (!Number.isFinite(amt) || amt <= 0) throw new Error("Valor inválido.");
       if (accountId && cardId) throw new Error("Escolha conta OU cartão, não os dois.");
+      const installmentValue = cardId ? installment.trim().slice(0, 30) || null : null;
       const selectedCard = (cards ?? []).find((card: any) => card.id === cardId) as
         | any
         | undefined;
@@ -164,6 +168,7 @@ export function TransactionDialog({
           account_id: accountId || null,
           credit_card_id: cardId || null,
           invoice_month: invoiceMonth,
+          installment: installmentValue,
           counterparty: counterparty || null,
           notes: notes || null,
         };
@@ -186,6 +191,7 @@ export function TransactionDialog({
           account_id: accountId || null,
           credit_card_id: cardId || null,
           invoice_month: invoiceMonth,
+          installment: installmentValue,
           counterparty: counterparty || null,
           notes: notes || null,
           source: "manual",
@@ -279,6 +285,7 @@ export function TransactionDialog({
                 onValueChange={(v) => {
                   setAccountId(v);
                   setCardId("");
+                  setInstallment("");
                 }}
               >
                 <SelectTrigger>
@@ -328,6 +335,17 @@ export function TransactionDialog({
               )}
             </div>
           </div>
+          {cardId && (
+            <div className="space-y-1.5">
+              <Label>Parcela</Label>
+              <Input
+                value={installment}
+                onChange={(e) => setInstallment(e.target.value)}
+                placeholder="Ex.: 5/12"
+                maxLength={30}
+              />
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label>Favorecido / Origem</Label>
             <Input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} />

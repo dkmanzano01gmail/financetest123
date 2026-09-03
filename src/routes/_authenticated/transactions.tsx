@@ -659,6 +659,7 @@ function TransactionsPage() {
                     <TableHead>Descrição</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead>Importância</TableHead>
+                    <TableHead>Parcela</TableHead>
                     <TableHead>Conta/Cartão</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
                     <TableHead></TableHead>
@@ -735,6 +736,9 @@ function TransactionsPage() {
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                        {tx.credit_card_id ? tx.installment || "—" : "—"}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {tx.accounts?.name ??

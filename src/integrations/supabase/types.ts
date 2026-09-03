@@ -2897,6 +2897,7 @@ export type Database = {
             | Database["public"]["Enums"]["importance_status"]
             | null
           importance_suggestion_reason: string | null
+          installment: string | null
           invoice_month: string | null
           linked_credit_card_id: string | null
           method: string | null
@@ -2940,6 +2941,7 @@ export type Database = {
             | Database["public"]["Enums"]["importance_status"]
             | null
           importance_suggestion_reason?: string | null
+          installment?: string | null
           invoice_month?: string | null
           linked_credit_card_id?: string | null
           method?: string | null
@@ -2983,6 +2985,7 @@ export type Database = {
             | Database["public"]["Enums"]["importance_status"]
             | null
           importance_suggestion_reason?: string | null
+          installment?: string | null
           invoice_month?: string | null
           linked_credit_card_id?: string | null
           method?: string | null
