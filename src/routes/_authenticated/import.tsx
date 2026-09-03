@@ -176,6 +176,8 @@ function ImportPage() {
         "histórico",
         "memo",
         "title",
+        "lancamento",
+        "lançamento",
       ]),
       amount: guessColumn(parsed.headers, ["valor", "amount", "value", "montante"]),
       type: guessColumn(parsed.headers, ["tipo", "type"]),
