@@ -27,6 +27,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { TransactionDialog } from "@/components/app/transaction-dialog";
 import { SuggestReviewDialog } from "@/components/app/suggest-review-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
 import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
@@ -110,6 +111,8 @@ function TransactionsPage() {
   const [open, setOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<any | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestionTransactions, setSuggestionTransactions] = useState<any[]>([]);
   const wsId = workspace?.id;
@@ -219,6 +222,33 @@ function TransactionsPage() {
     return filterableTransactions;
   }, [filterableTransactions, requestedCategory, selectedCategoryKey]);
 
+  const visibleIds = useMemo(
+    () => new Set(filtered.map((transaction) => transaction.id)),
+    [filtered],
+  );
+  const allVisibleSelected = filtered.length > 0 && filtered.every((tx) => selectedIds.has(tx.id));
+  const someVisibleSelected = filtered.some((tx) => selectedIds.has(tx.id));
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const next = new Set([...current].filter((id) => visibleIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [visibleIds]);
+
+  function toggleTransaction(id: string, selected: boolean) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible(selected: boolean) {
+    setSelectedIds(selected ? new Set(filtered.map((transaction) => transaction.id)) : new Set());
+  }
+
   const protectedAllocationTransactionIds = useMemo(() => {
     const ids = new Set<string>();
     for (const transaction of txs ?? []) {
@@ -268,6 +298,39 @@ function TransactionsPage() {
       toast.success("Transação removida");
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+
+  const bulkRemoveMut = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const transactionsById = new Map(
+        (txs ?? []).map((transaction) => [transaction.id, transaction]),
+      );
+      const targetIds = [
+        ...new Set(ids.map((id) => transactionsById.get(id)?.reversal_of_transaction_id ?? id)),
+      ];
+
+      for (const id of targetIds) {
+        const { error } = await (supabase.rpc as any)(
+          "delete_transaction_with_card_reconciliation",
+          { target_transaction_id: id },
+        );
+        if (error) throw error;
+      }
+
+      return ids.length;
+    },
+    onSuccess: (count) => {
+      setSelectedIds(new Set());
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["reconciliation"] });
+      qc.invalidateQueries({ queryKey: ["ba-txs"] });
+      toast.success(`${count} ${count === 1 ? "transação removida" : "transações removidas"}`);
+    },
+    onError: (error: Error) => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      toast.error(`Não foi possível remover todas as transações: ${error.message}`);
+    },
   });
 
   const updateCat = useMutation({
@@ -562,128 +625,166 @@ function TransactionsPage() {
               />
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Importância</TableHead>
-                  <TableHead>Conta/Cartão</TableHead>
-                  <TableHead className="text-right">Valor</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((tx: any) => (
-                  <TableRow key={tx.id}>
-                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                      <div>{formatDate(tx.date)}</div>
-                      {tx.credit_card_id && tx.invoice_month && (
-                        <div className="text-xs">
-                          Fatura {monthLabel(Number(tx.invoice_month.slice(5, 7))).toLowerCase()}/
-                          {tx.invoice_month.slice(0, 4)}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{tx.description}</div>
-                      {tx.counterparty && (
-                        <div className="text-xs text-muted-foreground">{tx.counterparty}</div>
-                      )}
-                      {isCreditCardPayment(tx) && (
-                        <Badge variant="outline" className="mt-1">
-                          Pagamento de fatura · não soma nas despesas
-                        </Badge>
-                      )}
-                      {isCreditCardPaymentOffset(tx) && (
-                        <Badge variant="outline" className="mt-1 border-emerald-300 text-emerald-800">
-                          Compensação de pagamento · original preservado
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Select
-                        value={tx.category_id ?? ""}
-                        disabled={protectedAllocationTransactionIds.has(tx.id)}
-                        onValueChange={(v) =>
-                          updateCat.mutate({ id: tx.id, category_id: v || null })
+            <div>
+              {selectedIds.size > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-4 py-3">
+                  <span className="text-sm font-medium">
+                    {selectedIds.size}{" "}
+                    {selectedIds.size === 1 ? "transação selecionada" : "transações selecionadas"}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                      Limpar seleção
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => setBulkDeleteOpen(true)}>
+                      <Trash2 className="w-4 h-4" />
+                      Excluir selecionadas
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={
+                          allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false
                         }
-                      >
-                        <SelectTrigger className="h-8 w-44 border-transparent hover:border-border bg-transparent">
-                          <SelectValue placeholder="—" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(categories ?? [])
-                            .filter((c: any) => c.type === analyticalTransactionType(tx))
-                            .map((c: any) => (
-                              <SelectItem key={c.id} value={c.id}>
-                                {c.name}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>
-                      {tx.importance_level ? (
-                        <Badge
-                          variant="secondary"
-                          className={importanceBadgeClass(tx.importance_level as Importance)}
-                        >
-                          {labelImp(tx.importance_level as Importance)}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {tx.accounts?.name ??
-                        transactionCardNames.get(tx.credit_card_id) ??
-                        transactionCardNames.get(tx.linked_credit_card_id) ??
-                        "—"}
-                    </TableCell>
-                    <TableCell
-                      className={`text-right font-medium tabular-nums ${isCreditCardPaymentOffset(tx) || tx.type === "income" ? "text-[var(--income)]" : "text-[var(--expense)]"}`}
-                    >
-                      {isCreditCardPaymentOffset(tx) ? "+" : tx.type === "income" ? "+" : "-"}
-                      {formatCurrency(Number(tx.amount), currency, privacy)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 justify-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title={
-                            protectedAllocationTransactionIds.has(tx.id)
-                              ? "Desfaça o abatimento na aba Cartões para editar"
-                              : "Editar"
-                          }
-                          disabled={protectedAllocationTransactionIds.has(tx.id)}
-                          onClick={() => {
-                            setEditingTx(tx);
-                            setOpen(true);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 text-muted-foreground" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title={
-                            protectedAllocationTransactionIds.has(tx.id)
-                              ? "Remover pagamento e compensação"
-                              : "Remover"
-                          }
-                          onClick={() => setDeleteId(tx.id)}
-                        >
-                          <Trash2 className="w-4 h-4 text-muted-foreground" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                        onCheckedChange={(checked) => toggleAllVisible(checked === true)}
+                        aria-label="Selecionar todas as transações exibidas"
+                      />
+                    </TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Descrição</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead>Importância</TableHead>
+                    <TableHead>Conta/Cartão</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead></TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((tx: any) => (
+                    <TableRow key={tx.id} className={selectedIds.has(tx.id) ? "bg-muted/40" : ""}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(tx.id)}
+                          onCheckedChange={(checked) => toggleTransaction(tx.id, checked === true)}
+                          aria-label={`Selecionar transação ${tx.description}`}
+                        />
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        <div>{formatDate(tx.date)}</div>
+                        {tx.credit_card_id && tx.invoice_month && (
+                          <div className="text-xs">
+                            Fatura {monthLabel(Number(tx.invoice_month.slice(5, 7))).toLowerCase()}/
+                            {tx.invoice_month.slice(0, 4)}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{tx.description}</div>
+                        {tx.counterparty && (
+                          <div className="text-xs text-muted-foreground">{tx.counterparty}</div>
+                        )}
+                        {isCreditCardPayment(tx) && (
+                          <Badge variant="outline" className="mt-1">
+                            Pagamento de fatura · não soma nas despesas
+                          </Badge>
+                        )}
+                        {isCreditCardPaymentOffset(tx) && (
+                          <Badge
+                            variant="outline"
+                            className="mt-1 border-emerald-300 text-emerald-800"
+                          >
+                            Compensação de pagamento · original preservado
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={tx.category_id ?? ""}
+                          disabled={protectedAllocationTransactionIds.has(tx.id)}
+                          onValueChange={(v) =>
+                            updateCat.mutate({ id: tx.id, category_id: v || null })
+                          }
+                        >
+                          <SelectTrigger className="h-8 w-44 border-transparent hover:border-border bg-transparent">
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(categories ?? [])
+                              .filter((c: any) => c.type === analyticalTransactionType(tx))
+                              .map((c: any) => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  {c.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        {tx.importance_level ? (
+                          <Badge
+                            variant="secondary"
+                            className={importanceBadgeClass(tx.importance_level as Importance)}
+                          >
+                            {labelImp(tx.importance_level as Importance)}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {tx.accounts?.name ??
+                          transactionCardNames.get(tx.credit_card_id) ??
+                          transactionCardNames.get(tx.linked_credit_card_id) ??
+                          "—"}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right font-medium tabular-nums ${isCreditCardPaymentOffset(tx) || tx.type === "income" ? "text-[var(--income)]" : "text-[var(--expense)]"}`}
+                      >
+                        {isCreditCardPaymentOffset(tx) ? "+" : tx.type === "income" ? "+" : "-"}
+                        {formatCurrency(Number(tx.amount), currency, privacy)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 justify-end">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title={
+                              protectedAllocationTransactionIds.has(tx.id)
+                                ? "Desfaça o abatimento na aba Cartões para editar"
+                                : "Editar"
+                            }
+                            disabled={protectedAllocationTransactionIds.has(tx.id)}
+                            onClick={() => {
+                              setEditingTx(tx);
+                              setOpen(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title={
+                              protectedAllocationTransactionIds.has(tx.id)
+                                ? "Remover pagamento e compensação"
+                                : "Remover"
+                            }
+                            onClick={() => setDeleteId(tx.id)}
+                          >
+                            <Trash2 className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -724,6 +825,34 @@ function TransactionsPage() {
               }}
             >
               Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir transações selecionadas?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedIds.size === 1
+                ? "A transação selecionada será removida."
+                : `As ${selectedIds.size} transações selecionadas serão removidas.`}{" "}
+              Pagamentos de fatura e suas compensações vinculadas serão excluídos juntos. Esta ação
+              não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkRemoveMut.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={selectedIds.size === 0 || bulkRemoveMut.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                bulkRemoveMut.mutate([...selectedIds], {
+                  onSuccess: () => setBulkDeleteOpen(false),
+                });
+              }}
+            >
+              {bulkRemoveMut.isPending ? "Excluindo…" : "Excluir selecionadas"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
