@@ -43,8 +43,8 @@ import {
 } from "@/lib/csv";
 import { formatCurrency } from "@/lib/format";
 import {
-  billingMonthForPurchase,
   financialMonthKey,
+  invoiceMonthKey,
 } from "@/lib/credit-card-reconciliation";
 
 export const Route = createFileRoute("/_authenticated/import")({
@@ -52,6 +52,8 @@ export const Route = createFileRoute("/_authenticated/import")({
 });
 
 type Target = "account" | "credit_card";
+
+const CURRENT_DATE = new Date();
 
 type PreparedRow = {
   index: number;
@@ -79,6 +81,8 @@ function ImportPage() {
 
   const [target, setTarget] = useState<Target>("account");
   const [targetId, setTargetId] = useState<string>("");
+  const [cardPaymentMonth, setCardPaymentMonth] = useState(CURRENT_DATE.getMonth() + 1);
+  const [cardPaymentYear, setCardPaymentYear] = useState(CURRENT_DATE.getFullYear());
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<CsvRow[]>([]);
   const [fileName, setFileName] = useState("");
@@ -112,13 +116,14 @@ function ImportPage() {
       (
         await supabase
           .from("credit_cards")
-          .select("id,name,closing_day,due_day")
+          .select("id,name")
           .eq("workspace_id", wsId!)
           .order("name")
       ).data ?? [],
   });
 
   const targetOptions = target === "account" ? (accounts ?? []) : (cards ?? []);
+  const selectedCardInvoiceMonth = invoiceMonthKey(cardPaymentYear, cardPaymentMonth);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -195,8 +200,6 @@ function ImportPage() {
     }
     const seen = new Set<string>();
     const items: PreparedRow[] = [];
-    const selectedCard =
-      target === "credit_card" ? (cards ?? []).find((card: any) => card.id === targetId) : null;
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const rawDate = r[mapping.date] ?? "";
@@ -235,10 +238,7 @@ function ImportPage() {
       seen.add(hash);
       seen.add(batchKey);
       const valid = reasons.length === 0;
-      const invoiceMonth =
-        target === "credit_card" && date && selectedCard
-          ? billingMonthForPurchase(date, selectedCard.closing_day, selectedCard.due_day)
-          : null;
+      const invoiceMonth = target === "credit_card" ? selectedCardInvoiceMonth : null;
       items.push({
         index: i,
         date,
@@ -456,6 +456,7 @@ function ImportPage() {
                 onValueChange={(v) => {
                   setTarget(v as Target);
                   setTargetId("");
+                  setPrepared([]);
                 }}
               >
                 <TabsList className="grid grid-cols-2 w-full">
@@ -541,6 +542,76 @@ function ImportPage() {
             </div>
           )}
 
+          {target === "credit_card" && (
+            <div className="grid gap-3 border-t pt-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2fr] sm:items-end">
+              <div>
+                <Label className="mb-2 block">Mês de pagamento da fatura</Label>
+                <Select
+                  value={String(cardPaymentMonth)}
+                  onValueChange={(value) => {
+                    const month = Number(value);
+                    setCardPaymentMonth(month);
+                    setPrepared((current) =>
+                      current.map((row) => ({
+                        ...row,
+                        invoiceMonth: invoiceMonthKey(cardPaymentYear, month),
+                      })),
+                    );
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, index) => (
+                      <SelectItem key={index + 1} value={String(index + 1)}>
+                        {new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(
+                          new Date(2026, index, 1),
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-2 block">Ano do pagamento</Label>
+                <Select
+                  value={String(cardPaymentYear)}
+                  onValueChange={(value) => {
+                    const year = Number(value);
+                    setCardPaymentYear(year);
+                    setPrepared((current) =>
+                      current.map((row) => ({
+                        ...row,
+                        invoiceMonth: invoiceMonthKey(year, cardPaymentMonth),
+                      })),
+                    );
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from(
+                      { length: 12 },
+                      (_, index) => CURRENT_DATE.getFullYear() + 1 - index,
+                    )
+                      .sort((a, b) => a - b)
+                      .map((year) => (
+                        <SelectItem key={year} value={String(year)}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Todas as compras deste arquivo entrarão neste mês financeiro. A data original de
+                cada compra continuará preservada.
+              </p>
+            </div>
+          )}
+
           {headers.length > 0 && (
             <div className="flex justify-end">
               <Button onClick={buildPreview} disabled={!canPreview}>
@@ -585,7 +656,7 @@ function ImportPage() {
               <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                 <strong>Regra do arquivo de cartão:</strong> valor positivo é compra/despesa; valor
                 negativo é pagamento, estorno ou crédito. A data da compra é preservada, mas o mês
-                financeiro segue o fechamento e o vencimento do cartão.
+                financeiro segue o mês de pagamento da fatura informado na importação.
               </div>
             )}
             <div className="p-4 flex flex-wrap items-center gap-3 border-b">
@@ -629,7 +700,7 @@ function ImportPage() {
                   <TableRow>
                     <TableHead className="w-10"></TableHead>
                     <TableHead>Data da compra</TableHead>
-                    {target === "credit_card" && <TableHead>Mês financeiro</TableHead>}
+                    {target === "credit_card" && <TableHead>Mês de pagamento</TableHead>}
                     <TableHead>Descrição</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
