@@ -43,8 +43,9 @@ import {
 } from "@/lib/csv";
 import { formatCurrency } from "@/lib/format";
 import {
+  buildCardImportDescription,
   financialMonthKey,
-  invoiceMonthKey,
+  invoiceMonthForPaymentDate,
 } from "@/lib/credit-card-reconciliation";
 
 export const Route = createFileRoute("/_authenticated/import")({
@@ -53,11 +54,17 @@ export const Route = createFileRoute("/_authenticated/import")({
 
 type Target = "account" | "credit_card";
 
-const CURRENT_DATE = new Date();
+function currentDateKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
 
 type PreparedRow = {
   index: number;
   date: string | null;
+  purchaseDate: string | null;
+  sourceDescription: string;
+  installment: string | null;
   description: string;
   amount: number | null;
   type: "income" | "expense";
@@ -81,8 +88,7 @@ function ImportPage() {
 
   const [target, setTarget] = useState<Target>("account");
   const [targetId, setTargetId] = useState<string>("");
-  const [cardPaymentMonth, setCardPaymentMonth] = useState(CURRENT_DATE.getMonth() + 1);
-  const [cardPaymentYear, setCardPaymentYear] = useState(CURRENT_DATE.getFullYear());
+  const [cardPaymentDate, setCardPaymentDate] = useState(currentDateKey);
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<CsvRow[]>([]);
   const [fileName, setFileName] = useState("");
@@ -92,6 +98,7 @@ function ImportPage() {
     amount: "",
     type: "",
     external_id: "",
+    installment: "",
   });
   const [prepared, setPrepared] = useState<PreparedRow[]>([]);
   const [importing, setImporting] = useState(false);
@@ -123,7 +130,7 @@ function ImportPage() {
   });
 
   const targetOptions = target === "account" ? (accounts ?? []) : (cards ?? []);
-  const selectedCardInvoiceMonth = invoiceMonthKey(cardPaymentYear, cardPaymentMonth);
+  const selectedCardInvoiceMonth = invoiceMonthForPaymentDate(cardPaymentDate);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -164,14 +171,22 @@ function ImportPage() {
       norm.includes("title") &&
       norm.includes("amount") &&
       !norm.includes("valor");
+    const isC6Card =
+      norm.includes("data de compra") &&
+      norm.includes("final do cartao") &&
+      norm.includes("parcela");
     if (isNubankAccount) {
       toast.success("Nubank (conta) detectado — mapeamento automático aplicado.");
+      if (target !== "account") setTargetId("");
       setTarget("account");
-    } else if (isNubankCard) {
-      toast.success("Nubank (cartão) detectado — mapeamento automático aplicado.");
+    } else if (isNubankCard || isC6Card) {
+      toast.success(
+        `${isC6Card ? "C6" : "Nubank"} (cartão) detectado — mapeamento automático aplicado.`,
+      );
+      if (target !== "credit_card") setTargetId("");
       setTarget("credit_card");
     }
-    setMapping({
+    const guessedMapping = {
       date: guessColumn(parsed.headers, ["data", "date"]),
       description: guessColumn(parsed.headers, [
         "descricao",
@@ -187,15 +202,34 @@ function ImportPage() {
       amount: guessColumn(parsed.headers, ["valor", "amount", "value", "montante"]),
       type: guessColumn(parsed.headers, ["tipo", "type"]),
       external_id: guessColumn(parsed.headers, ["identificador", "id", "external_id"]),
-    });
+      installment: guessColumn(parsed.headers, ["parcela", "installment", "prestacao"]),
+    };
+    setMapping(guessedMapping);
+    if (
+      guessedMapping.amount &&
+      parsed.rows.every((row) => !(row[guessedMapping.amount] ?? "").trim())
+    ) {
+      toast.warning(
+        "A coluna de valor existe, mas está vazia neste arquivo. Exporte novamente o extrato com os valores das transações.",
+      );
+    }
   }
 
   const canPreview =
-    wsId && targetId && rows.length > 0 && mapping.date && mapping.description && mapping.amount;
+    wsId &&
+    targetId &&
+    rows.length > 0 &&
+    (target === "credit_card" ? cardPaymentDate : mapping.date) &&
+    mapping.description &&
+    mapping.amount;
 
   async function buildPreview() {
     if (!canPreview) {
-      toast.error("Selecione destino e mapeie data, descrição e valor.");
+      toast.error(
+        target === "credit_card"
+          ? "Selecione o cartão, informe a data de pagamento e mapeie descrição e valor."
+          : "Selecione a conta e mapeie data, descrição e valor.",
+      );
       return;
     }
     const seen = new Set<string>();
@@ -204,12 +238,30 @@ function ImportPage() {
       const r = rows[i];
       const rawDate = r[mapping.date] ?? "";
       const rawAmt = r[mapping.amount] ?? "";
-      const date = parseDateBR(rawDate);
+      const purchaseDate = parseDateBR(rawDate);
+      const date = target === "credit_card" ? cardPaymentDate : purchaseDate;
       const amount = parseAmount(rawAmt);
-      const description = (r[mapping.description] ?? "").trim().slice(0, 200);
+      const sourceDescription = (r[mapping.description] ?? "").trim();
+      const installment = mapping.installment
+        ? (r[mapping.installment] ?? "").trim() || null
+        : null;
+      const description =
+        target === "credit_card"
+          ? buildCardImportDescription({
+              description: sourceDescription,
+              purchaseDate,
+              paymentDate: cardPaymentDate,
+              installment,
+            })
+          : sourceDescription.slice(0, 200);
       const externalId = mapping.external_id ? (r[mapping.external_id] ?? "").trim() || null : null;
       const reasons: string[] = [];
-      if (!date) reasons.push(`data inválida (${rawDate || "vazia"})`);
+      if (target === "account" && !purchaseDate) {
+        reasons.push(`data inválida (${rawDate || "vazia"})`);
+      }
+      if (target === "credit_card" && !cardPaymentDate) {
+        reasons.push("data de pagamento da fatura não informada");
+      }
       if (amount === null) reasons.push(`valor inválido (${rawAmt || "vazio"})`);
       if (!description) reasons.push("descrição vazia");
       let type: "income" | "expense" = "expense";
@@ -227,9 +279,9 @@ function ImportPage() {
         target,
         targetId,
         externalId,
-        date,
+        date: target === "credit_card" ? purchaseDate : date,
         amount: absAmount,
-        description,
+        description: sourceDescription,
       });
       const hash = await sha256Hex(hashSrc);
       const contentKey = buildContentKey(date, absAmount, description);
@@ -242,6 +294,9 @@ function ImportPage() {
       items.push({
         index: i,
         date,
+        purchaseDate,
+        sourceDescription,
+        installment,
         description,
         amount: absAmount,
         type,
@@ -285,7 +340,10 @@ function ImportPage() {
     // Content-based check against transactions already registered without an
     // import_hash (legacy or manual entries), restricted to this workspace and
     // to the destination account/card, within the file's date range.
-    const dates = items.map((p) => p.date).filter((d): d is string => !!d).sort();
+    const dates = items
+      .map((p) => p.date)
+      .filter((d): d is string => !!d)
+      .sort();
     if (dates.length > 0) {
       const minDate = dates[0];
       const maxDate = dates[dates.length - 1];
@@ -300,10 +358,7 @@ function ImportPage() {
           .lte("date", maxDate)
           .order("date", { ascending: true })
           .range(from, from + pageSize - 1);
-        q =
-          target === "account"
-            ? q.eq("account_id", targetId)
-            : q.eq("credit_card_id", targetId);
+        q = target === "account" ? q.eq("account_id", targetId) : q.eq("credit_card_id", targetId);
         const { data, error } = await q;
         if (error) {
           toast.error(error.message);
@@ -311,7 +366,11 @@ function ImportPage() {
         }
         for (const row of data ?? []) {
           existingKeys.add(
-            buildContentKey((row as any).date, Number((row as any).amount), (row as any).description),
+            buildContentKey(
+              (row as any).date,
+              Number((row as any).amount),
+              (row as any).description,
+            ),
           );
         }
         if (!data || data.length < pageSize) break;
@@ -350,22 +409,26 @@ function ImportPage() {
       const payload = selected.map((p) => ({
         workspace_id: wsId!,
         date: p.date!,
-        month: Number(financialMonthKey({
-          id: p.hash,
-          date: p.date!,
-          type: p.type,
-          amount: p.amount!,
-          credit_card_id: target === "credit_card" ? targetId : null,
-          invoice_month: p.invoiceMonth,
-        }).slice(5, 7)),
-        year: Number(financialMonthKey({
-          id: p.hash,
-          date: p.date!,
-          type: p.type,
-          amount: p.amount!,
-          credit_card_id: target === "credit_card" ? targetId : null,
-          invoice_month: p.invoiceMonth,
-        }).slice(0, 4)),
+        month: Number(
+          financialMonthKey({
+            id: p.hash,
+            date: p.date!,
+            type: p.type,
+            amount: p.amount!,
+            credit_card_id: target === "credit_card" ? targetId : null,
+            invoice_month: p.invoiceMonth,
+          }).slice(5, 7),
+        ),
+        year: Number(
+          financialMonthKey({
+            id: p.hash,
+            date: p.date!,
+            type: p.type,
+            amount: p.amount!,
+            credit_card_id: target === "credit_card" ? targetId : null,
+            invoice_month: p.invoiceMonth,
+          }).slice(0, 4),
+        ),
         type: p.type,
         description: p.description || "(sem descrição)",
         amount: p.amount!,
@@ -503,19 +566,25 @@ function ImportPage() {
           </div>
 
           {headers.length > 0 && (
-            <div className="grid md:grid-cols-5 gap-3 pt-2 border-t">
-              {(["date", "description", "amount", "type", "external_id"] as const).map((k) => (
+            <div className="grid md:grid-cols-3 lg:grid-cols-6 gap-3 pt-2 border-t">
+              {(
+                ["date", "description", "amount", "installment", "type", "external_id"] as const
+              ).map((k) => (
                 <div key={k}>
                   <Label className="mb-2 block capitalize">
                     {k === "date"
-                      ? "Data"
+                      ? target === "credit_card"
+                        ? "Data original (opcional)"
+                        : "Data"
                       : k === "description"
                         ? "Descrição"
                         : k === "amount"
                           ? "Valor"
-                          : k === "type"
-                            ? "Tipo (opcional)"
-                            : "ID externo (opcional)"}
+                          : k === "installment"
+                            ? "Parcela (opcional)"
+                            : k === "type"
+                              ? "Tipo (opcional)"
+                              : "ID externo (opcional)"}
                   </Label>
                   <Select
                     value={mapping[k]}
@@ -527,7 +596,10 @@ function ImportPage() {
                       <SelectValue placeholder="—" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(k === "type" || k === "external_id") && (
+                      {(k === "type" ||
+                        k === "external_id" ||
+                        k === "installment" ||
+                        (k === "date" && target === "credit_card")) && (
                         <SelectItem value="__none">— Nenhum —</SelectItem>
                       )}
                       {headers.map((h) => (
@@ -543,71 +615,38 @@ function ImportPage() {
           )}
 
           {target === "credit_card" && (
-            <div className="grid gap-3 border-t pt-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2fr] sm:items-end">
+            <div className="grid gap-3 border-t pt-4 sm:grid-cols-[minmax(0,1fr)_3fr] sm:items-end">
               <div>
-                <Label className="mb-2 block">Mês de pagamento da fatura</Label>
-                <Select
-                  value={String(cardPaymentMonth)}
-                  onValueChange={(value) => {
-                    const month = Number(value);
-                    setCardPaymentMonth(month);
+                <Label className="mb-2 block">Data de pagamento da fatura</Label>
+                <Input
+                  type="date"
+                  value={cardPaymentDate}
+                  onChange={(event) => {
+                    const paymentDate = event.target.value;
+                    setCardPaymentDate(paymentDate);
+                    if (!paymentDate) {
+                      setPrepared([]);
+                      return;
+                    }
                     setPrepared((current) =>
                       current.map((row) => ({
                         ...row,
-                        invoiceMonth: invoiceMonthKey(cardPaymentYear, month),
+                        date: paymentDate,
+                        invoiceMonth: invoiceMonthForPaymentDate(paymentDate),
+                        description: buildCardImportDescription({
+                          description: row.sourceDescription,
+                          purchaseDate: row.purchaseDate,
+                          paymentDate,
+                          installment: row.installment,
+                        }),
                       })),
                     );
                   }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 12 }, (_, index) => (
-                      <SelectItem key={index + 1} value={String(index + 1)}>
-                        {new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(
-                          new Date(2026, index, 1),
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="mb-2 block">Ano do pagamento</Label>
-                <Select
-                  value={String(cardPaymentYear)}
-                  onValueChange={(value) => {
-                    const year = Number(value);
-                    setCardPaymentYear(year);
-                    setPrepared((current) =>
-                      current.map((row) => ({
-                        ...row,
-                        invoiceMonth: invoiceMonthKey(year, cardPaymentMonth),
-                      })),
-                    );
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from(
-                      { length: 12 },
-                      (_, index) => CURRENT_DATE.getFullYear() + 1 - index,
-                    )
-                      .sort((a, b) => a - b)
-                      .map((year) => (
-                        <SelectItem key={year} value={String(year)}>
-                          {year}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                />
               </div>
               <p className="text-sm text-muted-foreground">
-                Todas as compras deste arquivo entrarão neste mês financeiro. A data original de
-                cada compra continuará preservada.
+                Todas as compras deste arquivo serão registradas nesta data. A data original e a
+                parcela continuam visíveis na descrição da transação.
               </p>
             </div>
           )}
@@ -655,8 +694,8 @@ function ImportPage() {
             {target === "credit_card" && (
               <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                 <strong>Regra do arquivo de cartão:</strong> valor positivo é compra/despesa; valor
-                negativo é pagamento, estorno ou crédito. A data da compra é preservada, mas o mês
-                financeiro segue o mês de pagamento da fatura informado na importação.
+                negativo é pagamento, estorno ou crédito. A transação usa a data de pagamento da
+                fatura; a data original e a parcela aparecem somente na descrição.
               </div>
             )}
             <div className="p-4 flex flex-wrap items-center gap-3 border-b">
@@ -699,8 +738,8 @@ function ImportPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10"></TableHead>
-                    <TableHead>Data da compra</TableHead>
-                    {target === "credit_card" && <TableHead>Mês de pagamento</TableHead>}
+                    <TableHead>{target === "credit_card" ? "Data registrada" : "Data"}</TableHead>
+                    {target === "credit_card" && <TableHead>Referência da compra</TableHead>}
                     <TableHead>Descrição</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
@@ -725,14 +764,13 @@ function ImportPage() {
                         {p.date ?? <span className="text-destructive">inválida</span>}
                       </TableCell>
                       {target === "credit_card" && (
-                        <TableCell className="whitespace-nowrap text-sm font-medium">
-                          {p.invoiceMonth
-                            ? new Intl.DateTimeFormat("pt-BR", {
-                                month: "long",
-                                year: "numeric",
-                                timeZone: "UTC",
-                              }).format(new Date(`${p.invoiceMonth}T12:00:00Z`))
-                            : "—"}
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {p.purchaseDate ?? "Sem data original"}
+                          {p.installment && !/^única$/i.test(p.installment) ? (
+                            <span className="block text-xs text-muted-foreground">
+                              Parcela {p.installment}
+                            </span>
+                          ) : null}
                         </TableCell>
                       )}
                       <TableCell className="max-w-md truncate">

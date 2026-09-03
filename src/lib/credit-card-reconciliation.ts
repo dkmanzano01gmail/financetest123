@@ -35,22 +35,63 @@ export function invoiceMonthKey(year: number, month: number) {
   return `${year}-${String(month).padStart(2, "0")}-01`;
 }
 
-export function billingMonthForPurchase(
-  dateValue: string,
-  closingDay: number,
-  dueDay?: number,
-) {
+export function invoiceMonthForPaymentDate(paymentDate: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(paymentDate) ? `${paymentDate.slice(0, 7)}-01` : null;
+}
+
+function formatReferenceDate(dateValue: string) {
+  const [year, month, day] = dateValue.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+export function installmentReferenceDate(purchaseDate: string, paymentDate: string) {
+  const purchaseMatch = purchaseDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const paymentMatch = paymentDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!purchaseMatch || !paymentMatch) return null;
+
+  const year = Number(paymentMatch[1]);
+  const month = Number(paymentMatch[2]);
+  const purchaseDay = Number(purchaseMatch[3]);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${paymentMatch[1]}-${paymentMatch[2]}-${String(Math.min(purchaseDay, lastDay)).padStart(2, "0")}`;
+}
+
+export function buildCardImportDescription(input: {
+  description: string;
+  purchaseDate: string | null;
+  paymentDate: string;
+  installment?: string | null;
+}) {
+  const references: string[] = [];
+  if (input.purchaseDate) {
+    references.push(`Compra original: ${formatReferenceDate(input.purchaseDate)}`);
+  }
+
+  const installment = String(input.installment ?? "").trim();
+  const installmentMatch = installment.match(/(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/i);
+  if (input.purchaseDate && installmentMatch && Number(installmentMatch[2]) > 1) {
+    const referenceDate = installmentReferenceDate(input.purchaseDate, input.paymentDate);
+    if (referenceDate) {
+      references.push(
+        `Parcela ${installmentMatch[1]}/${installmentMatch[2]}: ${formatReferenceDate(referenceDate)}`,
+      );
+    }
+  }
+
+  if (references.length === 0) return input.description.trim().slice(0, 200);
+  const suffix = references.join(" · ");
+  const maxDescriptionLength = Math.max(0, 200 - suffix.length - 3);
+  const description = input.description.trim().slice(0, maxDescriptionLength);
+  return description ? `${description} · ${suffix}` : suffix.slice(0, 200);
+}
+
+export function billingMonthForPurchase(dateValue: string, closingDay: number, dueDay?: number) {
   const [year, month, day] = dateValue.slice(0, 10).split("-").map(Number);
   const safeClosingDay = Math.min(31, Math.max(1, Number(closingDay) || 1));
   const safeDueDay = Math.min(31, Math.max(1, Number(dueDay) || safeClosingDay));
   const closingMonthOffset = day >= safeClosingDay ? 1 : 0;
   const paymentMonthOffset = safeDueDay <= safeClosingDay ? 1 : 0;
-  const paymentDate = new Date(
-    year,
-    month - 1 + closingMonthOffset + paymentMonthOffset,
-    1,
-    12,
-  );
+  const paymentDate = new Date(year, month - 1 + closingMonthOffset + paymentMonthOffset, 1, 12);
   return invoiceMonthKey(paymentDate.getFullYear(), paymentDate.getMonth() + 1);
 }
 
@@ -80,9 +121,7 @@ export function isCashFlowTransaction(transaction: ReconciliationTransaction) {
   return !transaction.credit_card_id && !isCreditCardPaymentOffset(transaction);
 }
 
-export function isCheckingAccountCashFlowTransaction(
-  transaction: ReconciliationTransaction,
-) {
+export function isCheckingAccountCashFlowTransaction(transaction: ReconciliationTransaction) {
   return (
     Boolean(transaction.account_id) &&
     transaction.accounts?.type === "checking" &&
