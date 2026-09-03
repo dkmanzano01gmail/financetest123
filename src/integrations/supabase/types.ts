@@ -671,7 +671,9 @@ export type Database = {
           clay_weight_kg: number
           comments: string | null
           completed_at: string | null
+          completed_quantity: number | null
           created_at: string
+          delivered_quantity: number | null
           depth_cm: number
           freight_cost: number
           freight_rate: number
@@ -684,6 +686,7 @@ export type Database = {
           grams: number
           height_cm: number
           id: string
+          invoiced_quantity: number | null
           kiln_id: string | null
           legacy_source_id: string | null
           length_cm: number
@@ -718,7 +721,9 @@ export type Database = {
           clay_weight_kg?: number
           comments?: string | null
           completed_at?: string | null
+          completed_quantity?: number | null
           created_at?: string
+          delivered_quantity?: number | null
           depth_cm?: number
           freight_cost?: number
           freight_rate?: number
@@ -731,6 +736,7 @@ export type Database = {
           grams?: number
           height_cm?: number
           id?: string
+          invoiced_quantity?: number | null
           kiln_id?: string | null
           legacy_source_id?: string | null
           length_cm?: number
@@ -765,7 +771,9 @@ export type Database = {
           clay_weight_kg?: number
           comments?: string | null
           completed_at?: string | null
+          completed_quantity?: number | null
           created_at?: string
+          delivered_quantity?: number | null
           depth_cm?: number
           freight_cost?: number
           freight_rate?: number
@@ -778,6 +786,7 @@ export type Database = {
           grams?: number
           height_cm?: number
           id?: string
+          invoiced_quantity?: number | null
           kiln_id?: string | null
           legacy_source_id?: string | null
           length_cm?: number
@@ -2607,6 +2616,55 @@ export type Database = {
           },
         ]
       }
+      student_project_images: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          storage_path: string
+          student_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          storage_path: string
+          student_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          storage_path?: string
+          student_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_project_images_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "student_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_project_images_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_project_images_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       student_projects: {
         Row: {
           archived_at: string | null
@@ -3605,6 +3663,37 @@ export type Database = {
         Returns: number
       }
       seed_sela_defaults: { Args: { _workspace_id: string }; Returns: Json }
+      student_portal_attendance: {
+        Args: { _student_id?: string }
+        Returns: {
+          class_name: string | null
+          comments: string | null
+          confirmed_at: string | null
+          created_at: string
+          generates_makeup: boolean | null
+          id: string
+          legacy_source_id: string | null
+          makeup_completed: boolean | null
+          makeup_reference: string | null
+          makeups_available_in_month: number | null
+          makeups_used_in_month: number | null
+          record_type: string | null
+          session_date: string
+          session_time: string | null
+          status: string
+          student_id: string | null
+          student_name: string
+          updated_at: string
+          weekday: number | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "attendance_records"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       student_portal_pieces: {
         Args: { _student_id?: string }
         Returns: {
@@ -3620,7 +3709,9 @@ export type Database = {
           clay_weight_kg: number
           comments: string | null
           completed_at: string | null
+          completed_quantity: number | null
           created_at: string
+          delivered_quantity: number | null
           depth_cm: number
           freight_cost: number
           freight_rate: number
@@ -3633,6 +3724,7 @@ export type Database = {
           grams: number
           height_cm: number
           id: string
+          invoiced_quantity: number | null
           kiln_id: string | null
           legacy_source_id: string | null
           length_cm: number
@@ -3664,6 +3756,70 @@ export type Database = {
       student_portal_student_id: {
         Args: { _user_id?: string; _workspace_id: string }
         Returns: string
+      }
+      student_portal_update_piece: {
+        Args: {
+          _comments?: string
+          _photo_path?: string
+          _piece_id: string
+          _student_id?: string
+        }
+        Returns: {
+          amount_charged: number
+          amount_paid: number
+          amount_pending: number
+          biscuit_firing_cost: number
+          bisque_weight_g: number | null
+          charge_biscuit: boolean
+          charge_glaze: boolean
+          clay_cost: number
+          clay_type: string | null
+          clay_weight_kg: number
+          comments: string | null
+          completed_at: string | null
+          completed_quantity: number | null
+          created_at: string
+          delivered_quantity: number | null
+          depth_cm: number
+          freight_cost: number
+          freight_rate: number
+          glaze_cone: string | null
+          glaze_cost: number
+          glaze_firing_cost: number
+          glaze_name: string | null
+          glaze_quantity: number
+          glazed_weight_g: number | null
+          grams: number
+          height_cm: number
+          id: string
+          invoiced_quantity: number | null
+          kiln_id: string | null
+          legacy_source_id: string | null
+          length_cm: number
+          material: string
+          modeled_weight_g: number | null
+          other_cost: number
+          payment_date: string | null
+          payment_notes: string | null
+          payment_status: string
+          photo_path: string | null
+          piece_name: string | null
+          production_status: string
+          quantity: number
+          resistance_only: boolean
+          student_id: string | null
+          student_name: string
+          total_cost: number
+          updated_at: string
+          usage_date: string
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "class_materials_usage"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       undo_card_payment_allocation: {
         Args: { target_allocation_id: string }
@@ -3810,12 +3966,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3839,11 +3995,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3864,11 +4020,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3889,11 +4045,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3906,11 +4062,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
