@@ -27,10 +27,14 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { buildCashFlowProjection, type CashFlowDay, type CashFlowEvent } from "@/lib/orna-logic";
-import { isCheckingAccountCashFlowTransaction } from "@/lib/credit-card-reconciliation";
+import {
+  futureInstallmentExpenseSuggestions,
+  isCheckingAccountCashFlowTransaction,
+} from "@/lib/credit-card-reconciliation";
 import {
   AlertTriangle,
   CalendarRange,
+  CreditCard,
   Pencil,
   Plus,
   Trash2,
@@ -88,6 +92,7 @@ function CashFlowPage() {
   const [form, setForm] = useState(emptyForm());
   const [balOpen, setBalOpen] = useState(false);
   const [balForm, setBalForm] = useState({ starting_balance: "0" });
+  const [includeInstallmentForecast, setIncludeInstallmentForecast] = useState(false);
   const [visibleMovementSeries, setVisibleMovementSeries] = useState<
     Record<MovementSeriesKey, boolean>
   >({
@@ -200,19 +205,76 @@ function CashFlowPage() {
     },
   });
 
+  const {
+    data: installmentTransactions = [],
+    error: installmentTransactionsError,
+    isLoading: installmentTransactionsLoading,
+  } = useQuery({
+    queryKey: ["transactions", wsId, "cash-flow-installment-suggestions"],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("transactions")
+        .select(
+          "id,date,type,amount,status,credit_card_id,invoice_month,installment,credit_cards(name)",
+        )
+        .eq("workspace_id", wsId)
+        .eq("source", "csv")
+        .eq("type", "expense")
+        .not("credit_card_id", "is", null)
+        .not("invoice_month", "is", null)
+        .order("invoice_month", { ascending: false })
+        .limit(5000);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const installmentSuggestions = useMemo(
+    () => futureInstallmentExpenseSuggestions(installmentTransactions as any[]),
+    [installmentTransactions],
+  );
+
+  const installmentForecastEntries = useMemo(
+    () =>
+      installmentSuggestions.map((suggestion) => ({
+        id: `card-installments:${suggestion.month}`,
+        entry_date: suggestion.date,
+        specific_date: suggestion.date,
+        type: "expense" as const,
+        description: "Parcelas futuras de cartão",
+        amount: suggestion.amount,
+        recurrence: "none" as const,
+        status: "projected" as const,
+        is_active: true,
+        notes: `Sugestão calculada pela última fatura importada: ${suggestion.cardNames.join(", ")}`,
+        categories: { name: "Cartão de crédito (sugestão)" },
+      })),
+    [installmentSuggestions],
+  );
+
   const projectionStartCash = Number(monthlyBalance?.starting_balance ?? 0);
 
   const projection = useMemo(
     () =>
       buildCashFlowProjection({
-        entries,
+        entries: includeInstallmentForecast ? [...entries, ...installmentForecastEntries] : entries,
         transactions: (transactions as any[]).filter(isCheckingAccountCashFlowTransaction),
         month,
         year,
         monthsCount,
         startingCash: projectionStartCash,
       }),
-    [entries, transactions, month, year, monthsCount, projectionStartCash],
+    [
+      entries,
+      includeInstallmentForecast,
+      installmentForecastEntries,
+      transactions,
+      month,
+      year,
+      monthsCount,
+      projectionStartCash,
+    ],
   );
 
   const chart = useMemo(
@@ -428,6 +490,73 @@ function CashFlowPage() {
           </Badge>
           {txFetching && !txLoading && (
             <span className="text-xs text-muted-foreground">Atualizando transações…</span>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-4 border-dashed">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CreditCard className="h-4 w-4" />
+                Sugestão de parcelas futuras
+              </CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Soma mensal das parcelas restantes, calculada pela fatura importada mais recente de
+                cada cartão.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="include-installment-forecast" className="text-sm">
+                Usar na projeção
+              </Label>
+              <Switch
+                id="include-installment-forecast"
+                checked={includeInstallmentForecast}
+                disabled={installmentSuggestions.length === 0}
+                onCheckedChange={setIncludeInstallmentForecast}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {installmentTransactionsLoading ? (
+            <p className="text-sm text-muted-foreground">Calculando parcelas futuras…</p>
+          ) : installmentTransactionsError ? (
+            <p className="text-sm text-destructive">
+              Não foi possível calcular as parcelas futuras.
+            </p>
+          ) : installmentSuggestions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma parcela futura foi identificada na última fatura importada dos cartões.
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {installmentSuggestions.map((suggestion) => {
+                  const [suggestionYear, suggestionMonth] = suggestion.month.split("-").map(Number);
+                  return (
+                    <div key={suggestion.month} className="rounded-lg border bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">
+                        {monthLabel(suggestionMonth)} de {suggestionYear}
+                      </div>
+                      <div className="mt-1 font-mono font-semibold text-expense">
+                        {formatCurrency(suggestion.amount, currency, privacy)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {suggestion.installmentsCount}{" "}
+                        {suggestion.installmentsCount === 1 ? "parcela" : "parcelas"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Esta é uma sugestão temporária: ativá-la recalcula os cards e o gráfico, sem criar
+                lançamentos nem alterar as faturas. Uma nova importação atualiza a estimativa.
+              </p>
+            </>
           )}
         </CardContent>
       </Card>

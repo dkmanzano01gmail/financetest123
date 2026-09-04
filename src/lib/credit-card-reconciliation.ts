@@ -22,6 +22,124 @@ export type ReconciliationCard = {
   due_day?: number;
 };
 
+export type InstallmentForecastTransaction = {
+  id: string;
+  date: string;
+  type: "income" | "expense";
+  amount: number | string;
+  credit_card_id?: string | null;
+  invoice_month?: string | null;
+  installment?: string | null;
+  status?: string | null;
+  credit_cards?: { name?: string | null } | null;
+};
+
+export type FutureInstallmentExpense = {
+  month: string;
+  date: string;
+  amount: number;
+  installmentsCount: number;
+  cardNames: string[];
+};
+
+export function parseInstallment(value: string | null | undefined) {
+  const match = String(value ?? "").match(/(\d{1,3})\s*(?:\/|de)\s*(\d{1,3})/i);
+  if (!match) return null;
+  const current = Number(match[1]);
+  const total = Number(match[2]);
+  if (
+    !Number.isInteger(current) ||
+    !Number.isInteger(total) ||
+    current < 1 ||
+    total < current ||
+    total > 120
+  ) {
+    return null;
+  }
+  return { current, total };
+}
+
+function addMonthsClamped(dateValue: string, months: number) {
+  const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const sourceYear = Number(match[1]);
+  const sourceMonth = Number(match[2]);
+  const sourceDay = Number(match[3]);
+  const target = new Date(Date.UTC(sourceYear, sourceMonth - 1 + months, 1));
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  return `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, "0")}-${String(Math.min(sourceDay, lastDay)).padStart(2, "0")}`;
+}
+
+/**
+ * Projects the remaining installments found in the latest imported invoice of
+ * each card. Results are grouped by month and remain read-only suggestions.
+ */
+export function futureInstallmentExpenseSuggestions(
+  transactions: InstallmentForecastTransaction[],
+): FutureInstallmentExpense[] {
+  const invoiceRows = transactions.filter(
+    (transaction) =>
+      transaction.type === "expense" &&
+      Boolean(transaction.credit_card_id) &&
+      Boolean(transaction.invoice_month),
+  );
+  const usable = invoiceRows.filter((transaction) => {
+    const status = String(transaction.status ?? "").toLowerCase();
+    return (
+      Boolean(parseInstallment(transaction.installment)) &&
+      !["ignored", "cancelled", "ignorado", "cancelado"].includes(status) &&
+      Math.abs(Number(transaction.amount) || 0) > 0
+    );
+  });
+
+  const latestInvoiceByCard = new Map<string, string>();
+  for (const transaction of invoiceRows) {
+    const cardId = transaction.credit_card_id!;
+    const invoiceMonth = transaction.invoice_month!.slice(0, 7);
+    const latest = latestInvoiceByCard.get(cardId);
+    if (!latest || invoiceMonth > latest) latestInvoiceByCard.set(cardId, invoiceMonth);
+  }
+
+  const byMonth = new Map<
+    string,
+    { date: string; amount: number; installmentsCount: number; cardNames: Set<string> }
+  >();
+  for (const transaction of usable) {
+    const cardId = transaction.credit_card_id!;
+    if (transaction.invoice_month!.slice(0, 7) !== latestInvoiceByCard.get(cardId)) continue;
+    const installment = parseInstallment(transaction.installment)!;
+    const amount = Math.abs(Number(transaction.amount) || 0);
+    for (let offset = 1; offset <= installment.total - installment.current; offset += 1) {
+      const date = addMonthsClamped(transaction.date.slice(0, 10), offset);
+      if (!date) continue;
+      const month = date.slice(0, 7);
+      const current = byMonth.get(month) ?? {
+        date,
+        amount: 0,
+        installmentsCount: 0,
+        cardNames: new Set<string>(),
+      };
+      current.amount += amount;
+      current.installmentsCount += 1;
+      if (date < current.date) current.date = date;
+      current.cardNames.add(transaction.credit_cards?.name?.trim() || "Cartão");
+      byMonth.set(month, current);
+    }
+  }
+
+  return [...byMonth.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([month, suggestion]) => ({
+      month,
+      date: suggestion.date,
+      amount: Math.round(suggestion.amount * 100) / 100,
+      installmentsCount: suggestion.installmentsCount,
+      cardNames: [...suggestion.cardNames].sort((left, right) => left.localeCompare(right)),
+    }));
+}
+
 export function normalizeReconciliationText(value: string | null | undefined) {
   return String(value ?? "")
     .normalize("NFD")
