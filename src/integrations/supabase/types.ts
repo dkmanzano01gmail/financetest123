@@ -2484,6 +2484,358 @@ export type Database = {
           },
         ]
       }
+      rental_customers: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_customers_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_order_items: {
+        Row: {
+          created_at: string
+          depth_cm: number
+          height_cm: number
+          id: string
+          order_id: string
+          piece_name: string
+          quantity: number
+          total_price: number
+          unit_price: number
+          updated_at: string
+          volume_liters: number
+          width_cm: number
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          depth_cm?: number
+          height_cm?: number
+          id?: string
+          order_id: string
+          piece_name: string
+          quantity?: number
+          total_price?: number
+          unit_price?: number
+          updated_at?: string
+          volume_liters?: number
+          width_cm?: number
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          depth_cm?: number
+          height_cm?: number
+          id?: string
+          order_id?: string
+          piece_name?: string
+          quantity?: number
+          total_price?: number
+          unit_price?: number
+          updated_at?: string
+          volume_liters?: number
+          width_cm?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "rental_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_order_items_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_orders: {
+        Row: {
+          code: string
+          created_at: string
+          customer_id: string
+          discount: number
+          id: string
+          notes: string | null
+          payment_status: string
+          slot_id: string
+          status: string
+          subtotal: number
+          total: number
+          total_liters: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          customer_id: string
+          discount?: number
+          id?: string
+          notes?: string | null
+          payment_status?: string
+          slot_id: string
+          status?: string
+          subtotal?: number
+          total?: number
+          total_liters?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          customer_id?: string
+          discount?: number
+          id?: string
+          notes?: string | null
+          payment_status?: string
+          slot_id?: string
+          status?: string
+          subtotal?: number
+          total?: number
+          total_liters?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "rental_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_orders_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "rental_slots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_orders_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          method: string | null
+          notes: string | null
+          order_id: string
+          paid_at: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          notes?: string | null
+          order_id: string
+          paid_at?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          notes?: string | null
+          order_id?: string
+          paid_at?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "rental_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_payments_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_settings: {
+        Row: {
+          contact_email: string | null
+          contact_phone: string | null
+          created_at: string
+          currency: string
+          default_price_per_liter: number
+          description: string | null
+          headline: string
+          is_published: boolean
+          min_order_amount: number
+          public_name: string
+          terms: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          currency?: string
+          default_price_per_liter?: number
+          description?: string | null
+          headline?: string
+          is_published?: boolean
+          min_order_amount?: number
+          public_name?: string
+          terms?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          currency?: string
+          default_price_per_liter?: number
+          description?: string | null
+          headline?: string
+          is_published?: boolean
+          min_order_amount?: number
+          public_name?: string
+          terms?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_slots: {
+        Row: {
+          capacity_liters: number
+          closes_at: string | null
+          created_at: string
+          description: string | null
+          firing_date: string | null
+          firing_type: string
+          id: string
+          kiln_name: string | null
+          min_liters: number
+          notes: string | null
+          opens_at: string | null
+          pickup_date: string | null
+          price_per_liter: number
+          status: string
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          capacity_liters?: number
+          closes_at?: string | null
+          created_at?: string
+          description?: string | null
+          firing_date?: string | null
+          firing_type?: string
+          id?: string
+          kiln_name?: string | null
+          min_liters?: number
+          notes?: string | null
+          opens_at?: string | null
+          pickup_date?: string | null
+          price_per_liter?: number
+          status?: string
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          capacity_liters?: number
+          closes_at?: string | null
+          created_at?: string
+          description?: string | null
+          firing_date?: string | null
+          firing_type?: string
+          id?: string
+          kiln_name?: string | null
+          min_liters?: number
+          notes?: string | null
+          opens_at?: string | null
+          pickup_date?: string | null
+          price_per_liter?: number
+          status?: string
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_slots_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       student_payments: {
         Row: {
           amount: number
@@ -3660,6 +4012,71 @@ export type Database = {
       release_customization_credits: {
         Args: { _reason?: string; _request_id: string }
         Returns: number
+      }
+      rental_public_create_order: {
+        Args: {
+          _email: string
+          _items: Json
+          _name: string
+          _notes?: string
+          _phone: string
+          _slot_id: string
+        }
+        Returns: Json
+      }
+      rental_public_info: {
+        Args: { _workspace_id: string }
+        Returns: {
+          contact_email: string
+          contact_phone: string
+          currency: string
+          default_price_per_liter: number
+          description: string
+          headline: string
+          min_order_amount: number
+          public_name: string
+          terms: string
+        }[]
+      }
+      rental_public_order_status: {
+        Args: { _code: string; _email: string }
+        Returns: Json
+      }
+      rental_public_quote: {
+        Args: { _items: Json; _slot_id: string }
+        Returns: Json
+      }
+      rental_public_slots: {
+        Args: { _workspace_id: string }
+        Returns: {
+          available_liters: number
+          capacity_liters: number
+          closes_at: string
+          description: string
+          firing_date: string
+          firing_type: string
+          id: string
+          kiln_name: string
+          min_liters: number
+          opens_at: string
+          pickup_date: string
+          price_per_liter: number
+          title: string
+          used_liters: number
+        }[]
+      }
+      rental_quote_items: {
+        Args: { _items: Json; _price_per_liter: number }
+        Returns: {
+          depth_cm: number
+          height_cm: number
+          piece_name: string
+          quantity: number
+          total_price: number
+          unit_price: number
+          volume_liters: number
+          width_cm: number
+        }[]
       }
       reserve_customization_credits: {
         Args: { _request_id: string }
