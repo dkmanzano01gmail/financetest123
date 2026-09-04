@@ -2733,9 +2733,51 @@ export type Database = {
           },
         ]
       }
+      rental_pricing_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          changed_by_email: string | null
+          firing_type: string
+          id: string
+          new_coefficient: number
+          old_coefficient: number
+          workspace_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_email?: string | null
+          firing_type: string
+          id?: string
+          new_coefficient: number
+          old_coefficient: number
+          workspace_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_email?: string | null
+          firing_type?: string
+          id?: string
+          new_coefficient?: number
+          old_coefficient?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_pricing_history_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rental_settings: {
         Row: {
           address: string
+          biscuit_coefficient: number
           contact_email: string | null
           contact_phone: string | null
           created_at: string
@@ -2744,6 +2786,7 @@ export type Database = {
           default_price_per_liter: number
           deposit_percentage: number
           description: string | null
+          glaze_coefficient: number
           headline: string
           is_published: boolean
           min_order_amount: number
@@ -2755,6 +2798,7 @@ export type Database = {
         }
         Insert: {
           address?: string
+          biscuit_coefficient?: number
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -2763,6 +2807,7 @@ export type Database = {
           default_price_per_liter?: number
           deposit_percentage?: number
           description?: string | null
+          glaze_coefficient?: number
           headline?: string
           is_published?: boolean
           min_order_amount?: number
@@ -2774,6 +2819,7 @@ export type Database = {
         }
         Update: {
           address?: string
+          biscuit_coefficient?: number
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -2782,6 +2828,7 @@ export type Database = {
           default_price_per_liter?: number
           deposit_percentage?: number
           description?: string | null
+          glaze_coefficient?: number
           headline?: string
           is_published?: boolean
           min_order_amount?: number
