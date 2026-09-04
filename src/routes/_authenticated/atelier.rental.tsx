@@ -80,6 +80,31 @@ function Page() {
     },
   });
 
+  const { data: pricingHistory = [] } = useQuery({
+    queryKey: ["rental-pricing-history", wsId],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("rental_pricing_history")
+        .select("*")
+        .eq("workspace_id", wsId)
+        .order("changed_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const configuredPricePerLiter = (firingType: string) => {
+    if (firingType === "biscuit") {
+      return Number(settings?.biscuit_coefficient ?? 0.0045) * 1000;
+    }
+    if (firingType === "glaze") {
+      return Number(settings?.glaze_coefficient ?? 0.007) * 1000;
+    }
+    return null;
+  };
+
   const { data: slots = [] } = useQuery({
     queryKey: ["rental-slots", wsId],
     enabled: !!wsId,
@@ -151,6 +176,9 @@ function Page() {
 
   const ensureSettings = useMutation({
     mutationFn: async (patch: Record<string, any>) => {
+      if (Number(patch.biscuit_coefficient) <= 0 || Number(patch.glaze_coefficient) <= 0) {
+        throw new Error("Os coeficientes de Biscoito e Esmalte devem ser maiores que zero.");
+      }
       const { error } = await sb
         .from("rental_settings")
         .upsert({ workspace_id: wsId, ...patch }, { onConflict: "workspace_id" });
@@ -158,6 +186,8 @@ function Page() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["rental-settings", wsId] });
+      qc.invalidateQueries({ queryKey: ["rental-slots", wsId] });
+      qc.invalidateQueries({ queryKey: ["rental-pricing-history", wsId] });
       toast.success("Configurações salvas.");
     },
     onError: (e: any) => toast.error(e.message),
@@ -177,6 +207,18 @@ function Page() {
         { onConflict: "workspace_id", ignoreDuplicates: true },
       );
       if (settingsError) throw settingsError;
+      const { data: currentPricing, error: pricingError } = await sb
+        .from("rental_settings")
+        .select("biscuit_coefficient, glaze_coefficient")
+        .eq("workspace_id", wsId)
+        .single();
+      if (pricingError) throw pricingError;
+      const currentConfiguredPrice =
+        form.firing_type === "biscuit"
+          ? Number(currentPricing.biscuit_coefficient) * 1000
+          : form.firing_type === "glaze"
+            ? Number(currentPricing.glaze_coefficient) * 1000
+            : null;
       const payload = {
         workspace_id: wsId,
         title: form.title.trim(),
@@ -184,7 +226,7 @@ function Page() {
         kiln_name: form.kiln_name.trim() || null,
         firing_type: form.firing_type,
         capacity_liters: capacity,
-        price_per_liter: parseLocaleAmount(form.price_per_liter) || 0,
+        price_per_liter: currentConfiguredPrice ?? (parseLocaleAmount(form.price_per_liter) || 0),
         min_liters: parseLocaleAmount(form.min_liters) || 0,
         opens_at: form.opens_at || null,
         closes_at: form.closes_at || null,
@@ -502,6 +544,7 @@ function Page() {
           <SettingsForm
             key={settings?.updated_at ?? "new"}
             settings={settings}
+            pricingHistory={pricingHistory}
             saving={ensureSettings.isPending}
             onSave={(patch) => ensureSettings.mutate(patch)}
           />
@@ -544,7 +587,9 @@ function Page() {
                   setForm({
                     ...form,
                     firing_type: v,
-                    price_per_liter: String(RENTAL_FIRING_PRICE_PER_LITER[v] ?? 7),
+                    price_per_liter: String(
+                      configuredPricePerLiter(v) ?? RENTAL_FIRING_PRICE_PER_LITER[v] ?? 7,
+                    ),
                   })
                 }
               >
@@ -569,10 +614,11 @@ function Page() {
               <Label>Preço por litro</Label>
               <Input
                 value={form.price_per_liter}
+                disabled={["biscuit", "glaze"].includes(form.firing_type)}
                 onChange={(e) => setForm({ ...form, price_per_liter: e.target.value })}
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                Padrão: R$ 4,50/L para Biscoito e R$ 7,00/L para Esmalte.
+                Biscoito e Esmalte usam os coeficientes definidos em Configurações.
               </p>
             </div>
             <div>
@@ -654,10 +700,12 @@ function Page() {
 
 function SettingsForm({
   settings,
+  pricingHistory,
   saving,
   onSave,
 }: {
   settings: any;
+  pricingHistory: any[];
   saving: boolean;
   onSave: (patch: Record<string, any>) => void;
 }) {
@@ -672,110 +720,192 @@ function SettingsForm({
     pix_key: settings?.pix_key ?? "60.607.671/0001-47",
     address: settings?.address ?? "",
     customer_instructions: settings?.customer_instructions ?? "",
+    biscuit_coefficient: settings?.biscuit_coefficient ?? 0.0045,
+    glaze_coefficient: settings?.glaze_coefficient ?? 0.007,
     is_published: settings?.is_published ?? true,
   });
 
   return (
-    <Card>
-      <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
-        <div>
-          <Label>Nome público</Label>
-          <Input
-            value={state.public_name}
-            onChange={(e) => setState({ ...state, public_name: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Chamada principal</Label>
-          <Input
-            value={state.headline}
-            onChange={(e) => setState({ ...state, headline: e.target.value })}
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <Label>Descrição</Label>
-          <Textarea
-            rows={2}
-            value={state.description}
-            onChange={(e) => setState({ ...state, description: e.target.value })}
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <Label>Termos / regras</Label>
-          <Textarea
-            rows={2}
-            value={state.terms}
-            onChange={(e) => setState({ ...state, terms: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>E-mail de contato</Label>
-          <Input
-            value={state.contact_email}
-            onChange={(e) => setState({ ...state, contact_email: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Telefone de contato</Label>
-          <Input
-            value={state.contact_phone}
-            onChange={(e) => setState({ ...state, contact_phone: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Entrada para reserva (%)</Label>
-          <Input
-            type="number"
-            min="0"
-            max="100"
-            value={state.deposit_percentage}
-            onChange={(e) => setState({ ...state, deposit_percentage: Number(e.target.value) })}
-          />
-        </div>
-        <div>
-          <Label>Chave PIX</Label>
-          <Input
-            value={state.pix_key}
-            onChange={(e) => setState({ ...state, pix_key: e.target.value })}
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <Label>Endereço para entrega e retirada</Label>
-          <Textarea
-            rows={2}
-            value={state.address}
-            onChange={(e) => setState({ ...state, address: e.target.value })}
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <Label>Instruções ao cliente</Label>
-          <Textarea
-            rows={2}
-            value={state.customer_instructions}
-            onChange={(e) => setState({ ...state, customer_instructions: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Plataforma pública</Label>
-          <Select
-            value={state.is_published ? "yes" : "no"}
-            onValueChange={(v) => setState({ ...state, is_published: v === "yes" })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="yes">Publicada</SelectItem>
-              <SelectItem value="no">Fora do ar</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="sm:col-span-2">
-          <Button onClick={() => onSave(state)} disabled={saving}>
-            Salvar configurações
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Precificação das queimas</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label>Coeficiente Biscoito</Label>
+            <Input
+              type="number"
+              min="0.000001"
+              step="0.0001"
+              value={state.biscuit_coefficient}
+              onChange={(e) => setState({ ...state, biscuit_coefficient: Number(e.target.value) })}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Fórmula: coeficiente × altura × largura × profundidade. Atual:{" "}
+              {formatCurrency(Number(state.biscuit_coefficient) * 1000, "BRL")}/L.
+            </p>
+          </div>
+          <div>
+            <Label>Coeficiente Esmalte</Label>
+            <Input
+              type="number"
+              min="0.000001"
+              step="0.0001"
+              value={state.glaze_coefficient}
+              onChange={(e) => setState({ ...state, glaze_coefficient: Number(e.target.value) })}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Fórmula: coeficiente × altura × largura × profundidade. Atual:{" "}
+              {formatCurrency(Number(state.glaze_coefficient) * 1000, "BRL")}/L.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Configurações públicas e pagamento</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label>Nome público</Label>
+            <Input
+              value={state.public_name}
+              onChange={(e) => setState({ ...state, public_name: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Chamada principal</Label>
+            <Input
+              value={state.headline}
+              onChange={(e) => setState({ ...state, headline: e.target.value })}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Descrição</Label>
+            <Textarea
+              rows={2}
+              value={state.description}
+              onChange={(e) => setState({ ...state, description: e.target.value })}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Termos / regras</Label>
+            <Textarea
+              rows={2}
+              value={state.terms}
+              onChange={(e) => setState({ ...state, terms: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>E-mail de contato</Label>
+            <Input
+              value={state.contact_email}
+              onChange={(e) => setState({ ...state, contact_email: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Telefone de contato</Label>
+            <Input
+              value={state.contact_phone}
+              onChange={(e) => setState({ ...state, contact_phone: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Entrada para reserva (%)</Label>
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              value={state.deposit_percentage}
+              onChange={(e) => setState({ ...state, deposit_percentage: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <Label>Chave PIX</Label>
+            <Input
+              value={state.pix_key}
+              onChange={(e) => setState({ ...state, pix_key: e.target.value })}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Endereço para entrega e retirada</Label>
+            <Textarea
+              rows={2}
+              value={state.address}
+              onChange={(e) => setState({ ...state, address: e.target.value })}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Instruções ao cliente</Label>
+            <Textarea
+              rows={2}
+              value={state.customer_instructions}
+              onChange={(e) => setState({ ...state, customer_instructions: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Plataforma pública</Label>
+            <Select
+              value={state.is_published ? "yes" : "no"}
+              onValueChange={(v) => setState({ ...state, is_published: v === "yes" })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="yes">Publicada</SelectItem>
+                <SelectItem value="no">Fora do ar</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="sm:col-span-2">
+            <Button onClick={() => onSave(state)} disabled={saving}>
+              Salvar configurações
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Histórico de precificação</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {pricingHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma alteração registrada ainda.</p>
+          ) : (
+            <div className="space-y-2">
+              {pricingHistory.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {entry.firing_type === "biscuit" ? "Biscoito" : "Esmalte"}:{" "}
+                      {Number(entry.old_coefficient).toLocaleString("pt-BR", {
+                        minimumFractionDigits: 4,
+                      })}{" "}
+                      →{" "}
+                      {Number(entry.new_coefficient).toLocaleString("pt-BR", {
+                        minimumFractionDigits: 4,
+                      })}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {entry.changed_by_email || "Sistema"}
+                    </p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(entry.changed_at).toLocaleString("pt-BR")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
