@@ -12,6 +12,8 @@ import { formatCurrency } from "@/lib/format";
 import {
   RENTAL_ERRORS,
   RENTAL_WORKSPACE_ID,
+  itemPrice,
+  itemsPrice,
   itemsVolumeLiters,
   normalizeItems,
   type RentalItemInput,
@@ -22,13 +24,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/rental")({
   head: () => ({
     meta: [
-      { title: "Selá Rental — Alugue espaço no forno" },
+      { title: "Selá Queimas — Agende sua queima" },
       {
         name: "description",
         content:
           "Reserve espaço nas queimas do ateliê Selá Cerâmica: escolha a vaga, calcule o orçamento por litro e faça sua reserva online.",
       },
-      { property: "og:title", content: "Selá Rental — Alugue espaço no forno" },
+      { property: "og:title", content: "Selá Queimas — Agende sua queima" },
       {
         property: "og:description",
         content:
@@ -56,8 +58,10 @@ function RentalPublicPage() {
   const [items, setItems] = useState<RentalItemInput[]>([emptyItem()]);
   const [quote, setQuote] = useState<any>(null);
   const [name, setName] = useState("");
+  const [studioName, setStudioName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [document, setDocument] = useState("");
   const [notes, setNotes] = useState("");
   const [confirmation, setConfirmation] = useState<any>(null);
   const [lookupCode, setLookupCode] = useState("");
@@ -75,7 +79,22 @@ function RentalPublicPage() {
     },
   });
 
-  const { data: slots = [], isLoading: slotsLoading, refetch: refetchSlots } = useQuery({
+  const { data: paymentInfo } = useQuery({
+    queryKey: ["rental-public-payment-info"],
+    queryFn: async () => {
+      const { data, error } = await sb.rpc("rental_public_payment_info", {
+        _workspace_id: RENTAL_WORKSPACE_ID,
+      });
+      if (error) throw error;
+      return (data ?? [])[0] ?? null;
+    },
+  });
+
+  const {
+    data: slots = [],
+    isLoading: slotsLoading,
+    refetch: refetchSlots,
+  } = useQuery({
     queryKey: ["rental-public-slots"],
     queryFn: async () => {
       const { data, error } = await sb.rpc("rental_public_slots", {
@@ -92,9 +111,15 @@ function RentalPublicPage() {
     [slots, slotId],
   );
   const estimatedLiters = useMemo(() => itemsVolumeLiters(items), [items]);
+  const estimatedPrice = useMemo(
+    () => itemsPrice(items, Number(slot?.price_per_liter ?? 0)),
+    [items, slot?.price_per_liter],
+  );
 
-  const setItem = (index: number, patch: Partial<RentalItemInput>) =>
+  const setItem = (index: number, patch: Partial<RentalItemInput>) => {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
+    resetQuote();
+  };
 
   const resetQuote = () => {
     setQuote(null);
@@ -129,8 +154,10 @@ function RentalPublicPage() {
       const { data, error } = await sb.rpc("rental_public_create_order", {
         _slot_id: slotId,
         _name: name,
+        _studio_name: studioName,
         _email: email,
         _phone: phone || null,
+        _document: document || null,
         _items: payload,
         _notes: notes || null,
       });
@@ -184,10 +211,10 @@ function RentalPublicPage() {
         <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-10">
           <div className="flex items-center gap-2 text-sm opacity-80">
             <Flame className="h-4 w-4" />
-            Selá Rental
+            Selá Queimas
           </div>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            {info?.headline ?? "Alugue espaço no nosso forno"}
+            {info?.headline ?? "Agende sua queima"}
           </h1>
           {info?.description ? (
             <p className="max-w-2xl text-sm opacity-90">{info.description}</p>
@@ -216,6 +243,7 @@ function RentalPublicPage() {
             ) : (
               (slots as any[]).map((s) => {
                 const selected = s.id === slotId;
+                const full = Number(s.available_liters) <= 0;
                 const pct = Math.min(
                   100,
                   (Number(s.used_liters) / Math.max(Number(s.capacity_liters), 1)) * 100,
@@ -224,18 +252,26 @@ function RentalPublicPage() {
                   <button
                     key={s.id}
                     type="button"
+                    disabled={full}
                     onClick={() => {
+                      if (full) return;
                       setSlotId(s.id);
                       resetQuote();
                     }}
                     className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                      selected ? "border-primary bg-accent/40" : "hover:bg-muted/50"
+                      selected
+                        ? "border-primary bg-accent/40"
+                        : full
+                          ? "cursor-not-allowed opacity-60"
+                          : "hover:bg-muted/50"
                     }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-medium">{s.title}</span>
                       <Badge variant="secondary">
-                        {formatCurrency(Number(s.price_per_liter), currency)} / L
+                        {full
+                          ? "Lotado"
+                          : `${formatCurrency(Number(s.price_per_liter), currency)} / L`}
                       </Badge>
                     </div>
                     {s.description && (
@@ -317,7 +353,10 @@ function RentalPublicPage() {
                     variant="ghost"
                     size="icon"
                     disabled={items.length === 1}
-                    onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
+                    onClick={() => {
+                      setItems((prev) => prev.filter((_, i) => i !== index));
+                      resetQuote();
+                    }}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -328,7 +367,10 @@ function RentalPublicPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setItems((prev) => [...prev, emptyItem()])}
+                onClick={() => {
+                  setItems((prev) => [...prev, emptyItem()]);
+                  resetQuote();
+                }}
               >
                 <Plus className="mr-2 h-4 w-4" /> Adicionar peça
               </Button>
@@ -342,6 +384,7 @@ function RentalPublicPage() {
               </Button>
               <span className="text-sm text-muted-foreground">
                 Volume estimado: {estimatedLiters.toFixed(2)} L
+                {slot ? ` · Estimativa: ${formatCurrency(estimatedPrice, currency)}` : ""}
               </span>
             </div>
 
@@ -352,18 +395,55 @@ function RentalPublicPage() {
                   {(quote.items ?? []).map((line: any, i: number) => (
                     <li key={i} className="flex justify-between gap-4">
                       <span>
-                        {line.piece_name} × {line.quantity} · {Number(line.volume_liters).toFixed(2)}{" "}
-                        L
+                        {line.piece_name} × {line.quantity} ·{" "}
+                        {Number(line.volume_liters).toFixed(2)} L
                       </span>
-                      <span>{formatCurrency(Number(line.total_price), currency)}</span>
+                      <span className="text-right">
+                        {formatCurrency(Number(line.total_price), currency)}
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          {formatCurrency(
+                            itemPrice(
+                              {
+                                piece_name: line.piece_name,
+                                height_cm: line.height_cm,
+                                width_cm: line.width_cm,
+                                depth_cm: line.depth_cm,
+                                quantity: 1,
+                              },
+                              Number(quote.price_per_liter),
+                            ),
+                            currency,
+                          )}{" "}
+                          por unidade
+                        </span>
+                      </span>
                     </li>
                   ))}
                 </ul>
                 <div className="mt-3 flex justify-between border-t pt-2 text-sm font-semibold">
-                  <span>
-                    Total · {Number(quote.total_liters).toFixed(2)} L
-                  </span>
+                  <span>Total · {Number(quote.total_liters).toFixed(2)} L</span>
                   <span>{formatCurrency(Number(quote.total), currency)}</span>
+                </div>
+                <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
+                  <div className="rounded-md bg-background p-3">
+                    <p className="text-xs text-muted-foreground">Entrada para reservar</p>
+                    <p className="font-semibold">
+                      {formatCurrency(
+                        Number(quote.total) * (Number(paymentInfo?.deposit_percentage ?? 50) / 100),
+                        currency,
+                      )}
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-background p-3">
+                    <p className="text-xs text-muted-foreground">Saldo na retirada</p>
+                    <p className="font-semibold">
+                      {formatCurrency(
+                        Number(quote.total) *
+                          (1 - Number(paymentInfo?.deposit_percentage ?? 50) / 100),
+                        currency,
+                      )}
+                    </p>
+                  </div>
                 </div>
                 {!quote.fits && (
                   <p className="mt-2 text-sm text-destructive">
@@ -387,22 +467,26 @@ function RentalPublicPage() {
             <CardTitle className="text-lg">3. Reservar</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-xs">Nome</Label>
+                <Label className="text-xs">Nome do responsável</Label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs">E-mail</Label>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+                <Label className="text-xs">Nome do ateliê</Label>
+                <Input value={studioName} onChange={(e) => setStudioName(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs">Telefone (opcional)</Label>
+                <Label className="text-xs">E-mail</Label>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">WhatsApp</Label>
                 <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">CNPJ (opcional)</Label>
+                <Input value={document} onChange={(e) => setDocument(e.target.value)} />
               </div>
             </div>
             <div>
@@ -413,7 +497,16 @@ function RentalPublicPage() {
             <Button
               type="button"
               onClick={() => reserve.mutate()}
-              disabled={!slotId || reserve.isPending}
+              disabled={
+                !slotId ||
+                !quote?.fits ||
+                !quote?.meets_minimum ||
+                !name.trim() ||
+                !studioName.trim() ||
+                !email.trim() ||
+                !phone.trim() ||
+                reserve.isPending
+              }
             >
               {reserve.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Confirmar reserva
@@ -424,9 +517,42 @@ function RentalPublicPage() {
                 <p className="font-semibold">Reserva registrada!</p>
                 <p className="mt-1">
                   Código: <span className="font-mono">{confirmation.code}</span> ·{" "}
+                  {items.reduce((sum, item) => sum + Math.max(Number(item.quantity) || 1, 1), 0)}{" "}
+                  peças
+                  {" · "}
                   {Number(confirmation.total_liters).toFixed(2)} L ·{" "}
                   {formatCurrency(Number(confirmation.total), currency)}
                 </p>
+                <p className="mt-1 text-muted-foreground">
+                  {confirmation.firing_date ? `Queima: ${confirmation.firing_date}` : ""}
+                  {confirmation.firing_date && confirmation.pickup_date ? " · " : ""}
+                  {confirmation.pickup_date ? `Retirada prevista: ${confirmation.pickup_date}` : ""}
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <span className="text-muted-foreground">Entrada via PIX</span>
+                    <p className="font-semibold">
+                      {formatCurrency(Number(confirmation.deposit_amount), currency)}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Saldo na retirada</span>
+                    <p className="font-semibold">
+                      {formatCurrency(Number(confirmation.balance_amount), currency)}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3">
+                  Chave PIX: <span className="font-mono">{confirmation.pix_key}</span>
+                </p>
+                {confirmation.address && (
+                  <p className="mt-1 text-muted-foreground">
+                    Entrega e retirada: {confirmation.address}
+                  </p>
+                )}
+                {paymentInfo?.customer_instructions && (
+                  <p className="mt-1 text-muted-foreground">{paymentInfo.customer_instructions}</p>
+                )}
                 <p className="mt-1 text-muted-foreground">
                   Guarde o código para acompanhar o pedido. Entraremos em contato
                   {info?.contact_email ? ` (${info.contact_email})` : ""} para confirmar.
@@ -444,7 +570,7 @@ function RentalPublicPage() {
           <CardContent className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-3">
               <Input
-                placeholder="Código (RNT-XXXXXX)"
+                placeholder="Código (SQ-2026-XXXXX)"
                 value={lookupCode}
                 onChange={(e) => setLookupCode(e.target.value)}
               />
@@ -478,7 +604,7 @@ function RentalPublicPage() {
         </Card>
 
         <footer className="pb-10 text-center text-xs text-muted-foreground">
-          {info?.public_name ?? "Selá Rental"}
+          {info?.public_name ?? "Selá Queimas"}
           {info?.contact_phone ? ` · ${info.contact_phone}` : ""}
         </footer>
       </div>

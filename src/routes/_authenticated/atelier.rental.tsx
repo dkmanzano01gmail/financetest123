@@ -28,6 +28,7 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, parseLocaleAmount } from "@/lib/format";
 import {
+  RENTAL_FIRING_PRICE_PER_LITER,
   RENTAL_ORDER_STATUS,
   RENTAL_PAYMENT_STATUS,
   RENTAL_SLOT_STATUS,
@@ -45,7 +46,7 @@ const emptySlot = () => ({
   kiln_name: "",
   firing_type: "glaze",
   capacity_liters: "100",
-  price_per_liter: "12",
+  price_per_liter: "7",
   min_liters: "0",
   opens_at: "",
   closes_at: "",
@@ -100,7 +101,7 @@ function Page() {
       const { data, error } = await sb
         .from("rental_orders")
         .select(
-          "*, rental_slots(title, firing_date), rental_customers(name, email, phone), rental_order_items(piece_name, quantity, volume_liters, total_price)",
+          "*, rental_slots(title, firing_date, pickup_date), rental_customers(name, studio_name, email, phone, document), rental_order_items(piece_name, quantity, height_cm, width_cm, depth_cm, volume_liters, unit_price, total_price), rental_payments(id, type, amount, status, method, paid_at)",
         )
         .eq("workspace_id", wsId)
         .order("created_at", { ascending: false });
@@ -112,7 +113,7 @@ function Page() {
   const usageBySlot = useMemo(() => {
     const map: Record<string, number> = {};
     for (const o of orders as any[]) {
-      if (!["pending", "confirmed", "completed"].includes(o.status)) continue;
+      if (o.status === "cancelled") continue;
       map[o.slot_id] = (map[o.slot_id] ?? 0) + Number(o.total_liters ?? 0);
     }
     return map;
@@ -120,12 +121,33 @@ function Page() {
 
   const totals = useMemo(() => {
     const active = (orders as any[]).filter((o) => o.status !== "cancelled");
+    const quantityFor = (order: any) =>
+      (order.rental_order_items ?? []).reduce(
+        (sum: number, item: any) => sum + Number(item.quantity ?? 0),
+        0,
+      );
+    const today = new Date().toISOString().slice(0, 10);
     return {
-      count: active.length,
-      liters: active.reduce((s, o) => s + Number(o.total_liters ?? 0), 0),
-      revenue: active.reduce((s, o) => s + Number(o.total ?? 0), 0),
+      upcomingFirings: (slots as any[]).filter(
+        (slot) =>
+          slot.status === "open" && (!slot.firing_date || String(slot.firing_date) >= today),
+      ).length,
+      awaitingPieces: active
+        .filter((o) => ["received", "awaiting_firing"].includes(o.status))
+        .reduce((sum, order) => sum + quantityFor(order), 0),
+      readyPieces: active
+        .filter((o) => o.status === "ready_for_pickup")
+        .reduce((sum, order) => sum + quantityFor(order), 0),
+      receivable: active.reduce(
+        (sum, order) =>
+          sum +
+          (order.rental_payments ?? [])
+            .filter((payment: any) => !["paid", "cancelled", "refunded"].includes(payment.status))
+            .reduce((paymentSum: number, payment: any) => paymentSum + Number(payment.amount), 0),
+        0,
+      ),
     };
-  }, [orders]);
+  }, [orders, slots]);
 
   const ensureSettings = useMutation({
     mutationFn: async (patch: Record<string, any>) => {
@@ -146,6 +168,15 @@ function Page() {
       if (!form.title.trim()) throw new Error("Informe o título da vaga.");
       const capacity = parseLocaleAmount(form.capacity_liters);
       if (!Number.isFinite(capacity) || capacity <= 0) throw new Error("Capacidade inválida.");
+      const { error: settingsError } = await sb.from("rental_settings").upsert(
+        {
+          workspace_id: wsId,
+          public_name: "Selá Queimas",
+          is_published: true,
+        },
+        { onConflict: "workspace_id", ignoreDuplicates: true },
+      );
+      if (settingsError) throw settingsError;
       const payload = {
         workspace_id: wsId,
         title: form.title.trim(),
@@ -199,6 +230,38 @@ function Page() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const registerPayment = useMutation({
+    mutationFn: async ({ order, payment }: { order: any; payment: any }) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const { error } = await sb
+        .from("rental_payments")
+        .update({ status: "paid", method: "pix", paid_at: today })
+        .eq("id", payment.id)
+        .eq("workspace_id", wsId);
+      if (error) throw error;
+      const allPaid = (order.rental_payments ?? []).every(
+        (row: any) => row.id === payment.id || row.status === "paid",
+      );
+      const patch: Record<string, any> = {
+        payment_status: allPaid ? "paid" : "partial",
+      };
+      if (payment.type === "deposit" && order.status === "awaiting_payment") {
+        patch.status = "confirmed";
+      }
+      const { error: orderError } = await sb
+        .from("rental_orders")
+        .update(patch)
+        .eq("id", order.id)
+        .eq("workspace_id", wsId);
+      if (orderError) throw orderError;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rental-orders", wsId] });
+      toast.success("Pagamento registrado.");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const startEdit = (row: any) => {
     setEditId(row.id);
     setForm({
@@ -222,7 +285,7 @@ function Page() {
   return (
     <PageContainer>
       <PageHeader
-        title="Selá Rental"
+        title="Selá Queimas"
         description="Vagas de queima, pedidos e configuração da plataforma pública."
         action={
           <div className="flex flex-wrap gap-2">
@@ -244,27 +307,31 @@ function Page() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Pedidos ativos</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Próximas queimas</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{totals.count}</CardContent>
+          <CardContent className="text-2xl font-semibold">{totals.upcomingFirings}</CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Volume reservado</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Peças aguardando queima</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">
-            {totals.liters.toFixed(1)} L
-          </CardContent>
+          <CardContent className="text-2xl font-semibold">{totals.awaitingPieces}</CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Receita prevista</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Prontas para retirada</CardTitle>
+          </CardHeader>
+          <CardContent className="text-2xl font-semibold">{totals.readyPieces}</CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Valores a receber</CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-semibold">
-            {formatCurrency(totals.revenue, currency)}
+            {formatCurrency(totals.receivable, currency)}
           </CardContent>
         </Card>
       </div>
@@ -340,15 +407,16 @@ function Page() {
                       <span className="font-mono text-sm">{o.code}</span>{" "}
                       <span className="font-medium">{o.rental_customers?.name}</span>
                       <p className="text-xs text-muted-foreground">
+                        {o.rental_customers?.studio_name
+                          ? `${o.rental_customers.studio_name} · `
+                          : ""}
                         {o.rental_customers?.email}
                         {o.rental_customers?.phone ? ` · ${o.rental_customers.phone}` : ""} ·{" "}
                         {o.rental_slots?.title}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold">
-                        {formatCurrency(Number(o.total), currency)}
-                      </p>
+                      <p className="font-semibold">{formatCurrency(Number(o.total), currency)}</p>
                       <p className="text-xs text-muted-foreground">
                         {Number(o.total_liters).toFixed(2)} L
                       </p>
@@ -361,6 +429,34 @@ function Page() {
                       </li>
                     ))}
                   </ul>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(o.rental_payments ?? []).map((payment: any) => (
+                      <div
+                        key={payment.id}
+                        className="flex items-center justify-between rounded-md border p-2 text-sm"
+                      >
+                        <div>
+                          <p className="font-medium">
+                            {payment.type === "deposit" ? "Entrada" : "Saldo"} ·{" "}
+                            {formatCurrency(Number(payment.amount), currency)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {RENTAL_PAYMENT_STATUS[payment.status] ?? payment.status}
+                          </p>
+                        </div>
+                        {payment.status !== "paid" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={registerPayment.isPending}
+                            onClick={() => registerPayment.mutate({ order: o, payment })}
+                          >
+                            Registrar PIX
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                   {o.notes && <p className="text-xs italic text-muted-foreground">{o.notes}</p>}
                   <div className="flex flex-wrap gap-2">
                     <Select
@@ -404,6 +500,7 @@ function Page() {
 
         <TabsContent value="settings">
           <SettingsForm
+            key={settings?.updated_at ?? "new"}
             settings={settings}
             saving={ensureSettings.isPending}
             onSave={(patch) => ensureSettings.mutate(patch)}
@@ -443,7 +540,13 @@ function Page() {
               <Label>Tipo de queima</Label>
               <Select
                 value={form.firing_type}
-                onValueChange={(v) => setForm({ ...form, firing_type: v })}
+                onValueChange={(v) =>
+                  setForm({
+                    ...form,
+                    firing_type: v,
+                    price_per_liter: String(RENTAL_FIRING_PRICE_PER_LITER[v] ?? 7),
+                  })
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -468,6 +571,9 @@ function Page() {
                 value={form.price_per_liter}
                 onChange={(e) => setForm({ ...form, price_per_liter: e.target.value })}
               />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Padrão: R$ 4,50/L para Biscoito e R$ 7,00/L para Esmalte.
+              </p>
             </div>
             <div>
               <Label>Volume mínimo (L)</Label>
@@ -556,12 +662,16 @@ function SettingsForm({
   onSave: (patch: Record<string, any>) => void;
 }) {
   const [state, setState] = useState({
-    public_name: settings?.public_name ?? "Selá Rental",
-    headline: settings?.headline ?? "Alugue espaço no nosso forno",
+    public_name: settings?.public_name ?? "Selá Queimas",
+    headline: settings?.headline ?? "Agende sua queima",
     description: settings?.description ?? "",
     terms: settings?.terms ?? "",
     contact_email: settings?.contact_email ?? "",
     contact_phone: settings?.contact_phone ?? "",
+    deposit_percentage: settings?.deposit_percentage ?? 50,
+    pix_key: settings?.pix_key ?? "60.607.671/0001-47",
+    address: settings?.address ?? "",
+    customer_instructions: settings?.customer_instructions ?? "",
     is_published: settings?.is_published ?? true,
   });
 
@@ -610,6 +720,39 @@ function SettingsForm({
           <Input
             value={state.contact_phone}
             onChange={(e) => setState({ ...state, contact_phone: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Entrada para reserva (%)</Label>
+          <Input
+            type="number"
+            min="0"
+            max="100"
+            value={state.deposit_percentage}
+            onChange={(e) => setState({ ...state, deposit_percentage: Number(e.target.value) })}
+          />
+        </div>
+        <div>
+          <Label>Chave PIX</Label>
+          <Input
+            value={state.pix_key}
+            onChange={(e) => setState({ ...state, pix_key: e.target.value })}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <Label>Endereço para entrega e retirada</Label>
+          <Textarea
+            rows={2}
+            value={state.address}
+            onChange={(e) => setState({ ...state, address: e.target.value })}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <Label>Instruções ao cliente</Label>
+          <Textarea
+            rows={2}
+            value={state.customer_instructions}
+            onChange={(e) => setState({ ...state, customer_instructions: e.target.value })}
           />
         </div>
         <div>
