@@ -5,6 +5,8 @@ import {
   futureInstallmentExpenseSuggestions,
   installmentReferenceDate,
   invoiceMonthForPaymentDate,
+  parseInstallment,
+  typicalCardPaymentDay,
 } from "./credit-card-reconciliation.ts";
 
 describe("importação de fatura de cartão", () => {
@@ -42,59 +44,120 @@ describe("importação de fatura de cartão", () => {
 });
 
 describe("projeção de parcelas futuras", () => {
-  test("usa somente a fatura mais recente de cada cartão e soma os meses futuros", () => {
-    const result = futureInstallmentExpenseSuggestions([
-      {
-        id: "old",
-        date: "2026-07-06",
-        type: "expense",
-        amount: 999,
-        credit_card_id: "card-a",
-        invoice_month: "2026-07-01",
-        installment: "1/10",
-        credit_cards: { name: "Cartão A" },
-      },
-      {
-        id: "a1",
-        date: "2026-08-06",
-        type: "expense",
-        amount: 100,
-        credit_card_id: "card-a",
-        invoice_month: "2026-08-01",
-        installment: "2/4",
-        credit_cards: { name: "Cartão A" },
-      },
-      {
-        id: "a2",
-        date: "2026-08-06",
-        type: "expense",
-        amount: 50,
-        credit_card_id: "card-a",
-        invoice_month: "2026-08-01",
-        installment: "1 de 3",
-        credit_cards: { name: "Cartão A" },
-      },
-      {
-        id: "b1",
-        date: "2026-09-10",
-        type: "expense",
-        amount: 30,
-        credit_card_id: "card-b",
-        invoice_month: "2026-09-01",
-        installment: "3/4",
-        credit_cards: { name: "Cartão B" },
-      },
-    ]);
+  test("aceita os formatos de parcela suportados e rejeita valores inválidos", () => {
+    assert.deepEqual(parseInstallment("2/6"), { current: 2, total: 6 });
+    assert.deepEqual(parseInstallment("2 de 6"), { current: 2, total: 6 });
+    assert.equal(parseInstallment("7/6"), null);
+    assert.equal(parseInstallment("Única"), null);
+  });
+
+  test("calcula a mediana histórica e usa o vencimento quando não há histórico", () => {
+    const payments = [7, 8, 10, 30].map((day, index) => ({
+      date: `2026-0${index + 5}-${String(day).padStart(2, "0")}`,
+      linked_credit_card_id: index === 3 ? "other" : "card-a",
+      financial_role: "credit_card_payment",
+      status: "confirmed",
+    }));
+    assert.deepEqual(typicalCardPaymentDay("card-a", payments, 12), {
+      day: 8,
+      source: "history",
+    });
+    assert.deepEqual(typicalCardPaymentDay("card-b", payments, 12), {
+      day: 12,
+      source: "due_day",
+    });
+  });
+
+  test("usa só a última fatura e mantém cartões em datas separadas", () => {
+    const result = futureInstallmentExpenseSuggestions(
+      [
+        {
+          id: "old",
+          date: "2026-07-06",
+          type: "expense",
+          amount: 999,
+          credit_card_id: "card-a",
+          invoice_month: "2026-07-01",
+          installment: "1/10",
+        },
+        {
+          id: "a1",
+          date: "2026-08-06",
+          type: "expense",
+          amount: 100,
+          credit_card_id: "card-a",
+          invoice_month: "2026-08-01",
+          installment: "2/4",
+        },
+        {
+          id: "a2",
+          date: "2026-08-06",
+          type: "expense",
+          amount: 50,
+          credit_card_id: "card-a",
+          invoice_month: "2026-08-01",
+          installment: "1 de 3",
+        },
+        {
+          id: "b1",
+          date: "2026-09-10",
+          type: "expense",
+          amount: 30,
+          credit_card_id: "card-b",
+          invoice_month: "2026-09-01",
+          installment: "3/4",
+        },
+      ],
+      [
+        { id: "card-a", name: "Cartão A", due_day: 6 },
+        { id: "card-b", name: "Cartão B", due_day: 10 },
+      ],
+      [
+        {
+          date: "2026-07-07",
+          linked_credit_card_id: "card-a",
+          financial_role: "credit_card_payment",
+          status: "confirmed",
+        },
+        {
+          date: "2026-08-08",
+          linked_credit_card_id: "card-a",
+          financial_role: "credit_card_payment",
+          status: "confirmed",
+        },
+      ],
+    );
 
     assert.deepEqual(
-      result.map(({ month, amount, installmentsCount }) => ({
-        month,
+      result.map(({ cardName, date, amount, installmentsCount, paymentDaySource }) => ({
+        cardName,
+        date,
         amount,
         installmentsCount,
+        paymentDaySource,
       })),
       [
-        { month: "2026-09", amount: 150, installmentsCount: 2 },
-        { month: "2026-10", amount: 180, installmentsCount: 3 },
+        {
+          cardName: "Cartão A",
+          date: "2026-09-08",
+          amount: 150,
+          installmentsCount: 2,
+          paymentDaySource: "history",
+        },
+        {
+          cardName: "Cartão A",
+          date: "2026-10-08",
+          amount: 150,
+          installmentsCount: 2,
+          paymentDaySource: "history",
+        },
+        {
+          cardName: "Cartão B",
+          date: "2026-10-10",
+          amount: 30,
+          installmentsCount: 1,
+          paymentDaySource: "due_day",
+        },
       ],
     );
   });
@@ -157,18 +220,39 @@ describe("projeção de parcelas futuras", () => {
     assert.deepEqual(result, []);
   });
 
-  test("mantém o dia de pagamento e limita ao último dia do mês", () => {
-    const result = futureInstallmentExpenseSuggestions([
-      {
-        id: "jan",
-        date: "2027-01-31",
-        type: "expense",
-        amount: 25,
-        credit_card_id: "a",
-        invoice_month: "2027-01-01",
-        installment: "1/2",
-      },
-    ]);
+  test("limita o vencimento ao último dia do mês", () => {
+    const result = futureInstallmentExpenseSuggestions(
+      [
+        {
+          id: "jan",
+          date: "2027-01-15",
+          type: "expense",
+          amount: 25,
+          credit_card_id: "a",
+          invoice_month: "2027-01-01",
+          installment: "1/2",
+        },
+      ],
+      [{ id: "a", name: "Cartão A", due_day: 31 }],
+    );
     assert.equal(result[0].date, "2027-02-28");
+  });
+
+  test("ignora pagamentos históricos cancelados", () => {
+    assert.deepEqual(
+      typicalCardPaymentDay(
+        "a",
+        [
+          {
+            date: "2026-08-20",
+            linked_credit_card_id: "a",
+            financial_role: "credit_card_payment",
+            status: "cancelled",
+          },
+        ],
+        9,
+      ),
+      { day: 9, source: "due_day" },
+    );
   });
 });

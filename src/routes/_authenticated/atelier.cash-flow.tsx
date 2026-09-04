@@ -28,7 +28,10 @@ import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { buildCashFlowProjection, type CashFlowDay, type CashFlowEvent } from "@/lib/orna-logic";
 import {
+  type CardPaymentHistoryTransaction,
   futureInstallmentExpenseSuggestions,
+  type InstallmentForecastCard,
+  type InstallmentForecastTransaction,
   isCheckingAccountCashFlowTransaction,
 } from "@/lib/credit-card-reconciliation";
 import {
@@ -92,7 +95,7 @@ function CashFlowPage() {
   const [form, setForm] = useState(emptyForm());
   const [balOpen, setBalOpen] = useState(false);
   const [balForm, setBalForm] = useState({ starting_balance: "0" });
-  const [includeInstallmentForecast, setIncludeInstallmentForecast] = useState(false);
+  const [includeInstallmentForecast, setIncludeInstallmentForecast] = useState(true);
   const [visibleMovementSeries, setVisibleMovementSeries] = useState<
     Record<MovementSeriesKey, boolean>
   >({
@@ -137,14 +140,7 @@ function CashFlowPage() {
     isFetching: txFetching,
     refetch: refetchTransactions,
   } = useQuery({
-    queryKey: [
-      "transactions",
-      wsId,
-      "cash-flow",
-      year,
-      month,
-      monthsCount,
-    ],
+    queryKey: ["transactions", wsId, "cash-flow", year, month, monthsCount],
     enabled: !!wsId,
     queryFn: async () => {
       const start = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -215,11 +211,8 @@ function CashFlowPage() {
     queryFn: async () => {
       const { data, error } = await sb
         .from("transactions")
-        .select(
-          "id,date,type,amount,status,credit_card_id,invoice_month,installment,credit_cards(name)",
-        )
+        .select("id,date,type,amount,status,credit_card_id,invoice_month,installment")
         .eq("workspace_id", wsId)
-        .eq("source", "csv")
         .eq("type", "expense")
         .not("credit_card_id", "is", null)
         .not("invoice_month", "is", null)
@@ -230,24 +223,68 @@ function CashFlowPage() {
     },
   });
 
+  const {
+    data: installmentForecastCards = [],
+    error: installmentForecastCardsError,
+    isLoading: installmentForecastCardsLoading,
+  } = useQuery({
+    queryKey: ["credit_cards", wsId, "cash-flow-installment-suggestions"],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("credit_cards")
+        .select("id,name,due_day")
+        .eq("workspace_id", wsId)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const {
+    data: cardPaymentHistory = [],
+    error: cardPaymentHistoryError,
+    isLoading: cardPaymentHistoryLoading,
+  } = useQuery({
+    queryKey: ["transactions", wsId, "cash-flow-card-payment-history"],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("transactions")
+        .select("date,status,linked_credit_card_id,financial_role")
+        .eq("workspace_id", wsId)
+        .eq("financial_role", "credit_card_payment")
+        .not("linked_credit_card_id", "is", null)
+        .order("date", { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const installmentSuggestions = useMemo(
-    () => futureInstallmentExpenseSuggestions(installmentTransactions as any[]),
-    [installmentTransactions],
+    () =>
+      futureInstallmentExpenseSuggestions(
+        installmentTransactions as InstallmentForecastTransaction[],
+        installmentForecastCards as InstallmentForecastCard[],
+        cardPaymentHistory as CardPaymentHistoryTransaction[],
+      ),
+    [cardPaymentHistory, installmentForecastCards, installmentTransactions],
   );
 
   const installmentForecastEntries = useMemo(
     () =>
       installmentSuggestions.map((suggestion) => ({
-        id: `card-installments:${suggestion.month}`,
+        id: `card-installments:${suggestion.cardId}:${suggestion.month}`,
         entry_date: suggestion.date,
         specific_date: suggestion.date,
         type: "expense" as const,
-        description: "Parcelas futuras de cartão",
+        description: `Parcelas futuras — ${suggestion.cardName}`,
         amount: suggestion.amount,
         recurrence: "none" as const,
         status: "projected" as const,
         is_active: true,
-        notes: `Sugestão calculada pela última fatura importada: ${suggestion.cardNames.join(", ")}`,
+        notes: `Sugestão calculada pela última fatura importada de ${suggestion.cardName}`,
         categories: { name: "Cartão de crédito (sugestão)" },
       })),
     [installmentSuggestions],
@@ -503,8 +540,8 @@ function CashFlowPage() {
                 Sugestão de parcelas futuras
               </CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">
-                Soma mensal das parcelas restantes, calculada pela fatura importada mais recente de
-                cada cartão.
+                Parcelas restantes da última fatura de cada cartão, previstas no dia habitual de
+                pagamento ou, sem histórico, no vencimento cadastrado.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -521,9 +558,13 @@ function CashFlowPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {installmentTransactionsLoading ? (
+          {installmentTransactionsLoading ||
+          installmentForecastCardsLoading ||
+          cardPaymentHistoryLoading ? (
             <p className="text-sm text-muted-foreground">Calculando parcelas futuras…</p>
-          ) : installmentTransactionsError ? (
+          ) : installmentTransactionsError ||
+            installmentForecastCardsError ||
+            cardPaymentHistoryError ? (
             <p className="text-sm text-destructive">
               Não foi possível calcular as parcelas futuras.
             </p>
@@ -537,9 +578,14 @@ function CashFlowPage() {
                 {installmentSuggestions.map((suggestion) => {
                   const [suggestionYear, suggestionMonth] = suggestion.month.split("-").map(Number);
                   return (
-                    <div key={suggestion.month} className="rounded-lg border bg-muted/20 p-3">
+                    <div
+                      key={`${suggestion.cardId}:${suggestion.month}`}
+                      className="rounded-lg border bg-muted/20 p-3"
+                    >
+                      <div className="truncate text-sm font-medium">{suggestion.cardName}</div>
                       <div className="text-xs text-muted-foreground">
-                        {monthLabel(suggestionMonth)} de {suggestionYear}
+                        {monthLabel(suggestionMonth)} de {suggestionYear} · pagamento em{" "}
+                        {new Date(`${suggestion.date}T12:00:00`).toLocaleDateString("pt-BR")}
                       </div>
                       <div className="mt-1 font-mono font-semibold text-expense">
                         {formatCurrency(suggestion.amount, currency, privacy)}
@@ -547,6 +593,10 @@ function CashFlowPage() {
                       <div className="mt-1 text-xs text-muted-foreground">
                         {suggestion.installmentsCount}{" "}
                         {suggestion.installmentsCount === 1 ? "parcela" : "parcelas"}
+                        {" · "}
+                        {suggestion.paymentDaySource === "history"
+                          ? "dia baseado no histórico"
+                          : "dia do vencimento"}
                       </div>
                     </div>
                   );
@@ -1073,7 +1123,9 @@ function CashFlowPage() {
       <Dialog open={balOpen} onOpenChange={setBalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Saldo inicial de {monthLabel(month)} de {year}</DialogTitle>
+            <DialogTitle>
+              Saldo inicial de {monthLabel(month)} de {year}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">

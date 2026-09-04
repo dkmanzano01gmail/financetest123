@@ -31,15 +31,30 @@ export type InstallmentForecastTransaction = {
   invoice_month?: string | null;
   installment?: string | null;
   status?: string | null;
-  credit_cards?: { name?: string | null } | null;
+};
+
+export type InstallmentForecastCard = {
+  id: string;
+  name: string;
+  due_day?: number | null;
+};
+
+export type CardPaymentHistoryTransaction = {
+  date: string;
+  linked_credit_card_id?: string | null;
+  financial_role?: string | null;
+  status?: string | null;
 };
 
 export type FutureInstallmentExpense = {
   month: string;
   date: string;
+  cardId: string;
+  cardName: string;
   amount: number;
   installmentsCount: number;
-  cardNames: string[];
+  paymentDay: number;
+  paymentDaySource: "history" | "due_day";
 };
 
 export function parseInstallment(value: string | null | undefined) {
@@ -59,17 +74,58 @@ export function parseInstallment(value: string | null | undefined) {
   return { current, total };
 }
 
-function addMonthsClamped(dateValue: string, months: number) {
-  const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+function addMonthsToMonth(monthValue: string, months: number) {
+  const match = monthValue.match(/^(\d{4})-(\d{2})/);
   if (!match) return null;
   const sourceYear = Number(match[1]);
   const sourceMonth = Number(match[2]);
-  const sourceDay = Number(match[3]);
   const target = new Date(Date.UTC(sourceYear, sourceMonth - 1 + months, 1));
-  const lastDay = new Date(
-    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  return `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, "0")}-${String(Math.min(sourceDay, lastDay)).padStart(2, "0")}`;
+  return `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function dateForPaymentDay(month: string, day: number) {
+  const match = month.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthNumber = Number(match[2]);
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const safeDay = Math.min(lastDay, Math.max(1, Math.round(day) || 1));
+  return `${month}-${String(safeDay).padStart(2, "0")}`;
+}
+
+function ignoredStatus(status: string | null | undefined) {
+  return ["ignored", "cancelled", "ignorado", "cancelado"].includes(
+    String(status ?? "").toLowerCase(),
+  );
+}
+
+export function typicalCardPaymentDay(
+  cardId: string,
+  payments: CardPaymentHistoryTransaction[],
+  dueDay: number | null | undefined,
+) {
+  const days = payments
+    .filter(
+      (payment) =>
+        payment.financial_role === "credit_card_payment" &&
+        payment.linked_credit_card_id === cardId &&
+        !ignoredStatus(payment.status),
+    )
+    .map((payment) => Number(payment.date?.slice(8, 10)))
+    .filter((day) => Number.isInteger(day) && day >= 1 && day <= 31)
+    .sort((left, right) => left - right);
+
+  if (days.length > 0) {
+    const middle = Math.floor(days.length / 2);
+    const median =
+      days.length % 2 === 1 ? days[middle] : Math.round((days[middle - 1] + days[middle]) / 2);
+    return { day: median, source: "history" as const };
+  }
+
+  return {
+    day: Math.min(31, Math.max(1, Math.round(Number(dueDay)) || 1)),
+    source: "due_day" as const,
+  };
 }
 
 /**
@@ -78,21 +134,24 @@ function addMonthsClamped(dateValue: string, months: number) {
  */
 export function futureInstallmentExpenseSuggestions(
   transactions: InstallmentForecastTransaction[],
+  cards: InstallmentForecastCard[] = [],
+  paymentHistory: CardPaymentHistoryTransaction[] = [],
 ): FutureInstallmentExpense[] {
   const invoiceRows = transactions.filter(
     (transaction) =>
       transaction.type === "expense" &&
       Boolean(transaction.credit_card_id) &&
-      Boolean(transaction.invoice_month),
+      Boolean(transaction.invoice_month) &&
+      !ignoredStatus(transaction.status),
   );
   const usable = invoiceRows.filter((transaction) => {
-    const status = String(transaction.status ?? "").toLowerCase();
     return (
       Boolean(parseInstallment(transaction.installment)) &&
-      !["ignored", "cancelled", "ignorado", "cancelado"].includes(status) &&
       Math.abs(Number(transaction.amount) || 0) > 0
     );
   });
+
+  const cardById = new Map(cards.map((card) => [card.id, card]));
 
   const latestInvoiceByCard = new Map<string, string>();
   for (const transaction of invoiceRows) {
@@ -102,41 +161,44 @@ export function futureInstallmentExpenseSuggestions(
     if (!latest || invoiceMonth > latest) latestInvoiceByCard.set(cardId, invoiceMonth);
   }
 
-  const byMonth = new Map<
-    string,
-    { date: string; amount: number; installmentsCount: number; cardNames: Set<string> }
-  >();
+  const byCardAndMonth = new Map<string, FutureInstallmentExpense>();
   for (const transaction of usable) {
     const cardId = transaction.credit_card_id!;
     if (transaction.invoice_month!.slice(0, 7) !== latestInvoiceByCard.get(cardId)) continue;
+    const card = cardById.get(cardId);
+    const paymentDay = typicalCardPaymentDay(cardId, paymentHistory, card?.due_day);
     const installment = parseInstallment(transaction.installment)!;
     const amount = Math.abs(Number(transaction.amount) || 0);
     for (let offset = 1; offset <= installment.total - installment.current; offset += 1) {
-      const date = addMonthsClamped(transaction.date.slice(0, 10), offset);
+      const month = addMonthsToMonth(transaction.invoice_month!, offset);
+      if (!month) continue;
+      const date = dateForPaymentDay(month, paymentDay.day);
       if (!date) continue;
-      const month = date.slice(0, 7);
-      const current = byMonth.get(month) ?? {
+      const key = `${cardId}:${month}`;
+      const current = byCardAndMonth.get(key) ?? {
+        cardId,
+        cardName: card?.name?.trim() || "Cartão",
         date,
+        month,
         amount: 0,
         installmentsCount: 0,
-        cardNames: new Set<string>(),
+        paymentDay: paymentDay.day,
+        paymentDaySource: paymentDay.source,
       };
       current.amount += amount;
       current.installmentsCount += 1;
-      if (date < current.date) current.date = date;
-      current.cardNames.add(transaction.credit_cards?.name?.trim() || "Cartão");
-      byMonth.set(month, current);
+      byCardAndMonth.set(key, current);
     }
   }
 
-  return [...byMonth.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([month, suggestion]) => ({
-      month,
-      date: suggestion.date,
+  return [...byCardAndMonth.values()]
+    .sort(
+      (left, right) =>
+        left.date.localeCompare(right.date) || left.cardName.localeCompare(right.cardName),
+    )
+    .map((suggestion) => ({
+      ...suggestion,
       amount: Math.round(suggestion.amount * 100) / 100,
-      installmentsCount: suggestion.installmentsCount,
-      cardNames: [...suggestion.cardNames].sort((left, right) => left.localeCompare(right)),
     }));
 }
 
