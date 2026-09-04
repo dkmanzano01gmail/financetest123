@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
 import { formatCurrency } from "@/lib/format";
 import {
   RENTAL_ERRORS,
@@ -18,7 +19,19 @@ import {
   normalizeItems,
   type RentalItemInput,
 } from "@/lib/rental";
-import { Flame, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { ptBR } from "date-fns/locale";
+import {
+  CalendarDays,
+  Check,
+  Clock3,
+  Flame,
+  Loader2,
+  MapPin,
+  Plus,
+  Search,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/rental")({
@@ -53,8 +66,30 @@ const emptyItem = (): RentalItemInput => ({
   quantity: "1",
 });
 
+function parseLocalDate(value?: string | null) {
+  if (!value) return undefined;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day);
+}
+
+function dateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function displayDate(value?: string | null) {
+  const date = parseLocalDate(value);
+  return date
+    ? date.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
+    : "A definir";
+}
+
 function RentalPublicPage() {
   const [slotId, setSlotId] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<Date>();
   const [items, setItems] = useState<RentalItemInput[]>([emptyItem()]);
   const [quote, setQuote] = useState<any>(null);
   const [name, setName] = useState("");
@@ -106,6 +141,10 @@ function RentalPublicPage() {
   });
 
   const currency = info?.currency ?? "BRL";
+  const publicHeadline =
+    !info?.headline || info.headline === "Alugue espaço no nosso forno"
+      ? "Agende sua queima"
+      : info.headline;
   const slot = useMemo(
     () => (slots as any[]).find((s) => s.id === slotId) ?? null,
     [slots, slotId],
@@ -115,6 +154,33 @@ function RentalPublicPage() {
     () => itemsPrice(items, Number(slot?.price_per_liter ?? 0)),
     [items, slot?.price_per_liter],
   );
+  const availableDates = useMemo(
+    () =>
+      (slots as any[])
+        .filter((entry) => Number(entry.available_liters) > 0)
+        .map((entry) => parseLocalDate(entry.firing_date ?? entry.closes_at))
+        .filter((entry): entry is Date => Boolean(entry)),
+    [slots],
+  );
+  const limitedDates = useMemo(
+    () =>
+      (slots as any[])
+        .filter(
+          (entry) =>
+            Number(entry.available_liters) > 0 &&
+            Number(entry.available_liters) / Math.max(Number(entry.capacity_liters), 1) <= 0.25,
+        )
+        .map((entry) => parseLocalDate(entry.firing_date ?? entry.closes_at))
+        .filter((entry): entry is Date => Boolean(entry)),
+    [slots],
+  );
+  const slotsForSelectedDay = useMemo(() => {
+    if (!selectedDay) return [];
+    const selectedKey = dateKey(selectedDay);
+    return (slots as any[]).filter(
+      (entry) => (entry.firing_date ?? entry.closes_at) === selectedKey,
+    );
+  }, [selectedDay, slots]);
 
   const setItem = (index: number, patch: Partial<RentalItemInput>) => {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
@@ -145,6 +211,17 @@ function RentalPublicPage() {
     },
     onError: (e: any) => toast.error(e.message),
   });
+
+  useEffect(() => {
+    if (!slotId || normalizeItems(items).length === 0) {
+      setQuote(null);
+      return;
+    }
+    const timer = window.setTimeout(() => getQuote.mutate(), 450);
+    return () => window.clearTimeout(timer);
+    // The item array is the source of truth; the mutation always reads its latest value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, slotId]);
 
   const reserve = useMutation({
     mutationFn: async () => {
@@ -207,106 +284,226 @@ function RentalPublicPage() {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <header className="border-b bg-primary text-primary-foreground">
-        <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-10">
-          <div className="flex items-center gap-2 text-sm opacity-80">
-            <Flame className="h-4 w-4" />
-            Selá Queimas
-          </div>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            {info?.headline ?? "Agende sua queima"}
-          </h1>
-          {info?.description ? (
-            <p className="max-w-2xl text-sm opacity-90">{info.description}</p>
-          ) : (
-            <p className="max-w-2xl text-sm opacity-90">
-              Escolha uma queima, informe as dimensões das suas peças e reserve seu espaço. O
-              orçamento é calculado por litro ocupado.
+      <header className="relative overflow-hidden border-b bg-primary text-primary-foreground">
+        <div className="pointer-events-none absolute -right-24 -top-32 h-80 w-80 rounded-full border border-primary-foreground/10" />
+        <div className="pointer-events-none absolute -right-8 -top-16 h-48 w-48 rounded-full border border-primary-foreground/10" />
+        <div className="relative mx-auto flex max-w-6xl flex-col gap-5 px-4 py-10 sm:py-14">
+          <img
+            src="/sela-queimas-logo.png"
+            alt="Selá Queimas"
+            className="h-20 w-auto self-start object-contain sm:h-24"
+          />
+          <div className="max-w-2xl">
+            <p className="mb-2 text-xs font-medium uppercase tracking-[0.24em] opacity-75">
+              Reserva online de forno
             </p>
-          )}
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">{publicHeadline}</h1>
+            {info?.description ? (
+              <p className="mt-4 max-w-xl text-sm leading-6 opacity-85 sm:text-base">
+                {info.description}
+              </p>
+            ) : (
+              <p className="mt-4 max-w-xl text-sm leading-6 opacity-85 sm:text-base">
+                Escolha uma data, informe as medidas das suas peças e saiba o valor antes de
+                reservar.
+              </p>
+            )}
+          </div>
+          <div className="grid max-w-3xl grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            {["Escolha a data", "Informe as peças", "Reserve com 50%", "Entregue no Selá"].map(
+              (label, index) => (
+                <div
+                  key={label}
+                  className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-2"
+                >
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-foreground text-[10px] font-semibold text-primary">
+                    {index + 1}
+                  </span>
+                  {label}
+                </div>
+              ),
+            )}
+          </div>
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-5xl gap-6 px-4 py-8">
+      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:py-10">
         {/* 1. Vagas */}
-        <Card>
+        <Card className="overflow-hidden border-primary/15 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">1. Escolha a queima</CardTitle>
+            <div className="flex items-start gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                1
+              </span>
+              <div>
+                <CardTitle className="text-xl">Escolha a data da queima</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Os dias destacados possuem vagas abertas para reserva.
+                </p>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent>
             {slotsLoading ? (
-              <p className="text-sm text-muted-foreground">Carregando vagas…</p>
+              <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" /> Carregando datas…
+              </div>
             ) : (slots as any[]).length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Nenhuma vaga aberta no momento. Volte em breve.
-              </p>
+              <div className="rounded-xl border border-dashed p-8 text-center">
+                <CalendarDays className="mx-auto mb-3 size-8 text-primary/60" />
+                <p className="font-medium">Novas datas em breve</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Nenhuma queima está aberta para reserva neste momento.
+                </p>
+              </div>
             ) : (
-              (slots as any[]).map((s) => {
-                const selected = s.id === slotId;
-                const full = Number(s.available_liters) <= 0;
-                const pct = Math.min(
-                  100,
-                  (Number(s.used_liters) / Math.max(Number(s.capacity_liters), 1)) * 100,
-                );
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    disabled={full}
-                    onClick={() => {
-                      if (full) return;
-                      setSlotId(s.id);
+              <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
+                <div className="rounded-xl border bg-muted/20 p-2">
+                  <Calendar
+                    mode="single"
+                    locale={ptBR}
+                    selected={selectedDay}
+                    onSelect={(day) => {
+                      setSelectedDay(day);
+                      setSlotId(null);
                       resetQuote();
                     }}
-                    className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                      selected
-                        ? "border-primary bg-accent/40"
-                        : full
-                          ? "cursor-not-allowed opacity-60"
-                          : "hover:bg-muted/50"
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-medium">{s.title}</span>
-                      <Badge variant="secondary">
-                        {full
-                          ? "Lotado"
-                          : `${formatCurrency(Number(s.price_per_liter), currency)} / L`}
-                      </Badge>
-                    </div>
-                    {s.description && (
-                      <p className="mt-1 text-sm text-muted-foreground">{s.description}</p>
-                    )}
-                    <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                      {s.kiln_name && <span>Forno: {s.kiln_name}</span>}
-                      {s.firing_date && <span>Queima: {s.firing_date}</span>}
-                      {s.pickup_date && <span>Retirada: {s.pickup_date}</span>}
-                      {s.closes_at && <span>Inscrições até {s.closes_at}</span>}
-                    </div>
-                    <div className="mt-3">
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                        <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {Number(s.available_liters).toFixed(1)} L disponíveis de{" "}
-                        {Number(s.capacity_liters).toFixed(1)} L
+                    disabled={(day) =>
+                      !availableDates.some((available) => dateKey(available) === dateKey(day))
+                    }
+                    modifiers={{ available: availableDates, limited: limitedDates }}
+                    modifiersClassNames={{
+                      available: "font-semibold text-primary",
+                      limited: "text-amber-700",
+                    }}
+                    className="mx-auto w-full [--cell-size:2.65rem]"
+                  />
+                  <div className="flex flex-wrap justify-center gap-4 border-t px-2 pt-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="size-2 rounded-full bg-primary" /> Disponível
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="size-2 rounded-full bg-amber-500" /> Poucas vagas
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {!selectedDay ? (
+                    <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed p-6 text-center text-muted-foreground">
+                      <CalendarDays className="mb-3 size-8 text-primary/50" />
+                      <p className="font-medium text-foreground">Selecione um dia no calendário</p>
+                      <p className="mt-1 max-w-sm text-sm">
+                        Depois, escolha a modalidade disponível para essa data.
                       </p>
                     </div>
-                  </button>
-                );
-              })
+                  ) : slotsForSelectedDay.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Não há vagas disponíveis neste dia.
+                    </p>
+                  ) : (
+                    slotsForSelectedDay.map((s) => {
+                      const selected = s.id === slotId;
+                      const full = Number(s.available_liters) <= 0;
+                      const pct = Math.min(
+                        100,
+                        (Number(s.used_liters) / Math.max(Number(s.capacity_liters), 1)) * 100,
+                      );
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          disabled={full}
+                          onClick={() => {
+                            if (full) return;
+                            setSlotId(s.id);
+                            resetQuote();
+                          }}
+                          className={`w-full rounded-xl border p-5 text-left transition-all ${
+                            selected
+                              ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary"
+                              : full
+                                ? "cursor-not-allowed opacity-60"
+                                : "hover:bg-muted/50"
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-base font-semibold">{s.title}</span>
+                            <Badge variant={full ? "secondary" : "default"}>
+                              {full
+                                ? "Lotado"
+                                : `${formatCurrency(Number(s.price_per_liter), currency)} / L`}
+                            </Badge>
+                          </div>
+                          {s.description && (
+                            <p className="mt-1 text-sm text-muted-foreground">{s.description}</p>
+                          )}
+                          <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                            <span className="flex items-center gap-1.5">
+                              <Flame className="size-3.5" /> Queima: {displayDate(s.firing_date)}
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <Clock3 className="size-3.5" /> Inscrições até{" "}
+                              {displayDate(s.closes_at)}
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <Check className="size-3.5" /> Retirada: {displayDate(s.pickup_date)}
+                            </span>
+                            {s.kiln_name && (
+                              <span className="flex items-center gap-1.5">
+                                <MapPin className="size-3.5" /> {s.kiln_name}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-3">
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                              <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {Number(s.available_liters).toFixed(1)} L disponíveis de{" "}
+                              {Number(s.capacity_liters).toFixed(1)} L
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
 
         {/* 2. Peças + orçamento */}
-        <Card>
+        <Card className="border-primary/15 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">2. Suas peças</CardTitle>
+            <div className="flex items-start gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                2
+              </span>
+              <div>
+                <CardTitle className="text-xl">Conte sobre suas peças</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  O valor é atualizado automaticamente conforme você informa as medidas.
+                </p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {slot && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-primary/5 px-4 py-3 text-sm">
+                <div>
+                  <p className="font-medium">{slot.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {displayDate(slot.firing_date)} · retirada {displayDate(slot.pickup_date)}
+                  </p>
+                </div>
+                <Badge variant="outline">
+                  {formatCurrency(Number(slot.price_per_liter), currency)} / L
+                </Badge>
+              </div>
+            )}
             {items.map((item, index) => (
-              <div key={index} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-6">
+              <div key={index} className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-6">
                 <div className="sm:col-span-2">
                   <Label className="text-xs">Peça</Label>
                   <Input
@@ -374,22 +571,19 @@ function RentalPublicPage() {
               >
                 <Plus className="mr-2 h-4 w-4" /> Adicionar peça
               </Button>
-              <Button
-                type="button"
-                onClick={() => getQuote.mutate()}
-                disabled={!slotId || getQuote.isPending}
-              >
-                {getQuote.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Calcular orçamento
-              </Button>
               <span className="text-sm text-muted-foreground">
                 Volume estimado: {estimatedLiters.toFixed(2)} L
                 {slot ? ` · Estimativa: ${formatCurrency(estimatedPrice, currency)}` : ""}
               </span>
+              {getQuote.isPending && (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" /> Atualizando orçamento…
+                </span>
+              )}
             </div>
 
             {quote && (
-              <div className="rounded-lg border bg-muted/40 p-4">
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
                 <p className="font-medium">Orçamento — {quote.slot_title}</p>
                 <ul className="mt-2 space-y-1 text-sm">
                   {(quote.items ?? []).map((line: any, i: number) => (
@@ -462,9 +656,19 @@ function RentalPublicPage() {
         </Card>
 
         {/* 3. Reserva */}
-        <Card>
+        <Card className="border-primary/15 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">3. Reservar</CardTitle>
+            <div className="flex items-start gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                3
+              </span>
+              <div>
+                <CardTitle className="text-xl">Seus dados e reserva</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Use um WhatsApp e e-mail que você consulte com frequência.
+                </p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -494,6 +698,11 @@ function RentalPublicPage() {
               <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
             </div>
             {info?.terms && <p className="text-xs text-muted-foreground">{info.terms}</p>}
+            <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+              Seus dados serão utilizados somente para identificar a reserva e entrar em contato
+              sobre suas peças.
+            </div>
             <Button
               type="button"
               onClick={() => reserve.mutate()}
@@ -509,7 +718,7 @@ function RentalPublicPage() {
               }
             >
               {reserve.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Confirmar reserva
+              Confirmar reserva e ver PIX
             </Button>
 
             {confirmation && (
