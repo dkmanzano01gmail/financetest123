@@ -224,7 +224,7 @@ function Page() {
       <PageHeader
         title="Selá Rental"
         description="Vagas de queima, pedidos e configuração da plataforma pública."
-        actions={
+        action={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
               <a href="/rental" target="_blank" rel="noreferrer">
