@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StudentInviteRouteImport } from './routes/student-invite'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as RentalRouteImport } from './routes/rental'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -56,6 +57,11 @@ const StudentInviteRoute = StudentInviteRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RentalRoute = RentalRouteImport.update({
+  id: '/rental',
+  path: '/rental',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -263,6 +269,7 @@ const AuthenticatedAtelierAttendanceRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRouteWithChildren
+  '/rental': typeof RentalRoute
   '/reset-password': typeof ResetPasswordRoute
   '/student-invite': typeof StudentInviteRoute
   '/accounts': typeof AuthenticatedAccountsRoute
@@ -302,6 +309,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRouteWithChildren
+  '/rental': typeof RentalRoute
   '/reset-password': typeof ResetPasswordRoute
   '/student-invite': typeof StudentInviteRoute
   '/accounts': typeof AuthenticatedAccountsRoute
@@ -342,6 +350,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRouteWithChildren
+  '/rental': typeof RentalRoute
   '/reset-password': typeof ResetPasswordRoute
   '/student-invite': typeof StudentInviteRoute
   '/_authenticated/accounts': typeof AuthenticatedAccountsRoute
@@ -383,6 +392,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/rental'
     | '/reset-password'
     | '/student-invite'
     | '/accounts'
@@ -422,6 +432,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/rental'
     | '/reset-password'
     | '/student-invite'
     | '/accounts'
@@ -461,6 +472,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/rental'
     | '/reset-password'
     | '/student-invite'
     | '/_authenticated/accounts'
@@ -502,6 +514,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
+  RentalRoute: typeof RentalRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   StudentInviteRoute: typeof StudentInviteRoute
 }
@@ -520,6 +533,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rental': {
+      id: '/rental'
+      path: '/rental'
+      fullPath: '/rental'
+      preLoaderRoute: typeof RentalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -878,6 +898,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
+  RentalRoute: RentalRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   StudentInviteRoute: StudentInviteRoute,
 }
