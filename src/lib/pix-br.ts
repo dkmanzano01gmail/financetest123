@@ -30,11 +30,20 @@ export function createPixPayload(input: {
   amount: number;
   studentName: string;
   description?: string;
+  pixKey?: string;
 }) {
   if (!Number.isFinite(input.amount) || input.amount <= 0) {
     throw new Error("O valor do Pix deve ser maior que zero.");
   }
-  const key = SELA_PIX_KEY.replace(/\D/g, "");
+  const rawKey = (input.pixKey || SELA_PIX_KEY).trim();
+  const digits = rawKey.replace(/\D/g, "");
+  const key = rawKey.includes("@")
+    ? rawKey.toLowerCase()
+    : rawKey.startsWith("+")
+      ? "+" + digits
+      : digits.length === 11 || digits.length === 14
+        ? digits
+        : rawKey;
   const description = normalize(input.description || `Materiais Sela - ${input.studentName}`, 50);
   const merchantAccount =
     field("00", "BR.GOV.BCB.PIX") + field("01", key) + field("02", description);

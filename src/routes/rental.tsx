@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { formatCurrency } from "@/lib/format";
+import { createPixPayload } from "@/lib/pix-br";
 import {
   RENTAL_ERRORS,
   RENTAL_WORKSPACE_ID,
@@ -24,6 +26,7 @@ import {
   CalendarDays,
   Check,
   Clock3,
+  Copy,
   Flame,
   Loader2,
   MapPin,
@@ -162,9 +165,51 @@ function RentalPublicPage() {
   const [document, setDocument] = useState("");
   const [notes, setNotes] = useState("");
   const [confirmation, setConfirmation] = useState<any>(null);
+  const [pixQrCode, setPixQrCode] = useState("");
   const [lookupCode, setLookupCode] = useState("");
   const [lookupEmail, setLookupEmail] = useState("");
   const [lookupResult, setLookupResult] = useState<any>(null);
+
+  const pixCopyPaste = useMemo(() => {
+    if (!confirmation?.pix_key || !Number(confirmation?.deposit_amount)) return "";
+    try {
+      return createPixPayload({
+        amount: Number(confirmation.deposit_amount),
+        studentName: name,
+        description: "Reserva " + confirmation.code,
+        pixKey: confirmation.pix_key,
+      });
+    } catch {
+      return "";
+    }
+  }, [confirmation, name]);
+
+  useEffect(() => {
+    let active = true;
+    if (!pixCopyPaste) {
+      setPixQrCode("");
+      return;
+    }
+    QRCode.toDataURL(pixCopyPaste, { errorCorrectionLevel: "M", margin: 1, width: 420 })
+      .then((dataUrl) => {
+        if (active) setPixQrCode(dataUrl);
+      })
+      .catch(() => {
+        if (active) setPixQrCode("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [pixCopyPaste]);
+
+  async function copyPixCode() {
+    try {
+      await navigator.clipboard.writeText(pixCopyPaste);
+      toast.success("Código PIX copiado!");
+    } catch {
+      toast.error("Não foi possível copiar. Selecione o código manualmente.");
+    }
+  }
 
   const { data: info } = useQuery({
     queryKey: ["rental-public-info"],
@@ -811,9 +856,44 @@ function RentalPublicPage() {
                     </p>
                   </div>
                 </div>
-                <p className="mt-3">
-                  Chave PIX: <span className="font-mono">{confirmation.pix_key}</span>
-                </p>
+                {pixCopyPaste && (
+                  <div className="mt-4 rounded-xl border border-primary/20 bg-background/80 p-4">
+                    <div className="mb-4">
+                      <p className="font-semibold">Pague a entrada para confirmar</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Escaneie o QR Code ou copie o código PIX abaixo no aplicativo do seu banco.
+                      </p>
+                    </div>
+                    <div className="grid items-center gap-4 sm:grid-cols-[180px_1fr]">
+                      <div className="mx-auto flex size-[180px] items-center justify-center rounded-xl border bg-white p-2">
+                        {pixQrCode ? (
+                          <img
+                            src={pixQrCode}
+                            alt={`QR Code PIX da reserva ${confirmation.code}`}
+                            className="size-full"
+                          />
+                        ) : (
+                          <Loader2 className="size-6 animate-spin text-primary" />
+                        )}
+                      </div>
+                      <div className="min-w-0 space-y-3">
+                        <div>
+                          <Label className="text-xs">PIX copia e cola</Label>
+                          <div className="mt-1 break-all rounded-lg border bg-white p-3 font-mono text-[11px] leading-5 text-foreground">
+                            {pixCopyPaste}
+                          </div>
+                        </div>
+                        <Button type="button" className="w-full sm:w-auto" onClick={copyPixCode}>
+                          <Copy className="mr-2 size-4" />
+                          Copiar código PIX
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Chave PIX: <span className="font-mono">{confirmation.pix_key}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {confirmation.address && (
                   <p className="mt-1 text-muted-foreground">
                     Entrega e retirada: {confirmation.address}
