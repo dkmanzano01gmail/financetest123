@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StudentInviteRouteImport } from './routes/student-invite'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as RentalRouteImport } from './routes/rental'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -39,6 +40,7 @@ import { Route as AuthenticatedStudentAccountRouteImport } from './routes/_authe
 import { Route as AuthenticatedAtelierWorkshopPricingRouteImport } from './routes/_authenticated/atelier.workshop-pricing'
 import { Route as AuthenticatedAtelierStudentsRouteImport } from './routes/_authenticated/atelier.students'
 import { Route as AuthenticatedAtelierStudentPaymentsRouteImport } from './routes/_authenticated/atelier.student-payments'
+import { Route as AuthenticatedAtelierRentalRouteImport } from './routes/_authenticated/atelier.rental'
 import { Route as AuthenticatedAtelierRenovationRouteImport } from './routes/_authenticated/atelier.renovation'
 import { Route as AuthenticatedAtelierRawMaterialsRouteImport } from './routes/_authenticated/atelier.raw-materials'
 import { Route as AuthenticatedAtelierPiecePricingRouteImport } from './routes/_authenticated/atelier.piece-pricing'
@@ -56,6 +58,11 @@ const StudentInviteRoute = StudentInviteRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RentalRoute = RentalRouteImport.update({
+  id: '/rental',
+  path: '/rental',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -211,6 +218,12 @@ const AuthenticatedAtelierStudentPaymentsRoute =
     path: '/atelier/student-payments',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAtelierRentalRoute =
+  AuthenticatedAtelierRentalRouteImport.update({
+    id: '/atelier/rental',
+    path: '/atelier/rental',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAtelierRenovationRoute =
   AuthenticatedAtelierRenovationRouteImport.update({
     id: '/atelier/renovation',
@@ -263,6 +276,7 @@ const AuthenticatedAtelierAttendanceRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRouteWithChildren
+  '/rental': typeof RentalRoute
   '/reset-password': typeof ResetPasswordRoute
   '/student-invite': typeof StudentInviteRoute
   '/accounts': typeof AuthenticatedAccountsRoute
@@ -288,6 +302,7 @@ export interface FileRoutesByFullPath {
   '/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
   '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
+  '/atelier/rental': typeof AuthenticatedAtelierRentalRoute
   '/atelier/student-payments': typeof AuthenticatedAtelierStudentPaymentsRoute
   '/atelier/students': typeof AuthenticatedAtelierStudentsRoute
   '/atelier/workshop-pricing': typeof AuthenticatedAtelierWorkshopPricingRoute
@@ -302,6 +317,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRouteWithChildren
+  '/rental': typeof RentalRoute
   '/reset-password': typeof ResetPasswordRoute
   '/student-invite': typeof StudentInviteRoute
   '/accounts': typeof AuthenticatedAccountsRoute
@@ -326,6 +342,7 @@ export interface FileRoutesByTo {
   '/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
   '/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
+  '/atelier/rental': typeof AuthenticatedAtelierRentalRoute
   '/atelier/student-payments': typeof AuthenticatedAtelierStudentPaymentsRoute
   '/atelier/students': typeof AuthenticatedAtelierStudentsRoute
   '/atelier/workshop-pricing': typeof AuthenticatedAtelierWorkshopPricingRoute
@@ -342,6 +359,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRouteWithChildren
+  '/rental': typeof RentalRoute
   '/reset-password': typeof ResetPasswordRoute
   '/student-invite': typeof StudentInviteRoute
   '/_authenticated/accounts': typeof AuthenticatedAccountsRoute
@@ -367,6 +385,7 @@ export interface FileRoutesById {
   '/_authenticated/atelier/piece-pricing': typeof AuthenticatedAtelierPiecePricingRoute
   '/_authenticated/atelier/raw-materials': typeof AuthenticatedAtelierRawMaterialsRoute
   '/_authenticated/atelier/renovation': typeof AuthenticatedAtelierRenovationRoute
+  '/_authenticated/atelier/rental': typeof AuthenticatedAtelierRentalRoute
   '/_authenticated/atelier/student-payments': typeof AuthenticatedAtelierStudentPaymentsRoute
   '/_authenticated/atelier/students': typeof AuthenticatedAtelierStudentsRoute
   '/_authenticated/atelier/workshop-pricing': typeof AuthenticatedAtelierWorkshopPricingRoute
@@ -383,6 +402,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/rental'
     | '/reset-password'
     | '/student-invite'
     | '/accounts'
@@ -408,6 +428,7 @@ export interface FileRouteTypes {
     | '/atelier/piece-pricing'
     | '/atelier/raw-materials'
     | '/atelier/renovation'
+    | '/atelier/rental'
     | '/atelier/student-payments'
     | '/atelier/students'
     | '/atelier/workshop-pricing'
@@ -422,6 +443,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/rental'
     | '/reset-password'
     | '/student-invite'
     | '/accounts'
@@ -446,6 +468,7 @@ export interface FileRouteTypes {
     | '/atelier/piece-pricing'
     | '/atelier/raw-materials'
     | '/atelier/renovation'
+    | '/atelier/rental'
     | '/atelier/student-payments'
     | '/atelier/students'
     | '/atelier/workshop-pricing'
@@ -461,6 +484,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/rental'
     | '/reset-password'
     | '/student-invite'
     | '/_authenticated/accounts'
@@ -486,6 +510,7 @@ export interface FileRouteTypes {
     | '/_authenticated/atelier/piece-pricing'
     | '/_authenticated/atelier/raw-materials'
     | '/_authenticated/atelier/renovation'
+    | '/_authenticated/atelier/rental'
     | '/_authenticated/atelier/student-payments'
     | '/_authenticated/atelier/students'
     | '/_authenticated/atelier/workshop-pricing'
@@ -502,6 +527,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
+  RentalRoute: typeof RentalRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   StudentInviteRoute: typeof StudentInviteRoute
 }
@@ -520,6 +546,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rental': {
+      id: '/rental'
+      path: '/rental'
+      fullPath: '/rental'
+      preLoaderRoute: typeof RentalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -718,6 +751,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAtelierStudentPaymentsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/atelier/rental': {
+      id: '/_authenticated/atelier/rental'
+      path: '/atelier/rental'
+      fullPath: '/atelier/rental'
+      preLoaderRoute: typeof AuthenticatedAtelierRentalRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/atelier/renovation': {
       id: '/_authenticated/atelier/renovation'
       path: '/atelier/renovation'
@@ -821,6 +861,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAtelierPiecePricingRoute: typeof AuthenticatedAtelierPiecePricingRoute
   AuthenticatedAtelierRawMaterialsRoute: typeof AuthenticatedAtelierRawMaterialsRoute
   AuthenticatedAtelierRenovationRoute: typeof AuthenticatedAtelierRenovationRoute
+  AuthenticatedAtelierRentalRoute: typeof AuthenticatedAtelierRentalRoute
   AuthenticatedAtelierStudentPaymentsRoute: typeof AuthenticatedAtelierStudentPaymentsRoute
   AuthenticatedAtelierStudentsRoute: typeof AuthenticatedAtelierStudentsRoute
   AuthenticatedAtelierWorkshopPricingRoute: typeof AuthenticatedAtelierWorkshopPricingRoute
@@ -852,6 +893,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAtelierPiecePricingRoute: AuthenticatedAtelierPiecePricingRoute,
   AuthenticatedAtelierRawMaterialsRoute: AuthenticatedAtelierRawMaterialsRoute,
   AuthenticatedAtelierRenovationRoute: AuthenticatedAtelierRenovationRoute,
+  AuthenticatedAtelierRentalRoute: AuthenticatedAtelierRentalRoute,
   AuthenticatedAtelierStudentPaymentsRoute:
     AuthenticatedAtelierStudentPaymentsRoute,
   AuthenticatedAtelierStudentsRoute: AuthenticatedAtelierStudentsRoute,
@@ -878,6 +920,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
+  RentalRoute: RentalRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   StudentInviteRoute: StudentInviteRoute,
 }

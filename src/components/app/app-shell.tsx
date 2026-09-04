@@ -35,6 +35,7 @@ import {
   CircleHelp,
   Loader2,
   CircleDollarSign,
+  Store,
 } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
@@ -133,6 +134,7 @@ const baseNavDef = [
     label: "Workshops",
   },
   { to: "/atelier/firing-pricing", icon: Flame, key: "nav.atelier.firings", label: "Queimas" },
+  { to: "/atelier/rental", icon: Store, key: "nav.atelier.rental", label: "Selá Rental" },
   { to: "/feedback", icon: MessageSquare, key: "nav.feedback", label: "Comentários" },
   { to: "/customizations", icon: Wand2, key: "nav.customizations", label: "Personalizações" },
   { to: "/settings", icon: Settings, key: "nav.settings", label: "Configurações" },
