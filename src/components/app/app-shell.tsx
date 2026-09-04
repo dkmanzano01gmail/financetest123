@@ -35,6 +35,7 @@ import {
   CircleHelp,
   Loader2,
   CircleDollarSign,
+  Store,
 } from "lucide-react";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { supabase } from "@/integrations/supabase/client";
