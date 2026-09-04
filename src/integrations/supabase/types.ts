@@ -2487,31 +2487,37 @@ export type Database = {
       rental_customers: {
         Row: {
           created_at: string
+          document: string | null
           email: string
           id: string
           name: string
           notes: string | null
           phone: string | null
+          studio_name: string | null
           updated_at: string
           workspace_id: string
         }
         Insert: {
           created_at?: string
+          document?: string | null
           email: string
           id?: string
           name: string
           notes?: string | null
           phone?: string | null
+          studio_name?: string | null
           updated_at?: string
           workspace_id: string
         }
         Update: {
           created_at?: string
+          document?: string | null
           email?: string
           id?: string
           name?: string
           notes?: string | null
           phone?: string | null
+          studio_name?: string | null
           updated_at?: string
           workspace_id?: string
         }
@@ -2590,10 +2596,13 @@ export type Database = {
       }
       rental_orders: {
         Row: {
+          balance_amount: number
           code: string
           created_at: string
           customer_id: string
+          deposit_amount: number
           discount: number
+          estimated_pickup_date: string | null
           id: string
           notes: string | null
           payment_status: string
@@ -2606,10 +2615,13 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          balance_amount?: number
           code: string
           created_at?: string
           customer_id: string
+          deposit_amount?: number
           discount?: number
+          estimated_pickup_date?: string | null
           id?: string
           notes?: string | null
           payment_status?: string
@@ -2622,10 +2634,13 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          balance_amount?: number
           code?: string
           created_at?: string
           customer_id?: string
+          deposit_amount?: number
           discount?: number
+          estimated_pickup_date?: string | null
           id?: string
           notes?: string | null
           payment_status?: string
@@ -2669,7 +2684,9 @@ export type Database = {
           method: string | null
           notes: string | null
           order_id: string
-          paid_at: string
+          paid_at: string | null
+          status: string
+          type: string | null
           updated_at: string
           workspace_id: string
         }
@@ -2680,7 +2697,9 @@ export type Database = {
           method?: string | null
           notes?: string | null
           order_id: string
-          paid_at?: string
+          paid_at?: string | null
+          status?: string
+          type?: string | null
           updated_at?: string
           workspace_id: string
         }
@@ -2691,7 +2710,9 @@ export type Database = {
           method?: string | null
           notes?: string | null
           order_id?: string
-          paid_at?: string
+          paid_at?: string | null
+          status?: string
+          type?: string | null
           updated_at?: string
           workspace_id?: string
         }
@@ -2712,47 +2733,106 @@ export type Database = {
           },
         ]
       }
+      rental_pricing_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          changed_by_email: string | null
+          firing_type: string
+          id: string
+          new_coefficient: number
+          old_coefficient: number
+          workspace_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_email?: string | null
+          firing_type: string
+          id?: string
+          new_coefficient: number
+          old_coefficient: number
+          workspace_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_email?: string | null
+          firing_type?: string
+          id?: string
+          new_coefficient?: number
+          old_coefficient?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_pricing_history_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rental_settings: {
         Row: {
+          address: string
+          biscuit_coefficient: number
           contact_email: string | null
           contact_phone: string | null
           created_at: string
           currency: string
+          customer_instructions: string
           default_price_per_liter: number
+          deposit_percentage: number
           description: string | null
+          glaze_coefficient: number
           headline: string
           is_published: boolean
           min_order_amount: number
+          pix_key: string
           public_name: string
           terms: string | null
           updated_at: string
           workspace_id: string
         }
         Insert: {
+          address?: string
+          biscuit_coefficient?: number
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
           currency?: string
+          customer_instructions?: string
           default_price_per_liter?: number
+          deposit_percentage?: number
           description?: string | null
+          glaze_coefficient?: number
           headline?: string
           is_published?: boolean
           min_order_amount?: number
+          pix_key?: string
           public_name?: string
           terms?: string | null
           updated_at?: string
           workspace_id: string
         }
         Update: {
+          address?: string
+          biscuit_coefficient?: number
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
           currency?: string
+          customer_instructions?: string
           default_price_per_liter?: number
+          deposit_percentage?: number
           description?: string | null
+          glaze_coefficient?: number
           headline?: string
           is_published?: boolean
           min_order_amount?: number
+          pix_key?: string
           public_name?: string
           terms?: string | null
           updated_at?: string
@@ -4015,12 +4095,14 @@ export type Database = {
       }
       rental_public_create_order: {
         Args: {
+          _document: string
           _email: string
           _items: Json
           _name: string
           _notes?: string
           _phone: string
           _slot_id: string
+          _studio_name: string
         }
         Returns: Json
       }
@@ -4041,6 +4123,15 @@ export type Database = {
       rental_public_order_status: {
         Args: { _code: string; _email: string }
         Returns: Json
+      }
+      rental_public_payment_info: {
+        Args: { _workspace_id: string }
+        Returns: {
+          address: string
+          customer_instructions: string
+          deposit_percentage: number
+          pix_key: string
+        }[]
       }
       rental_public_quote: {
         Args: { _items: Json; _slot_id: string }
