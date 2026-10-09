@@ -33,6 +33,38 @@ export type AccountMovementSummary = {
   redemptions: { count: number; amount: number };
 };
 
+export type MovementConversionDefaults = {
+  investmentAction: "contribution" | "redemption";
+  sourceAccountId: string;
+  destinationAccountId: string;
+};
+
+/**
+ * Keeps the already-registered transaction on the same account side while the
+ * user chooses the counter-account that completes the movement.
+ */
+export function movementConversionDefaults(
+  transaction: { type?: string | null; account_id?: string | null },
+  currentAccountType?: string | null,
+): MovementConversionDefaults {
+  const currentAccountId = transaction.account_id ?? "";
+  const isIncome = transaction.type === "income";
+  const investmentAction =
+    currentAccountType === "investment"
+      ? isIncome
+        ? "contribution"
+        : "redemption"
+      : isIncome
+        ? "redemption"
+        : "contribution";
+
+  return {
+    investmentAction,
+    sourceAccountId: isIncome ? "" : currentAccountId,
+    destinationAccountId: isIncome ? currentAccountId : "",
+  };
+}
+
 /**
  * Summarizes paired movements once per transfer group. The outgoing side is
  * used for transfers/contributions and the incoming side for redemptions.

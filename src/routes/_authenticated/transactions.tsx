@@ -808,7 +808,9 @@ function TransactionsPage() {
                       <TableCell>
                         <Select
                           value={tx.category_id ?? ""}
-                          disabled={protectedAllocationTransactionIds.has(tx.id)}
+                          disabled={
+                            protectedAllocationTransactionIds.has(tx.id) || isAccountMovement(tx)
+                          }
                           onValueChange={(v) =>
                             updateCat.mutate({ id: tx.id, category_id: v || null })
                           }
@@ -872,7 +874,9 @@ function TransactionsPage() {
                                   ? "Desfaça o abatimento na aba Cartões para editar"
                                   : "Editar"
                             }
-                            disabled={protectedAllocationTransactionIds.has(tx.id)}
+                            disabled={
+                              protectedAllocationTransactionIds.has(tx.id) || isAccountMovement(tx)
+                            }
                             onClick={() => {
                               setEditingTx(tx);
                               setOpen(true);

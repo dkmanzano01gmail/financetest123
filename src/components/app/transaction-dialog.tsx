@@ -27,6 +27,10 @@ import { L } from "@/lib/labels";
 import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
 import { parseLocaleAmount } from "@/lib/format";
 import { billingMonthForPurchase } from "@/lib/credit-card-reconciliation";
+import {
+  isAccountMovement,
+  movementConversionDefaults,
+} from "@/lib/account-movements";
 
 export function TransactionDialog({
   open,
@@ -59,6 +63,12 @@ export function TransactionDialog({
   const wsId = workspace?.id;
   const t = workspace ? L(workspace.type) : L("personal");
   const editing = !!transaction?.id;
+  const conversionUnavailable =
+    editing &&
+    (isAccountMovement(transaction) ||
+      !!transaction?.credit_card_id ||
+      !!transaction?.linked_credit_card_id ||
+      !!transaction?.reversal_of_transaction_id);
 
   const { data: categories } = useQuery({
     queryKey: ["categories", wsId],
@@ -156,8 +166,6 @@ export function TransactionDialog({
       const desc = description.trim();
 
       if (entryKind !== "regular") {
-        if (editing)
-          throw new Error("Movimentações vinculadas não podem ser editadas parcialmente.");
         if (!sourceAccountId || !destinationAccountId)
           throw new Error("Informe as contas de origem e destino.");
         if (sourceAccountId === destinationAccountId)
@@ -168,7 +176,10 @@ export function TransactionDialog({
             : investmentAction === "contribution"
               ? "investment_contribution"
               : "investment_redemption";
-        const { error } = await (supabase.rpc as any)("create_account_movement", {
+        const rpcName = editing
+          ? "convert_transaction_to_account_movement"
+          : "create_account_movement";
+        const rpcArgs: Record<string, any> = {
           p_workspace_id: wsId,
           p_date: date,
           p_amount: amt,
@@ -177,7 +188,9 @@ export function TransactionDialog({
           p_destination_account_id: destinationAccountId,
           p_movement_kind: movementKind,
           p_notes: notes.trim() || null,
-        });
+        };
+        if (editing) rpcArgs.p_transaction_id = transaction.id;
+        const { error } = await (supabase.rpc as any)(rpcName, rpcArgs);
         if (error) throw error;
         return;
       }
@@ -249,7 +262,9 @@ export function TransactionDialog({
           ? editing
             ? "Transação atualizada"
             : "Transação salva"
-          : "Movimentação registrada nas duas contas",
+          : editing
+            ? "Transação convertida em movimentação vinculada"
+            : "Movimentação registrada nas duas contas",
       );
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["transactions-year"] });
@@ -282,6 +297,25 @@ export function TransactionDialog({
         : ordinaryAccounts;
   const tabValue = entryKind === "regular" ? type : entryKind;
 
+  const initializeMovementConversion = (kind: "transfer" | "investment") => {
+    if (!editing) {
+      setSourceAccountId("");
+      setDestinationAccountId("");
+      return;
+    }
+    const currentAccount = (accounts ?? []).find(
+      (account: any) => account.id === transaction?.account_id,
+    ) as any | undefined;
+    const defaults = movementConversionDefaults(transaction, currentAccount?.type);
+    setInvestmentAction(defaults.investmentAction);
+    setSourceAccountId(defaults.sourceAccountId);
+    setDestinationAccountId(defaults.destinationAccountId);
+    if (kind === "transfer" && currentAccount?.type === "investment") {
+      setSourceAccountId("");
+      setDestinationAccountId("");
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -300,18 +334,17 @@ export function TransactionDialog({
               setAccountId("");
               setCardId("");
               setInstallment("");
-              setSourceAccountId("");
-              setDestinationAccountId("");
+              initializeMovementConversion(value as "transfer" | "investment");
             }
           }}
         >
           <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4">
             <TabsTrigger value="expense">{t.expenseSingular}</TabsTrigger>
             <TabsTrigger value="income">{t.incomeSingular}</TabsTrigger>
-            <TabsTrigger value="transfer" disabled={editing}>
+            <TabsTrigger value="transfer" disabled={conversionUnavailable}>
               Transferir
             </TabsTrigger>
-            <TabsTrigger value="investment" disabled={editing}>
+            <TabsTrigger value="investment" disabled={conversionUnavailable}>
               Investir
             </TabsTrigger>
           </TabsList>
@@ -506,8 +539,10 @@ export function TransactionDialog({
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                O sistema registrará a saída e a entrada vinculadas. A operação altera os saldos das
-                contas, mas não será somada como receita ou despesa.
+                {editing
+                  ? "A transação atual será preservada como um dos lados e o sistema criará o lançamento correspondente na outra conta."
+                  : "O sistema registrará a saída e a entrada vinculadas."}{" "}
+                A operação altera os saldos das contas, mas não será somada como receita ou despesa.
               </p>
               <div className="space-y-1.5">
                 <Label>Descrição opcional</Label>
@@ -535,7 +570,7 @@ export function TransactionDialog({
             Cancelar
           </Button>
           <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            Salvar
+            {editing && entryKind !== "regular" ? "Converter e salvar" : "Salvar"}
           </Button>
         </DialogFooter>
       </DialogContent>

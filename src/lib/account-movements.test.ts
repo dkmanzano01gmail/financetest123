@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   accountMovementLabel,
   isAccountMovement,
+  movementConversionDefaults,
   summarizeAccountMovements,
 } from "./account-movements.ts";
 
@@ -72,4 +73,31 @@ test("summarizes paired movements once using the correct side", () => {
     contributions: { count: 1, amount: 1000 },
     redemptions: { count: 1, amount: 250 },
   });
+});
+
+test("prefills the existing transaction account on the correct movement side", () => {
+  assert.deepEqual(
+    movementConversionDefaults({ type: "income", account_id: "checking" }, "checking"),
+    {
+      investmentAction: "redemption",
+      sourceAccountId: "",
+      destinationAccountId: "checking",
+    },
+  );
+  assert.deepEqual(
+    movementConversionDefaults({ type: "expense", account_id: "checking" }, "checking"),
+    {
+      investmentAction: "contribution",
+      sourceAccountId: "checking",
+      destinationAccountId: "",
+    },
+  );
+  assert.deepEqual(
+    movementConversionDefaults({ type: "income", account_id: "brokerage" }, "investment"),
+    {
+      investmentAction: "contribution",
+      sourceAccountId: "",
+      destinationAccountId: "brokerage",
+    },
+  );
 });
