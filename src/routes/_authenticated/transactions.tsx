@@ -10,7 +10,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -83,6 +86,17 @@ export const Route = createFileRoute("/_authenticated/transactions")({
 });
 
 const NOW = new Date();
+function accountTypeLabel(type: string) {
+  return (
+    {
+      checking: "Conta corrente",
+      savings: "Poupança",
+      cash: "Dinheiro",
+      investment: "Investimento",
+    }[type] ?? "Outro tipo"
+  );
+}
+
 function normalizeCategoryName(value: string) {
   return value
     .normalize("NFD")
@@ -168,6 +182,20 @@ function TransactionsPage() {
     () => new Map((transactionCards ?? []).map((card) => [card.id, card.name])),
     [transactionCards],
   );
+
+  const { data: transactionAccounts } = useQuery({
+    queryKey: ["accounts", "transaction-filters", wsId],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("id,name,type,is_active")
+        .eq("workspace_id", wsId!)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   const { data: categories } = useQuery({
     queryKey: ["categories", wsId],
@@ -506,13 +534,37 @@ function TransactionsPage() {
               clearCategorySelection();
             }}
           >
-            <SelectTrigger className="w-48" aria-label="Filtrar por conta ou cartão">
+            <SelectTrigger className="w-56" aria-label="Filtrar por conta ou cartão">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Conta e cartão</SelectItem>
-              <SelectItem value="account">Conta corrente</SelectItem>
-              <SelectItem value="credit_card">Cartão de crédito</SelectItem>
+              <SelectItem value="account">Todas as contas</SelectItem>
+              <SelectItem value="credit_card">Todos os cartões</SelectItem>
+              {Boolean((transactionAccounts?.length ?? 0) + (transactionCards?.length ?? 0)) && (
+                <SelectSeparator />
+              )}
+              {(transactionAccounts?.length ?? 0) > 0 && (
+                <SelectGroup>
+                  <SelectLabel>Contas cadastradas</SelectLabel>
+                  {(transactionAccounts ?? []).map((account) => (
+                    <SelectItem key={account.id} value={`account:${account.id}`}>
+                      {account.name} · {accountTypeLabel(account.type)}
+                      {!account.is_active ? " (inativa)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {(transactionCards?.length ?? 0) > 0 && (
+                <SelectGroup>
+                  <SelectLabel>Cartões cadastrados</SelectLabel>
+                  {(transactionCards ?? []).map((card) => (
+                    <SelectItem key={card.id} value={`credit_card:${card.id}`}>
+                      {card.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
             </SelectContent>
           </Select>
         </CardContent>
@@ -530,6 +582,9 @@ function TransactionsPage() {
                 if (fc.type) setType(String(fc.type));
                 if (fc.month) setMonth(String(fc.month));
                 if (fc.year) setYear(String(fc.year));
+                if (typeof fc.source === "string") {
+                  setSource(fc.source as TransactionSourceFilter);
+                }
                 clearCategorySelection();
                 toast.success(`Filtro "${f.name}" aplicado`);
               }}

@@ -9,11 +9,14 @@ export type TransactionCategorySummary = {
   value: number;
 };
 
-export type TransactionSourceFilter = "all" | "account" | "credit_card";
+export type TransactionSourceFilter =
+  "all" | "account" | "credit_card" | `account:${string}` | `credit_card:${string}`;
 
 type TransactionSourceReference = {
   account_id?: string | null;
   credit_card_id?: string | null;
+  linked_account_id?: string | null;
+  linked_credit_card_id?: string | null;
 };
 
 export function matchesTransactionSource(
@@ -22,6 +25,14 @@ export function matchesTransactionSource(
 ): boolean {
   if (source === "account") return Boolean(transaction.account_id);
   if (source === "credit_card") return Boolean(transaction.credit_card_id);
+  if (source.startsWith("account:")) {
+    const accountId = source.slice("account:".length);
+    return transaction.account_id === accountId || transaction.linked_account_id === accountId;
+  }
+  if (source.startsWith("credit_card:")) {
+    const cardId = source.slice("credit_card:".length);
+    return transaction.credit_card_id === cardId || transaction.linked_credit_card_id === cardId;
+  }
   return true;
 }
 
