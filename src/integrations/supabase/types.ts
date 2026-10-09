@@ -4020,6 +4020,20 @@ export type Database = {
         Args: { _request_id: string }
         Returns: number
       }
+      convert_transaction_to_account_movement: {
+        Args: {
+          p_amount: number
+          p_date: string
+          p_description: string
+          p_destination_account_id: string
+          p_movement_kind: string
+          p_notes?: string
+          p_source_account_id: string
+          p_transaction_id: string
+          p_workspace_id: string
+        }
+        Returns: string
+      }
       create_account_movement: {
         Args: {
           p_amount: number
