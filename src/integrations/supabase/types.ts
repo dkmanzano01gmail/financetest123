@@ -3331,6 +3331,7 @@ export type Database = {
           importance_suggestion_reason: string | null
           installment: string | null
           invoice_month: string | null
+          linked_account_id: string | null
           linked_credit_card_id: string | null
           method: string | null
           month: number
@@ -3345,6 +3346,7 @@ export type Database = {
           suggested_importance_level:
             | Database["public"]["Enums"]["importance_level"]
             | null
+          transfer_group_id: string | null
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at: string
           workspace_id: string
@@ -3375,6 +3377,7 @@ export type Database = {
           importance_suggestion_reason?: string | null
           installment?: string | null
           invoice_month?: string | null
+          linked_account_id?: string | null
           linked_credit_card_id?: string | null
           method?: string | null
           month: number
@@ -3389,6 +3392,7 @@ export type Database = {
           suggested_importance_level?:
             | Database["public"]["Enums"]["importance_level"]
             | null
+          transfer_group_id?: string | null
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           workspace_id: string
@@ -3419,6 +3423,7 @@ export type Database = {
           importance_suggestion_reason?: string | null
           installment?: string | null
           invoice_month?: string | null
+          linked_account_id?: string | null
           linked_credit_card_id?: string | null
           method?: string | null
           month?: number
@@ -3433,6 +3438,7 @@ export type Database = {
           suggested_importance_level?:
             | Database["public"]["Enums"]["importance_level"]
             | null
+          transfer_group_id?: string | null
           type?: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           workspace_id?: string
@@ -3458,6 +3464,13 @@ export type Database = {
             columns: ["credit_card_id"]
             isOneToOne: false
             referencedRelation: "credit_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_linked_account_id_fkey"
+            columns: ["linked_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
           {
@@ -4006,6 +4019,19 @@ export type Database = {
       consume_customization_credits: {
         Args: { _request_id: string }
         Returns: number
+      }
+      create_account_movement: {
+        Args: {
+          p_amount: number
+          p_date: string
+          p_description: string
+          p_destination_account_id: string
+          p_movement_kind: string
+          p_notes?: string
+          p_source_account_id: string
+          p_workspace_id: string
+        }
+        Returns: string
       }
       credit_balance_of: {
         Args: { _user_id: string }
