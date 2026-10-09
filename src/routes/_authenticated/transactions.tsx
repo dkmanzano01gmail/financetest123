@@ -44,7 +44,12 @@ import {
   isCreditCardPaymentOffset,
   netCardPaymentOffsets,
 } from "@/lib/credit-card-reconciliation";
-import { Plus, Receipt, Trash2, Sparkles, Pencil } from "lucide-react";
+import {
+  accountMovementLabel,
+  isAccountMovement,
+  summarizeAccountMovements,
+} from "@/lib/account-movements";
+import { Plus, Receipt, Trash2, Sparkles, Pencil, ArrowLeftRight, PiggyBank } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -88,6 +93,7 @@ function normalizeCategoryName(value: string) {
 }
 
 function analyticalTransactionCategoryKey(transaction: any) {
+  if (isAccountMovement(transaction)) return `movement:${transaction.id}`;
   const key = transactionCategoryKey(transaction);
   return isCreditCardPaymentOffset(transaction) ? key.replace(/^income:/, "expense:") : key;
 }
@@ -100,9 +106,7 @@ function TransactionsPage() {
   const [month, setMonth] = useState<string>(
     routeSearch.month ?? String(currentPeriod.getMonth() + 1),
   );
-  const [year, setYear] = useState<string>(
-    routeSearch.year ?? String(currentPeriod.getFullYear()),
-  );
+  const [year, setYear] = useState<string>(routeSearch.year ?? String(currentPeriod.getFullYear()));
   const [type, setType] = useState<string>(routeSearch.type ?? "all");
   const [source, setSource] = useState<TransactionSourceFilter>("all");
   const [search, setSearch] = useState("");
@@ -131,7 +135,9 @@ function TransactionsPage() {
     queryFn: async () => {
       let q = supabase
         .from("transactions")
-        .select("*, categories!transactions_category_id_fkey(name,color), accounts(name)")
+        .select(
+          "*, categories!transactions_category_id_fkey(name,color), accounts!transactions_account_id_fkey(name)",
+        )
         .eq("workspace_id", wsId!)
         .order("date", { ascending: false });
       if (year !== "all") q = q.eq("year", Number(year));
@@ -193,6 +199,14 @@ function TransactionsPage() {
       ),
     [filterableTransactions],
   );
+  const accountMovementSummary = useMemo(
+    () => summarizeAccountMovements(filterableTransactions),
+    [filterableTransactions],
+  );
+  const hasAccountMovements =
+    accountMovementSummary.transfers.count > 0 ||
+    accountMovementSummary.contributions.count > 0 ||
+    accountMovementSummary.redemptions.count > 0;
 
   useEffect(() => {
     if (!requestedCategory || !categorySummary.length) return;
@@ -252,6 +266,10 @@ function TransactionsPage() {
   const protectedAllocationTransactionIds = useMemo(() => {
     const ids = new Set<string>();
     for (const transaction of txs ?? []) {
+      if (isAccountMovement(transaction)) {
+        ids.add(transaction.id);
+        continue;
+      }
       if (!isCreditCardPaymentOffset(transaction)) continue;
       ids.add(transaction.id);
       if (transaction.reversal_of_transaction_id) {
@@ -270,31 +288,35 @@ function TransactionsPage() {
 
   const filteredTotals = useMemo(
     () =>
-      netCardPaymentOffsets(filtered).filter(isConsumptionTransaction).reduce(
-        (totals, transaction) => {
-          totals[transaction.type as "income" | "expense"] += Math.abs(
-            Number(transaction.amount) || 0,
-          );
-          return totals;
-        },
-        { income: 0, expense: 0 },
-      ),
+      netCardPaymentOffsets(filtered)
+        .filter(isConsumptionTransaction)
+        .reduce(
+          (totals, transaction) => {
+            totals[transaction.type as "income" | "expense"] += Math.abs(
+              Number(transaction.amount) || 0,
+            );
+            return totals;
+          },
+          { income: 0, expense: 0 },
+        ),
     [filtered],
   );
 
   const removeMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase.rpc as any)(
-        "delete_transaction_with_card_reconciliation",
-        { target_transaction_id: id },
-      );
+      const { error } = await (supabase.rpc as any)("delete_transaction_with_card_reconciliation", {
+        target_transaction_id: id,
+      });
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["transactions-year"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["reconciliation"] });
       qc.invalidateQueries({ queryKey: ["ba-txs"] });
+      qc.invalidateQueries({ queryKey: ["accounts-full"] });
+      qc.invalidateQueries({ queryKey: ["recon-txs"] });
       toast.success("Transação removida");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -305,9 +327,15 @@ function TransactionsPage() {
       const transactionsById = new Map(
         (txs ?? []).map((transaction) => [transaction.id, transaction]),
       );
-      const targetIds = [
-        ...new Set(ids.map((id) => transactionsById.get(id)?.reversal_of_transaction_id ?? id)),
-      ];
+      const seenMovementGroups = new Set<string>();
+      const targetIds = ids.flatMap((id) => {
+        const transaction = transactionsById.get(id);
+        if (transaction?.transfer_group_id) {
+          if (seenMovementGroups.has(transaction.transfer_group_id)) return [];
+          seenMovementGroups.add(transaction.transfer_group_id);
+        }
+        return [transaction?.reversal_of_transaction_id ?? id];
+      });
 
       for (const id of targetIds) {
         const { error } = await (supabase.rpc as any)(
@@ -322,9 +350,12 @@ function TransactionsPage() {
     onSuccess: (count) => {
       setSelectedIds(new Set());
       qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["transactions-year"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["reconciliation"] });
       qc.invalidateQueries({ queryKey: ["ba-txs"] });
+      qc.invalidateQueries({ queryKey: ["accounts-full"] });
+      qc.invalidateQueries({ queryKey: ["recon-txs"] });
       toast.success(`${count} ${count === 1 ? "transação removida" : "transações removidas"}`);
     },
     onError: (error: Error) => {
@@ -597,6 +628,72 @@ function TransactionsPage() {
         </section>
       )}
 
+      {hasAccountMovements && (
+        <section className="mb-4" aria-labelledby="account-movement-summary-title">
+          <div className="mb-2">
+            <h2 id="account-movement-summary-title" className="text-base font-semibold">
+              Movimentações patrimoniais
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Alteram os saldos das contas, mas não entram nos totais de receita e despesa.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {accountMovementSummary.transfers.count > 0 && (
+              <Card>
+                <CardContent className="flex items-center justify-between gap-3 p-4">
+                  <div>
+                    <div className="flex items-center gap-2 font-medium">
+                      <ArrowLeftRight className="h-4 w-4" /> Transferências internas
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {accountMovementSummary.transfers.count} movimentação(ões)
+                    </div>
+                  </div>
+                  <strong className="font-mono">
+                    {formatCurrency(accountMovementSummary.transfers.amount, currency, privacy)}
+                  </strong>
+                </CardContent>
+              </Card>
+            )}
+            {accountMovementSummary.contributions.count > 0 && (
+              <Card>
+                <CardContent className="flex items-center justify-between gap-3 p-4">
+                  <div>
+                    <div className="flex items-center gap-2 font-medium">
+                      <PiggyBank className="h-4 w-4" /> Aportes
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {accountMovementSummary.contributions.count} movimentação(ões)
+                    </div>
+                  </div>
+                  <strong className="font-mono">
+                    {formatCurrency(accountMovementSummary.contributions.amount, currency, privacy)}
+                  </strong>
+                </CardContent>
+              </Card>
+            )}
+            {accountMovementSummary.redemptions.count > 0 && (
+              <Card>
+                <CardContent className="flex items-center justify-between gap-3 p-4">
+                  <div>
+                    <div className="flex items-center gap-2 font-medium">
+                      <PiggyBank className="h-4 w-4" /> Resgates
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {accountMovementSummary.redemptions.count} movimentação(ões)
+                    </div>
+                  </div>
+                  <strong className="font-mono">
+                    {formatCurrency(accountMovementSummary.redemptions.amount, currency, privacy)}
+                  </strong>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </section>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {txsError ? (
@@ -702,6 +799,11 @@ function TransactionsPage() {
                             Compensação de pagamento · original preservado
                           </Badge>
                         )}
+                        {isAccountMovement(tx) && (
+                          <Badge variant="outline" className="mt-1 border-sky-300 text-sky-800">
+                            {accountMovementLabel(tx.financial_role)} · não soma no resultado
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Select
@@ -747,7 +849,13 @@ function TransactionsPage() {
                           "—"}
                       </TableCell>
                       <TableCell
-                        className={`text-right font-medium tabular-nums ${isCreditCardPaymentOffset(tx) || tx.type === "income" ? "text-[var(--income)]" : "text-[var(--expense)]"}`}
+                        className={`text-right font-medium tabular-nums ${
+                          isAccountMovement(tx)
+                            ? "text-muted-foreground"
+                            : isCreditCardPaymentOffset(tx) || tx.type === "income"
+                              ? "text-[var(--income)]"
+                              : "text-[var(--expense)]"
+                        }`}
                       >
                         {isCreditCardPaymentOffset(tx) ? "+" : tx.type === "income" ? "+" : "-"}
                         {formatCurrency(Number(tx.amount), currency, privacy)}
@@ -758,9 +866,11 @@ function TransactionsPage() {
                             variant="ghost"
                             size="icon"
                             title={
-                              protectedAllocationTransactionIds.has(tx.id)
-                                ? "Desfaça o abatimento na aba Cartões para editar"
-                                : "Editar"
+                              isAccountMovement(tx)
+                                ? "Movimentações vinculadas são alteradas em conjunto"
+                                : protectedAllocationTransactionIds.has(tx.id)
+                                  ? "Desfaça o abatimento na aba Cartões para editar"
+                                  : "Editar"
                             }
                             disabled={protectedAllocationTransactionIds.has(tx.id)}
                             onClick={() => {
@@ -774,9 +884,11 @@ function TransactionsPage() {
                             variant="ghost"
                             size="icon"
                             title={
-                              protectedAllocationTransactionIds.has(tx.id)
-                                ? "Remover pagamento e compensação"
-                                : "Remover"
+                              isAccountMovement(tx)
+                                ? "Remover as duas movimentações vinculadas"
+                                : protectedAllocationTransactionIds.has(tx.id)
+                                  ? "Remover pagamento e compensação"
+                                  : "Remover"
                             }
                             onClick={() => setDeleteId(tx.id)}
                           >
@@ -810,14 +922,18 @@ function TransactionsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {deleteId && protectedAllocationTransactionIds.has(deleteId)
-                ? "Remover pagamento e compensação?"
-                : "Remover transação?"}
+              {deleteId && isAccountMovement((txs ?? []).find((tx) => tx.id === deleteId) ?? {})
+                ? "Remover movimentação vinculada?"
+                : deleteId && protectedAllocationTransactionIds.has(deleteId)
+                  ? "Remover pagamento e compensação?"
+                  : "Remover transação?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteId && protectedAllocationTransactionIds.has(deleteId)
-                ? "As duas transações vinculadas — o pagamento original e a compensação inversa — serão removidas juntas. Esta ação não pode ser desfeita."
-                : "Esta ação não pode ser desfeita."}
+              {deleteId && isAccountMovement((txs ?? []).find((tx) => tx.id === deleteId) ?? {})
+                ? "A saída e a entrada vinculadas serão removidas juntas. Esta ação não pode ser desfeita."
+                : deleteId && protectedAllocationTransactionIds.has(deleteId)
+                  ? "As duas transações vinculadas — o pagamento original e a compensação inversa — serão removidas juntas. Esta ação não pode ser desfeita."
+                  : "Esta ação não pode ser desfeita."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -841,8 +957,8 @@ function TransactionsPage() {
               {selectedIds.size === 1
                 ? "A transação selecionada será removida."
                 : `As ${selectedIds.size} transações selecionadas serão removidas.`}{" "}
-              Pagamentos de fatura e suas compensações vinculadas serão excluídos juntos. Esta ação
-              não pode ser desfeita.
+              Pagamentos de fatura, transferências e investimentos vinculados serão excluídos em
+              conjunto. Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

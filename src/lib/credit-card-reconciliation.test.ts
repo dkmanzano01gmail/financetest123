@@ -5,6 +5,7 @@ import {
   futureInstallmentExpenseSuggestions,
   installmentReferenceDate,
   invoiceMonthForPaymentDate,
+  isConsumptionTransaction,
   parseInstallment,
   typicalCardPaymentDay,
 } from "./credit-card-reconciliation.ts";
@@ -253,6 +254,40 @@ describe("projeção de parcelas futuras", () => {
         9,
       ),
       { day: 9, source: "due_day" },
+    );
+  });
+});
+
+describe("movimentações patrimoniais", () => {
+  test("não trata transferências, aportes ou resgates como consumo", () => {
+    for (const financialRole of [
+      "internal_transfer",
+      "investment_contribution",
+      "investment_redemption",
+    ]) {
+      assert.equal(
+        isConsumptionTransaction({
+          id: financialRole,
+          date: "2026-10-08",
+          type: financialRole === "investment_redemption" ? "income" : "expense",
+          amount: 100,
+          financial_role: financialRole,
+        }),
+        false,
+      );
+    }
+  });
+
+  test("mantém receitas e despesas comuns no resultado operacional", () => {
+    assert.equal(
+      isConsumptionTransaction({
+        id: "regular",
+        date: "2026-10-08",
+        type: "expense",
+        amount: 100,
+        financial_role: "regular",
+      }),
+      true,
     );
   });
 });

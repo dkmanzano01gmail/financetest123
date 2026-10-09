@@ -109,7 +109,7 @@ function CardsPage() {
       const { data, error } = await supabase
         .from("transactions")
         .select(
-          "id,date,description,amount,type,status,source,category_id,counterparty,credit_card_id,account_id,linked_credit_card_id,invoice_month,financial_role,reconciliation_method,reversal_of_transaction_id,categories!transactions_category_id_fkey(name,color),accounts(name)",
+          "id,date,description,amount,type,status,source,category_id,counterparty,credit_card_id,account_id,linked_credit_card_id,invoice_month,financial_role,reconciliation_method,reversal_of_transaction_id,categories!transactions_category_id_fkey(name,color),accounts!transactions_account_id_fkey(name)",
         )
         .eq("workspace_id", wsId!)
         .gte("date", isoDate(rangeStart))
@@ -126,7 +126,7 @@ function CardsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("credit_card_payment_allocations" as any)
-        .select("*, original:transactions!credit_card_payment_allocations_original_transaction_id_fkey(id,date,description,amount,account_id,accounts(name))")
+        .select("*, original:transactions!credit_card_payment_allocations_original_transaction_id_fkey(id,date,description,amount,account_id,accounts!transactions_account_id_fkey(name))")
         .eq("workspace_id", wsId!)
         .order("created_at", { ascending: false });
       if (error) throw error;

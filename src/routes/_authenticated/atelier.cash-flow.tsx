@@ -149,7 +149,7 @@ function CashFlowPage() {
       const { data, error } = await sb
         .from("transactions")
         .select(
-          "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,financial_role,reversal_of_transaction_id,accounts!inner(type),categories!transactions_category_id_fkey(name,color)",
+          "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,financial_role,transfer_group_id,reversal_of_transaction_id,accounts!transactions_account_id_fkey!inner(type),categories!transactions_category_id_fkey(name,color)",
         )
         .eq("workspace_id", wsId)
         .eq("accounts.type", "checking")

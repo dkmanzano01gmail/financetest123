@@ -1,3 +1,5 @@
+import { isAccountMovement } from "./account-movements.ts";
+
 export type ReconciliationTransaction = {
   id: string;
   date: string;
@@ -9,6 +11,8 @@ export type ReconciliationTransaction = {
   linked_credit_card_id?: string | null;
   invoice_month?: string | null;
   financial_role?: string | null;
+  transfer_group_id?: string | null;
+  linked_account_id?: string | null;
   reversal_of_transaction_id?: string | null;
   status?: string | null;
   categories?: { name?: string | null } | null;
@@ -294,7 +298,11 @@ export function isCreditCardPaymentOffset(transaction: ReconciliationTransaction
 }
 
 export function isConsumptionTransaction(transaction: ReconciliationTransaction) {
-  return !isCreditCardPayment(transaction) && !isCreditCardPaymentOffset(transaction);
+  return (
+    !isCreditCardPayment(transaction) &&
+    !isCreditCardPaymentOffset(transaction) &&
+    !isAccountMovement(transaction)
+  );
 }
 
 export function isCashFlowTransaction(transaction: ReconciliationTransaction) {

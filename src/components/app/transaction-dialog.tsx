@@ -40,11 +40,17 @@ export function TransactionDialog({
   const { workspace } = useCurrentWorkspace();
   const qc = useQueryClient();
   const [type, setType] = useState<"income" | "expense">("expense");
+  const [entryKind, setEntryKind] = useState<"regular" | "transfer" | "investment">("regular");
+  const [investmentAction, setInvestmentAction] = useState<"contribution" | "redemption">(
+    "contribution",
+  );
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [accountId, setAccountId] = useState<string>("");
+  const [sourceAccountId, setSourceAccountId] = useState<string>("");
+  const [destinationAccountId, setDestinationAccountId] = useState<string>("");
   const [cardId, setCardId] = useState<string>("");
   const [installment, setInstallment] = useState("");
   const [counterparty, setCounterparty] = useState("");
@@ -99,6 +105,9 @@ export function TransactionDialog({
   useEffect(() => {
     if (!open) return;
     if (transaction) {
+      setEntryKind("regular");
+      setSourceAccountId("");
+      setDestinationAccountId("");
       setType((transaction.type ?? "expense") as any);
       setDate(transaction.date ?? new Date().toISOString().slice(0, 10));
       setAmount(transaction.amount != null ? String(transaction.amount).replace(".", ",") : "");
@@ -110,12 +119,16 @@ export function TransactionDialog({
       setCounterparty(transaction.counterparty ?? "");
       setNotes(transaction.notes ?? "");
     } else {
+      setEntryKind("regular");
       setType("expense");
+      setInvestmentAction("contribution");
       setDate(new Date().toISOString().slice(0, 10));
       setAmount("");
       setDescription("");
       setCategoryId("");
       setAccountId("");
+      setSourceAccountId("");
+      setDestinationAccountId("");
       setCardId("");
       setInstallment("");
       setCounterparty("");
@@ -126,28 +139,53 @@ export function TransactionDialog({
   // Reset category when switching type on a fresh entry only (keeps edit intact).
   useEffect(() => {
     if (open && !transaction) setCategoryId("");
-  }, [type, open, transaction]);
+  }, [type, entryKind, open, transaction]);
 
   const selectedCategory = (categories ?? []).find((c: any) => c.id === categoryId) as
-    | any
-    | undefined;
+    any | undefined;
   const inheritedImportance: Importance = (selectedCategory?.importance_level ??
     "flexible") as Importance;
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!wsId) throw new Error("Workspace ausente");
-      const desc = description.trim();
-      if (!desc) throw new Error("Informe a descrição.");
       if (!date || Number.isNaN(new Date(`${date}T00:00:00`).getTime()))
         throw new Error("Data inválida.");
       const amt = parseLocaleAmount(amount);
       if (!Number.isFinite(amt) || amt <= 0) throw new Error("Valor inválido.");
+      const desc = description.trim();
+
+      if (entryKind !== "regular") {
+        if (editing)
+          throw new Error("Movimentações vinculadas não podem ser editadas parcialmente.");
+        if (!sourceAccountId || !destinationAccountId)
+          throw new Error("Informe as contas de origem e destino.");
+        if (sourceAccountId === destinationAccountId)
+          throw new Error("A conta de origem deve ser diferente da conta de destino.");
+        const movementKind =
+          entryKind === "transfer"
+            ? "internal_transfer"
+            : investmentAction === "contribution"
+              ? "investment_contribution"
+              : "investment_redemption";
+        const { error } = await (supabase.rpc as any)("create_account_movement", {
+          p_workspace_id: wsId,
+          p_date: date,
+          p_amount: amt,
+          p_description: desc || null,
+          p_source_account_id: sourceAccountId,
+          p_destination_account_id: destinationAccountId,
+          p_movement_kind: movementKind,
+          p_notes: notes.trim() || null,
+        });
+        if (error) throw error;
+        return;
+      }
+
+      if (!desc) throw new Error("Informe a descrição.");
       if (accountId && cardId) throw new Error("Escolha conta OU cartão, não os dois.");
       const installmentValue = cardId ? installment.trim().slice(0, 30) || null : null;
-      const selectedCard = (cards ?? []).find((card: any) => card.id === cardId) as
-        | any
-        | undefined;
+      const selectedCard = (cards ?? []).find((card: any) => card.id === cardId) as any | undefined;
       const invoiceMonth = selectedCard
         ? billingMonthForPurchase(date, selectedCard.closing_day, selectedCard.due_day)
         : null;
@@ -206,29 +244,76 @@ export function TransactionDialog({
       }
     },
     onSuccess: () => {
-      toast.success(editing ? "Transação atualizada" : "Transação salva");
+      toast.success(
+        entryKind === "regular"
+          ? editing
+            ? "Transação atualizada"
+            : "Transação salva"
+          : "Movimentação registrada nas duas contas",
+      );
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["transactions-year"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["reconciliation"] });
       qc.invalidateQueries({ queryKey: ["ba-txs"] });
+      qc.invalidateQueries({ queryKey: ["accounts-full"] });
+      qc.invalidateQueries({ queryKey: ["recon-txs"] });
       onOpenChange(false);
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const filteredCats = (categories ?? []).filter((c: any) => c.type === type);
+  const ordinaryAccounts = (accounts ?? []).filter((account: any) => account.type !== "investment");
+  const investmentAccounts = (accounts ?? []).filter(
+    (account: any) => account.type === "investment",
+  );
+  const sourceOptions =
+    entryKind === "transfer"
+      ? ordinaryAccounts
+      : investmentAction === "contribution"
+        ? ordinaryAccounts
+        : investmentAccounts;
+  const destinationOptions =
+    entryKind === "transfer"
+      ? ordinaryAccounts
+      : investmentAction === "contribution"
+        ? investmentAccounts
+        : ordinaryAccounts;
+  const tabValue = entryKind === "regular" ? type : entryKind;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{editing ? "Editar transação" : "Nova transação"}</DialogTitle>
         </DialogHeader>
-        <Tabs value={type} onValueChange={(v) => setType(v as any)}>
-          <TabsList className="grid grid-cols-2 w-full">
+        <Tabs
+          value={tabValue}
+          onValueChange={(value) => {
+            if (value === "income" || value === "expense") {
+              setEntryKind("regular");
+              setType(value);
+            } else {
+              setEntryKind(value as "transfer" | "investment");
+              setCategoryId("");
+              setAccountId("");
+              setCardId("");
+              setInstallment("");
+              setSourceAccountId("");
+              setDestinationAccountId("");
+            }
+          }}
+        >
+          <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4">
             <TabsTrigger value="expense">{t.expenseSingular}</TabsTrigger>
             <TabsTrigger value="income">{t.incomeSingular}</TabsTrigger>
+            <TabsTrigger value="transfer" disabled={editing}>
+              Transferir
+            </TabsTrigger>
+            <TabsTrigger value="investment" disabled={editing}>
+              Investir
+            </TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="space-y-3 mt-2">
@@ -246,110 +331,200 @@ export function TransactionDialog({
               />
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>Descrição</Label>
-            <Input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ex.: Supermercado"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Categoria</Label>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecionar" />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredCats.map((c: any) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedCategory && (
-              <div className="text-xs text-muted-foreground flex items-center gap-2">
-                Importância sugerida:{" "}
-                <Badge variant="secondary" className={importanceBadgeClass(inheritedImportance)}>
-                  {labelImp(inheritedImportance)}
-                </Badge>
+          {entryKind === "regular" ? (
+            <>
+              <div className="space-y-1.5">
+                <Label>Descrição</Label>
+                <Input
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Ex.: Supermercado"
+                />
               </div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Conta</Label>
-              <Select
-                value={accountId}
-                onValueChange={(v) => {
-                  setAccountId(v);
-                  setCardId("");
-                  setInstallment("");
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="—" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(accounts ?? []).map((a: any) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Cartão</Label>
-              <Select
-                value={cardId}
-                onValueChange={(v) => {
-                  setCardId(v);
-                  setAccountId("");
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="—" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(cards ?? []).map((c: any) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {cardId && date && selectedCardForPreview(cards, cardId) && (
-                <p className="text-xs text-muted-foreground">
-                  Entra no mês financeiro de{" "}
-                  {formatInvoiceMonth(
-                    billingMonthForPurchase(
-                      date,
-                      selectedCardForPreview(cards, cardId)!.closing_day,
-                      selectedCardForPreview(cards, cardId)!.due_day,
-                    ),
+              <div className="space-y-1.5">
+                <Label>Categoria</Label>
+                <Select value={categoryId} onValueChange={setCategoryId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecionar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredCats.map((c: any) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedCategory && (
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    Importância sugerida:{" "}
+                    <Badge
+                      variant="secondary"
+                      className={importanceBadgeClass(inheritedImportance)}
+                    >
+                      {labelImp(inheritedImportance)}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Conta</Label>
+                  <Select
+                    value={accountId}
+                    onValueChange={(value) => {
+                      setAccountId(value);
+                      setCardId("");
+                      setInstallment("");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(accounts ?? []).map((account: any) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Cartão</Label>
+                  <Select
+                    value={cardId}
+                    onValueChange={(value) => {
+                      setCardId(value);
+                      setAccountId("");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(cards ?? []).map((card: any) => (
+                        <SelectItem key={card.id} value={card.id}>
+                          {card.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {cardId && date && selectedCardForPreview(cards, cardId) && (
+                    <p className="text-xs text-muted-foreground">
+                      Entra no mês financeiro de{" "}
+                      {formatInvoiceMonth(
+                        billingMonthForPurchase(
+                          date,
+                          selectedCardForPreview(cards, cardId)!.closing_day,
+                          selectedCardForPreview(cards, cardId)!.due_day,
+                        ),
+                      )}
+                      .
+                    </p>
                   )}
-                  .
+                </div>
+              </div>
+              {cardId && (
+                <div className="space-y-1.5">
+                  <Label>Parcela</Label>
+                  <Input
+                    value={installment}
+                    onChange={(e) => setInstallment(e.target.value)}
+                    placeholder="Ex.: 5/12"
+                    maxLength={30}
+                  />
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label>Favorecido / Origem</Label>
+                <Input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} />
+              </div>
+            </>
+          ) : (
+            <>
+              {entryKind === "investment" && (
+                <div className="space-y-1.5">
+                  <Label>Operação</Label>
+                  <Select
+                    value={investmentAction}
+                    onValueChange={(value) => {
+                      setInvestmentAction(value as "contribution" | "redemption");
+                      setSourceAccountId("");
+                      setDestinationAccountId("");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="contribution">Aporte em investimento</SelectItem>
+                      <SelectItem value="redemption">Resgate de investimento</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Conta de origem</Label>
+                  <Select value={sourceAccountId} onValueChange={setSourceAccountId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sourceOptions
+                        .filter((account: any) => account.id !== destinationAccountId)
+                        .map((account: any) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Conta de destino</Label>
+                  <Select value={destinationAccountId} onValueChange={setDestinationAccountId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {destinationOptions
+                        .filter((account: any) => account.id !== sourceAccountId)
+                        .map((account: any) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {entryKind === "investment" && investmentAccounts.length === 0 && (
+                <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                  Cadastre primeiro uma conta do tipo Investimento na aba Contas.
                 </p>
               )}
-            </div>
-          </div>
-          {cardId && (
-            <div className="space-y-1.5">
-              <Label>Parcela</Label>
-              <Input
-                value={installment}
-                onChange={(e) => setInstallment(e.target.value)}
-                placeholder="Ex.: 5/12"
-                maxLength={30}
-              />
-            </div>
+              <p className="text-xs text-muted-foreground">
+                O sistema registrará a saída e a entrada vinculadas. A operação altera os saldos das
+                contas, mas não será somada como receita ou despesa.
+              </p>
+              <div className="space-y-1.5">
+                <Label>Descrição opcional</Label>
+                <Input
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder={
+                    entryKind === "transfer"
+                      ? "Ex.: Transferência para conta reserva"
+                      : investmentAction === "contribution"
+                        ? "Ex.: Aporte mensal"
+                        : "Ex.: Resgate de CDB"
+                  }
+                />
+              </div>
+            </>
           )}
-          <div className="space-y-1.5">
-            <Label>Favorecido / Origem</Label>
-            <Input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} />
-          </div>
           <div className="space-y-1.5">
             <Label>Observações</Label>
             <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />

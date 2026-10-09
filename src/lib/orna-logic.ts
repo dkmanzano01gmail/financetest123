@@ -1,3 +1,5 @@
+import { accountMovementLabel, isAccountMovement } from "./account-movements.ts";
+
 export type MoneyFlowType = "income" | "expense";
 
 export type OrnaTransaction = {
@@ -9,6 +11,8 @@ export type OrnaTransaction = {
   category_id?: string | null;
   counterparty?: string | null;
   status?: string | null;
+  financial_role?: string | null;
+  transfer_group_id?: string | null;
   categories?: { name?: string | null; color?: string | null } | null;
 };
 
@@ -476,7 +480,9 @@ export function actualCashFlowEvents(
       type: tx.type,
       amount: Math.abs(numberValue(tx.amount)),
       description: tx.description || "Transação realizada",
-      category: tx.categories?.name || "Sem categoria",
+      category: isAccountMovement(tx)
+        ? accountMovementLabel(tx.financial_role)
+        : tx.categories?.name || "Sem categoria",
       source: "actual" as const,
       recurrence: "realized",
     }))
