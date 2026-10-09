@@ -3331,7 +3331,6 @@ export type Database = {
           importance_suggestion_reason: string | null
           installment: string | null
           invoice_month: string | null
-          linked_account_id: string | null
           linked_credit_card_id: string | null
           method: string | null
           month: number
@@ -3346,7 +3345,6 @@ export type Database = {
           suggested_importance_level:
             | Database["public"]["Enums"]["importance_level"]
             | null
-          transfer_group_id: string | null
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at: string
           workspace_id: string
@@ -3377,7 +3375,6 @@ export type Database = {
           importance_suggestion_reason?: string | null
           installment?: string | null
           invoice_month?: string | null
-          linked_account_id?: string | null
           linked_credit_card_id?: string | null
           method?: string | null
           month: number
@@ -3392,7 +3389,6 @@ export type Database = {
           suggested_importance_level?:
             | Database["public"]["Enums"]["importance_level"]
             | null
-          transfer_group_id?: string | null
           type: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           workspace_id: string
@@ -3423,7 +3419,6 @@ export type Database = {
           importance_suggestion_reason?: string | null
           installment?: string | null
           invoice_month?: string | null
-          linked_account_id?: string | null
           linked_credit_card_id?: string | null
           method?: string | null
           month?: number
@@ -3438,7 +3433,6 @@ export type Database = {
           suggested_importance_level?:
             | Database["public"]["Enums"]["importance_level"]
             | null
-          transfer_group_id?: string | null
           type?: Database["public"]["Enums"]["transaction_type"]
           updated_at?: string
           workspace_id?: string
@@ -3464,13 +3458,6 @@ export type Database = {
             columns: ["credit_card_id"]
             isOneToOne: false
             referencedRelation: "credit_cards"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "transactions_linked_account_id_fkey"
-            columns: ["linked_account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
           {
