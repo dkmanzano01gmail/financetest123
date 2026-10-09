@@ -115,9 +115,18 @@ export function TransactionDialog({
   useEffect(() => {
     if (!open) return;
     if (transaction) {
-      setEntryKind("regular");
-      setSourceAccountId("");
-      setDestinationAccountId("");
+      const suggestedKind = transaction.suggested_entry_kind;
+      if (suggestedKind === "transfer" && !conversionUnavailable) {
+        const defaults = movementConversionDefaults(transaction);
+        setEntryKind("transfer");
+        setInvestmentAction(defaults.investmentAction);
+        setSourceAccountId(defaults.sourceAccountId);
+        setDestinationAccountId(defaults.destinationAccountId);
+      } else {
+        setEntryKind("regular");
+        setSourceAccountId("");
+        setDestinationAccountId("");
+      }
       setType((transaction.type ?? "expense") as any);
       setDate(transaction.date ?? new Date().toISOString().slice(0, 10));
       setAmount(transaction.amount != null ? String(transaction.amount).replace(".", ",") : "");
@@ -144,7 +153,7 @@ export function TransactionDialog({
       setCounterparty("");
       setNotes("");
     }
-  }, [open, transaction]);
+  }, [conversionUnavailable, open, transaction]);
 
   // Reset category when switching type on a fresh entry only (keeps edit intact).
   useEffect(() => {

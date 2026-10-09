@@ -1,4 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
+import {
+  isMovementSuggestionRule,
+  type MovementSuggestionRule,
+} from "@/lib/movement-suggestions";
 
 export type Importance = "essential" | "important" | "flexible" | "superfluous";
 
@@ -12,6 +16,11 @@ export type SuggestionInput = {
   category_id?: string | null;
   importance_level?: Importance | null;
   importance_confirmed_by_user?: boolean | null;
+  account_id?: string | null;
+  credit_card_id?: string | null;
+  linked_credit_card_id?: string | null;
+  reversal_of_transaction_id?: string | null;
+  financial_role?: string | null;
 };
 
 export type Suggestion = {
@@ -326,7 +335,7 @@ export async function loadSuggestionContext(
   workspaceId: string,
   workspaceType: "personal" | "business",
 ) {
-  const [catsRes, rulesRes, history] = await Promise.all([
+  const [catsRes, rulesRes, movementRulesRes, history] = await Promise.all([
     supabase
       .from("categories")
       .select("id,name,type,importance_level,importance_comment" as any)
@@ -340,15 +349,25 @@ export async function loadSuggestionContext(
       .eq("is_active", true)
       .or(`workspace_id.is.null,workspace_id.eq.${workspaceId}`)
       .order("priority", { ascending: true }),
+    (supabase as any)
+      .from("customizations")
+      .select("configuration_json")
+      .eq("workspace_id", workspaceId)
+      .eq("type", "transaction_movement_rule")
+      .eq("is_active", true),
     loadCategorizationHistory(workspaceId),
   ]);
   if (catsRes.error) throw catsRes.error;
   if (rulesRes.error) throw rulesRes.error;
+  if (movementRulesRes.error) throw movementRulesRes.error;
   return {
     categories: ((catsRes.data as any[]) ?? []) as Category[],
     rules: (((rulesRes.data as any[]) ?? []) as Rule[]).filter(
       (r) => !r.workspace_type || r.workspace_type === workspaceType,
     ),
+    movementRules: ((movementRulesRes.data as any[]) ?? [])
+      .map((row) => row.configuration_json)
+      .filter(isMovementSuggestionRule),
     history,
   };
 }

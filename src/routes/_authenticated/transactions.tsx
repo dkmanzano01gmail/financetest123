@@ -406,6 +406,11 @@ function TransactionsPage() {
                       category_id: tx.category_id,
                       importance_level: tx.importance_level,
                       importance_confirmed_by_user: tx.importance_confirmed_by_user,
+                      account_id: tx.account_id,
+                      credit_card_id: tx.credit_card_id,
+                      linked_credit_card_id: tx.linked_credit_card_id,
+                      reversal_of_transaction_id: tx.reversal_of_transaction_id,
+                      financial_role: tx.financial_role,
                       current_category_name: tx.categories?.name ?? null,
                     })),
                 );
@@ -414,7 +419,7 @@ function TransactionsPage() {
               disabled={!filtered.length}
             >
               <Sparkles className="w-4 h-4 mr-1" />
-              Sugerir categorias
+              Sugerir categorias e transferências
             </Button>
             <Button
               onClick={() => {
@@ -988,6 +993,16 @@ function TransactionsPage() {
           workspaceId={wsId}
           workspaceType={workspace.type}
           transactions={suggestionTransactions}
+          onReviewMovement={(transactionId, kind) => {
+            const transaction = (txs ?? []).find((candidate) => candidate.id === transactionId);
+            if (!transaction) {
+              toast.error("Transação não encontrada para revisão.");
+              return;
+            }
+            setSuggestOpen(false);
+            setEditingTx({ ...transaction, suggested_entry_kind: kind });
+            setOpen(true);
+          }}
         />
       )}
     </PageContainer>

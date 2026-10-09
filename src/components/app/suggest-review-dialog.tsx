@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeftRight, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -38,6 +38,10 @@ import {
   type Suggestion,
   type SuggestionInput,
 } from "@/lib/suggestions";
+import {
+  suggestMovementForTransaction,
+  type MovementSuggestion,
+} from "@/lib/movement-suggestions";
 
 type Row = {
   tx: SuggestionInput & { current_category_name?: string | null };
@@ -46,6 +50,7 @@ type Row = {
   applyImportance: boolean;
   overrideImportance: Importance;
   overrideCategoryId: string | null;
+  movementSuggestion: MovementSuggestion | null;
   selected: boolean;
 };
 
@@ -55,12 +60,14 @@ export function SuggestReviewDialog({
   workspaceId,
   workspaceType,
   transactions,
+  onReviewMovement,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   workspaceId: string;
   workspaceType: "personal" | "business";
   transactions: (SuggestionInput & { current_category_name?: string | null })[];
+  onReviewMovement: (transactionId: string, kind: "transfer") => void;
 }) {
   const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
@@ -80,6 +87,7 @@ export function SuggestReviewDialog({
         setCategories(ctx.categories);
         const built: Row[] = transactions.map((tx) => {
           const s = suggestForTransaction(tx, ctx);
+          const movementSuggestion = suggestMovementForTransaction(tx, ctx.movementRules);
           // Preserve manual overrides — never propose changing them by default.
           const applyCategory = !tx.category_id && !!s.category_id;
           const applyImportance = !tx.importance_confirmed_by_user && !tx.importance_level;
@@ -90,6 +98,7 @@ export function SuggestReviewDialog({
             applyImportance,
             overrideImportance: s.importance,
             overrideCategoryId: s.category_id,
+            movementSuggestion,
             selected: applyCategory || applyImportance,
           };
         });
@@ -175,14 +184,14 @@ export function SuggestReviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl">
+      <DialogContent className="max-w-6xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-primary" /> Revisar sugestões
           </DialogTitle>
           <DialogDescription>
-            Sugestões com base nas transações categorizadas anteriores e futuras do workspace.
-            Revise antes de aplicar — nada é alterado sem sua confirmação.
+            Sugestões de categorias e transferências com base no histórico e nas regras do seu
+            perfil. Revise antes de aplicar — nada é alterado sem sua confirmação.
           </DialogDescription>
         </DialogHeader>
 
@@ -206,6 +215,7 @@ export function SuggestReviewDialog({
                   <TableHead className="w-8"></TableHead>
                   <TableHead>Transação</TableHead>
                   <TableHead>Categoria sugerida</TableHead>
+                  <TableHead>Movimentação sugerida</TableHead>
                   <TableHead>Importância sugerida</TableHead>
                   <TableHead>Confiança</TableHead>
                   <TableHead>Motivo</TableHead>
@@ -281,6 +291,27 @@ export function SuggestReviewDialog({
                         </div>
                       </TableCell>
                       <TableCell>
+                        {r.movementSuggestion ? (
+                          <div className="space-y-2">
+                            <Badge variant="outline" className="gap-1 whitespace-nowrap">
+                              <ArrowLeftRight className="h-3 w-3" />
+                              {r.movementSuggestion.label}
+                            </Badge>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 whitespace-nowrap"
+                              onClick={() => onReviewMovement(r.tx.id, "transfer")}
+                            >
+                              Revisar transferência
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         <div className="flex items-center gap-2">
                           <Checkbox
                             checked={r.applyImportance}
@@ -324,7 +355,7 @@ export function SuggestReviewDialog({
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-xs">
-                        {r.suggestion.reason}
+                        {r.movementSuggestion?.reason ?? r.suggestion.reason}
                       </TableCell>
                     </TableRow>
                   );
