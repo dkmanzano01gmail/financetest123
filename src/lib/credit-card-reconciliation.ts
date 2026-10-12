@@ -78,6 +78,23 @@ export function parseInstallment(value: string | null | undefined) {
   return { current, total };
 }
 
+/**
+ * Extracts an installment counter embedded in a card purchase description.
+ * Nubank commonly exports values such as "Loja - Parcela 2/10" without a
+ * dedicated installment column. Date-like fragments are intentionally not
+ * accepted unless they are explicitly labelled as an installment.
+ */
+export function installmentFromDescription(value: string | null | undefined) {
+  const description = String(value ?? "");
+  const labelled = description.match(
+    /(?:parcela|parcelamento|presta[cç][aã]o)\s*[:#-]?\s*(\d{1,3})\s*(?:\/|de)\s*(\d{1,3})/i,
+  );
+  if (!labelled) return null;
+
+  const parsed = parseInstallment(`${labelled[1]}/${labelled[2]}`);
+  return parsed ? `${parsed.current}/${parsed.total}` : null;
+}
+
 function addMonthsToMonth(monthValue: string, months: number) {
   const match = monthValue.match(/^(\d{4})-(\d{2})/);
   if (!match) return null;
