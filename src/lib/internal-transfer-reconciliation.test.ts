@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildInternalTransferReconciliation } from "./internal-transfer-reconciliation";
+import { buildInternalTransferReconciliation } from "./internal-transfer-reconciliation.ts";
 
 const basePair = [
   {
@@ -26,6 +26,7 @@ const basePair = [
     financial_role: "internal_transfer",
     transfer_group_id: "group",
     source: "manual",
+    method: "account_movement",
   },
 ];
 
@@ -73,4 +74,30 @@ test("ignores a generated counterpart retained only for audit history", () => {
   ]);
   assert.equal(groups[0]?.status, "reconciled");
   assert.equal(groups[0]?.rows.length, 2);
+});
+
+test("suggests merging two groups when both imported bank sides already exist", () => {
+  const groups = buildInternalTransferReconciliation([
+    ...basePair,
+    {
+      ...basePair[1],
+      id: "real-incoming",
+      source: "csv",
+      transfer_group_id: "other-group",
+    },
+    {
+      ...basePair[0],
+      id: "generated-outgoing",
+      source: "manual",
+      method: "account_movement",
+      transfer_group_id: "other-group",
+    },
+  ]);
+
+  const first = groups.find((group) => group.id === "group");
+  const second = groups.find((group) => group.id === "other-group");
+  assert.equal(first?.status, "candidate");
+  assert.equal(first?.mergeCandidateGroupId, "other-group");
+  assert.equal(second?.status, "candidate");
+  assert.equal(second?.mergeCandidateGroupId, "group");
 });

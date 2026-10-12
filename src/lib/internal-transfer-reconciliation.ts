@@ -23,9 +23,15 @@ export type InternalTransferGroup = {
   incoming: TransferReconciliationTransaction | null;
   rows: TransferReconciliationTransaction[];
   candidates: TransferReconciliationTransaction[];
+  mergeCandidateGroupId: string | null;
   status: TransferReconciliationStatus;
   amount: number;
   date: string;
+};
+
+type ImportedAndGeneratedPair = {
+  imported: TransferReconciliationTransaction;
+  generated: TransferReconciliationTransaction;
 };
 
 function dayDistance(left: string, right: string) {
@@ -36,6 +42,37 @@ function dayDistance(left: string, right: string) {
 
 function isImported(transaction: TransferReconciliationTransaction) {
   return transaction.source !== "manual";
+}
+
+function importedAndGeneratedPair(
+  rows: TransferReconciliationTransaction[],
+): ImportedAndGeneratedPair | null {
+  if (rows.length !== 2) return null;
+  const imported = rows.filter(isImported);
+  const generated = rows.filter(
+    (row) => row.source === "manual" && row.method === "account_movement",
+  );
+  return imported.length === 1 && generated.length === 1
+    ? { imported: imported[0], generated: generated[0] }
+    : null;
+}
+
+function canMergeGeneratedGroups(left: InternalTransferGroup, right: InternalTransferGroup) {
+  const leftPair = importedAndGeneratedPair(left.rows);
+  const rightPair = importedAndGeneratedPair(right.rows);
+  if (!leftPair || !rightPair) return false;
+
+  return Boolean(
+    left.id !== right.id &&
+    leftPair.imported.type !== rightPair.imported.type &&
+    leftPair.imported.account_id &&
+    rightPair.imported.account_id &&
+    leftPair.imported.account_id !== rightPair.imported.account_id &&
+    leftPair.imported.linked_account_id === rightPair.imported.account_id &&
+    rightPair.imported.linked_account_id === leftPair.imported.account_id &&
+    sameAmount(leftPair.imported, rightPair.imported) &&
+    dayDistance(leftPair.imported.date, rightPair.imported.date) <= 7,
+  );
 }
 
 function sameAmount(
@@ -130,12 +167,31 @@ export function buildInternalTransferReconciliation(
         incoming,
         rows,
         candidates,
+        mergeCandidateGroupId: null as string | null,
         status,
         amount: Math.abs(Number(outgoing?.amount ?? incoming?.amount ?? 0)),
         date: outgoing?.date ?? incoming?.date ?? "",
       };
     })
     .sort((left, right) => left.date.localeCompare(right.date));
+
+  const claimedMergeGroups = new Set<string>();
+  for (const group of groups) {
+    if (claimedMergeGroups.has(group.id) || group.status === "reconciled") continue;
+    const match = groups.find(
+      (candidate) =>
+        !claimedMergeGroups.has(candidate.id) &&
+        candidate.status !== "reconciled" &&
+        canMergeGeneratedGroups(group, candidate),
+    );
+    if (!match) continue;
+    group.mergeCandidateGroupId = match.id;
+    match.mergeCandidateGroupId = group.id;
+    group.status = "candidate";
+    match.status = "candidate";
+    claimedMergeGroups.add(group.id);
+    claimedMergeGroups.add(match.id);
+  }
 
   return groups;
 }

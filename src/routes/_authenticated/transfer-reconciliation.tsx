@@ -148,6 +148,16 @@ function TransferReconciliationPage() {
         : groups.filter((group) => group.rows.some((row) => row.account_id === accountFilter)),
     [accountFilter, groups],
   );
+  const groupById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
+  const pendingGroups = useMemo(
+    () =>
+      visibleGroups.filter((group) => {
+        if (group.status === "reconciled") return false;
+        if (!group.mergeCandidateGroupId) return true;
+        return group.id.localeCompare(group.mergeCandidateGroupId) < 0;
+      }),
+    [visibleGroups],
+  );
   const visibleAccounts =
     accountFilter === "all" ? accounts : accounts.filter((account) => account.id === accountFilter);
   const days = Array.from({ length: new Date(year, month, 0).getDate() }, (_, index) => index + 1);
@@ -200,6 +210,28 @@ function TransferReconciliationPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const mergeMutation = useMutation({
+    mutationFn: async ({
+      groupId,
+      matchingGroupId,
+    }: {
+      groupId: string;
+      matchingGroupId: string;
+    }) => {
+      const { error } = await callRpc("merge_internal_transfer_groups", {
+        p_workspace_id: wsId,
+        p_primary_group_id: groupId,
+        p_matching_group_id: matchingGroupId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await refresh();
+      toast.success("Lançamentos bancários consolidados; contrapartidas gerenciais arquivadas.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   function openEdit(group: InternalTransferGroup) {
     if (!group.outgoing || !group.incoming || group.id.startsWith("orphan:")) {
       toast.error("Complete o cadastro desta transferência pela lista de pendências.");
@@ -218,8 +250,8 @@ function TransferReconciliationPage() {
 
   const total = visibleGroups.length;
   const reconciled = visibleGroups.filter((group) => group.status === "reconciled").length;
-  const candidates = visibleGroups.filter((group) => group.status === "candidate").length;
-  const pending = total - reconciled;
+  const candidates = pendingGroups.filter((group) => group.status === "candidate").length;
+  const pending = pendingGroups.length;
 
   if (accountsQuery.error || transactionsQuery.error) {
     const error = (accountsQuery.error || transactionsQuery.error) as Error;
@@ -362,31 +394,36 @@ function TransferReconciliationPage() {
         </div>
       </div>
       <div className="space-y-3">
-        {visibleGroups
-          .filter((group) => group.status !== "reconciled")
-          .map((group) => (
-            <PendingCard
-              key={group.id}
-              group={group}
-              accountById={accountById}
-              currency={currency}
-              privacy={privacy}
-              onEdit={() => openEdit(group)}
-              onReconcile={(candidateId) =>
-                reconcileMutation.mutate({ groupId: group.id, candidateId })
-              }
-              busy={reconcileMutation.isPending}
-            />
-          ))}
-        {!transactionsQuery.isLoading &&
-          visibleGroups.every((group) => group.status === "reconciled") && (
-            <Card>
-              <CardContent className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                Nenhuma pendência neste período.
-              </CardContent>
-            </Card>
-          )}
+        {pendingGroups.map((group) => (
+          <PendingCard
+            key={group.id}
+            group={group}
+            accountById={accountById}
+            currency={currency}
+            privacy={privacy}
+            onEdit={() => openEdit(group)}
+            onReconcile={(candidateId) =>
+              reconcileMutation.mutate({ groupId: group.id, candidateId })
+            }
+            mergeCandidate={
+              group.mergeCandidateGroupId
+                ? (groupById.get(group.mergeCandidateGroupId) ?? null)
+                : null
+            }
+            onMerge={(matchingGroupId) =>
+              mergeMutation.mutate({ groupId: group.id, matchingGroupId })
+            }
+            busy={reconcileMutation.isPending || mergeMutation.isPending}
+          />
+        ))}
+        {!transactionsQuery.isLoading && pendingGroups.length === 0 && (
+          <Card>
+            <CardContent className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              Nenhuma pendência neste período.
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Dialog open={Boolean(edit)} onOpenChange={(open) => !open && setEdit(null)}>
@@ -535,6 +572,8 @@ function PendingCard({
   privacy,
   onEdit,
   onReconcile,
+  mergeCandidate,
+  onMerge,
   busy,
 }: {
   group: InternalTransferGroup;
@@ -543,6 +582,8 @@ function PendingCard({
   privacy: boolean;
   onEdit: () => void;
   onReconcile: (candidateId: string) => void;
+  mergeCandidate: InternalTransferGroup | null;
+  onMerge: (matchingGroupId: string) => void;
   busy: boolean;
 }) {
   const source = accountById.get(group.outgoing?.account_id ?? "")?.name ?? "Origem não definida";
@@ -573,6 +614,12 @@ function PendingCard({
                 {candidate.description} ({candidate.date.split("-").reverse().join("/")}).
               </p>
             )}
+            {mergeCandidate && (
+              <p className="mt-1 text-sm">
+                Os dois lados bancários já foram importados. Ao consolidar, somente esses dois
+                lançamentos ficarão ativos e as contrapartidas gerenciais serão arquivadas.
+              </p>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -584,6 +631,12 @@ function PendingCard({
             <Button size="sm" disabled={busy} onClick={() => onReconcile(candidate.id)}>
               <Link2 className="mr-1 h-4 w-4" />
               Usar contrapartida
+            </Button>
+          )}
+          {mergeCandidate && !group.id.startsWith("orphan:") && (
+            <Button size="sm" disabled={busy} onClick={() => onMerge(mergeCandidate.id)}>
+              <Link2 className="mr-1 h-4 w-4" />
+              Consolidar lançamentos reais
             </Button>
           )}
         </div>
