@@ -76,6 +76,12 @@ const baseNavDef = [
   { to: "/cards", icon: CreditCard, key: "nav.cards", label: "Cartões" },
   { to: "/budget-analysis", icon: PieChart, key: "nav.budget", label: "Análise de Orçamento" },
   { to: "/reconciliation", icon: Scale, key: "nav.reconciliation", label: "Conciliação" },
+  {
+    to: "/transfer-reconciliation",
+    icon: ArrowLeftRight,
+    key: "nav.transfer_reconciliation",
+    label: "Conciliação de transferências",
+  },
   { to: "/categories", icon: Tags, key: "nav.categories", label: "Categorias" },
   { to: "/import", icon: Upload, key: "nav.import", label: "Importar" },
   {
@@ -147,6 +153,7 @@ const financialNavKeys = new Set([
   "nav.cards",
   "nav.budget",
   "nav.reconciliation",
+  "nav.transfer_reconciliation",
   "nav.categories",
   "nav.import",
   "nav.atelier.cash_flow",
