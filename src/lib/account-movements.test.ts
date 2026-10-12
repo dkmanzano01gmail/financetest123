@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   accountMovementLabel,
   isAccountMovement,
+  isInternalTransfer,
   movementConversionDefaults,
   summarizeAccountMovements,
 } from "./account-movements.ts";
@@ -13,6 +14,13 @@ test("recognizes only account movement financial roles", () => {
   assert.equal(isAccountMovement({ financial_role: "investment_redemption" }), true);
   assert.equal(isAccountMovement({ financial_role: "regular" }), false);
   assert.equal(isAccountMovement({ financial_role: "credit_card_payment" }), false);
+});
+
+test("recognizes internal transfers independently from investments", () => {
+  assert.equal(isInternalTransfer({ financial_role: "internal_transfer" }), true);
+  assert.equal(isInternalTransfer({ financial_role: "investment_contribution" }), false);
+  assert.equal(isInternalTransfer({ financial_role: "investment_redemption" }), false);
+  assert.equal(isInternalTransfer({ financial_role: null }), false);
 });
 
 test("labels each account movement", () => {

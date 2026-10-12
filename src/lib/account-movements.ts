@@ -20,6 +20,12 @@ export function isAccountMovement(
   return ACCOUNT_MOVEMENT_ROLES.includes(transaction.financial_role as AccountMovementRole);
 }
 
+export function isInternalTransfer(
+  transaction: Pick<AccountMovementTransaction, "financial_role">,
+): boolean {
+  return transaction.financial_role === "internal_transfer";
+}
+
 export function accountMovementLabel(role: string | null | undefined) {
   if (role === "internal_transfer") return "Transferência interna";
   if (role === "investment_contribution") return "Aporte em investimento";

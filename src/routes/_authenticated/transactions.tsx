@@ -50,6 +50,7 @@ import {
 import {
   accountMovementLabel,
   isAccountMovement,
+  isInternalTransfer,
   summarizeAccountMovements,
 } from "@/lib/account-movements";
 import { Plus, Receipt, Trash2, Sparkles, Pencil, ArrowLeftRight, PiggyBank } from "lucide-react";
@@ -68,7 +69,7 @@ import {
 type TransactionSearch = {
   month?: string;
   year?: string;
-  type?: "income" | "expense";
+  type?: "income" | "expense" | "internal_transfer";
   category?: string;
 };
 
@@ -79,7 +80,10 @@ export const Route = createFileRoute("/_authenticated/transactions")({
         ? search.month
         : undefined,
     year: typeof search.year === "string" && /^\d{4}$/.test(search.year) ? search.year : undefined,
-    type: search.type === "income" || search.type === "expense" ? search.type : undefined,
+    type:
+      search.type === "income" || search.type === "expense" || search.type === "internal_transfer"
+        ? search.type
+        : undefined,
     category: typeof search.category === "string" ? search.category.slice(0, 120) : undefined,
   }),
   component: TransactionsPage,
@@ -213,7 +217,14 @@ function TransactionsPage() {
 
   const filterableTransactions = useMemo(() => {
     return (txs ?? []).filter((tx) => {
-      if (type !== "all" && analyticalTransactionType(tx) !== type) return false;
+      if (type === "internal_transfer" && !isInternalTransfer(tx)) return false;
+      if (
+        type !== "all" &&
+        type !== "internal_transfer" &&
+        analyticalTransactionType(tx) !== type
+      ) {
+        return false;
+      }
       if (!matchesTransactionSource(tx, source)) return false;
       if (search && !tx.description?.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
@@ -525,6 +536,7 @@ function TransactionsPage() {
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="income">{t.incomeSingular}</SelectItem>
               <SelectItem value="expense">{t.expenseSingular}</SelectItem>
+              <SelectItem value="internal_transfer">Transferências internas</SelectItem>
             </SelectContent>
           </Select>
           <Select
@@ -700,21 +712,40 @@ function TransactionsPage() {
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {accountMovementSummary.transfers.count > 0 && (
-              <Card>
-                <CardContent className="flex items-center justify-between gap-3 p-4">
-                  <div>
-                    <div className="flex items-center gap-2 font-medium">
-                      <ArrowLeftRight className="h-4 w-4" /> Transferências internas
+              <button
+                type="button"
+                aria-pressed={type === "internal_transfer"}
+                aria-label="Filtrar por transferências internas"
+                onClick={() => {
+                  setType((current) =>
+                    current === "internal_transfer" ? "all" : "internal_transfer",
+                  );
+                  clearCategorySelection();
+                }}
+                className="rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <Card
+                  className={`h-full transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md ${
+                    type === "internal_transfer"
+                      ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                      : ""
+                  }`}
+                >
+                  <CardContent className="flex items-center justify-between gap-3 p-4">
+                    <div>
+                      <div className="flex items-center gap-2 font-medium">
+                        <ArrowLeftRight className="h-4 w-4" /> Transferências internas
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {accountMovementSummary.transfers.count} movimentação(ões)
+                      </div>
                     </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {accountMovementSummary.transfers.count} movimentação(ões)
-                    </div>
-                  </div>
-                  <strong className="font-mono">
-                    {formatCurrency(accountMovementSummary.transfers.amount, currency, privacy)}
-                  </strong>
-                </CardContent>
-              </Card>
+                    <strong className="font-mono">
+                      {formatCurrency(accountMovementSummary.transfers.amount, currency, privacy)}
+                    </strong>
+                  </CardContent>
+                </Card>
+              </button>
             )}
             {accountMovementSummary.contributions.count > 0 && (
               <Card>
