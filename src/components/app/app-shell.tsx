@@ -207,9 +207,7 @@ export function AppShell() {
     : baseNav;
   const nav = arrangeNav(navWithAdmin, navOrder, hiddenNav);
   const financialNav = nav.filter((item) => financialNavKeys.has(item.key));
-  const atelierNav = isAtelierWorkspace
-    ? nav.filter((item) => atelierNavKeys.has(item.key))
-    : [];
+  const atelierNav = isAtelierWorkspace ? nav.filter((item) => atelierNavKeys.has(item.key)) : [];
   const systemNav = nav.filter(
     (item) => !financialNavKeys.has(item.key) && !atelierNavKeys.has(item.key),
   );
@@ -312,7 +310,8 @@ export function AppShell() {
         </TooltipTrigger>
         {sidebarCollapsed && (
           <TooltipContent side="right">
-            {item.label}{item.key === "nav.budget" ? " · WIP" : ""}
+            {item.label}
+            {item.key === "nav.budget" ? " · WIP" : ""}
           </TooltipContent>
         )}
       </Tooltip>
@@ -344,7 +343,12 @@ export function AppShell() {
     );
   }
 
-  if (studentPortalLoading) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  if (studentPortalLoading)
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
   if (studentPortal) return <StudentPortalShell access={studentPortal} />;
   if (pathname === "/onboarding") return <Outlet />;
 
@@ -382,9 +386,7 @@ export function AppShell() {
                 <span className="rounded-full bg-sidebar-primary px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-sidebar-primary-foreground">
                   Beta
                 </span>
-                <div className="text-xs text-sidebar-foreground/60">
-                  Pessoal e negócios
-                </div>
+                <div className="text-xs text-sidebar-foreground/60">Pessoal e negócios</div>
               </div>
             )}
           </div>
@@ -513,7 +515,9 @@ export function AppShell() {
                   {!sidebarCollapsed && "Ajuda e apresentação"}
                 </button>
               </TooltipTrigger>
-              {sidebarCollapsed && <TooltipContent side="right">Ajuda e apresentação</TooltipContent>}
+              {sidebarCollapsed && (
+                <TooltipContent side="right">Ajuda e apresentação</TooltipContent>
+              )}
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -726,10 +730,7 @@ export function AppShell() {
       </div>
       {workspace && (
         <>
-          <QuickFeedbackButton
-            workspaceId={workspace.id}
-            pathname={pathname}
-          />
+          <QuickFeedbackButton workspaceId={workspace.id} pathname={pathname} />
           <ProductTour
             workspaceId={workspace.id}
             isAtelier={isAtelierWorkspace}
