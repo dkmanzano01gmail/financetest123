@@ -45,6 +45,7 @@ import { formatCurrency } from "@/lib/format";
 import {
   buildCardImportDescription,
   financialMonthKey,
+  installmentFromDescription,
   invoiceMonthForPaymentDate,
 } from "@/lib/credit-card-reconciliation";
 
@@ -53,6 +54,7 @@ export const Route = createFileRoute("/_authenticated/import")({
 });
 
 type Target = "account" | "credit_card";
+type DetectedFileFormat = "nubank_account" | "nubank_card" | "c6_card" | null;
 
 function currentDateKey() {
   const now = new Date();
@@ -92,6 +94,7 @@ function ImportPage() {
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<CsvRow[]>([]);
   const [fileName, setFileName] = useState("");
+  const [detectedFileFormat, setDetectedFileFormat] = useState<DetectedFileFormat>(null);
   const [mapping, setMapping] = useState({
     date: "",
     description: "",
@@ -136,6 +139,7 @@ function ImportPage() {
     const f = e.target.files?.[0];
     if (!f) return;
     setFileName(f.name);
+    setDetectedFileFormat(null);
     setPrepared([]);
     setLastSummary(null);
     let parsed: { headers: string[]; rows: CsvRow[] };
@@ -176,10 +180,12 @@ function ImportPage() {
       norm.includes("final do cartao") &&
       norm.includes("parcela");
     if (isNubankAccount) {
+      setDetectedFileFormat("nubank_account");
       toast.success("Nubank (conta) detectado — mapeamento automático aplicado.");
       if (target !== "account") setTargetId("");
       setTarget("account");
     } else if (isNubankCard || isC6Card) {
+      setDetectedFileFormat(isC6Card ? "c6_card" : "nubank_card");
       toast.success(
         `${isC6Card ? "C6" : "Nubank"} (cartão) detectado — mapeamento automático aplicado.`,
       );
@@ -242,9 +248,14 @@ function ImportPage() {
       const date = target === "credit_card" ? cardPaymentDate : purchaseDate;
       const amount = parseAmount(rawAmt);
       const sourceDescription = (r[mapping.description] ?? "").trim();
-      const installment = mapping.installment
+      const mappedInstallment = mapping.installment
         ? (r[mapping.installment] ?? "").trim().slice(0, 30) || null
         : null;
+      const installment =
+        mappedInstallment ??
+        (target === "credit_card" && detectedFileFormat === "nubank_card"
+          ? installmentFromDescription(sourceDescription)
+          : null);
       const description =
         target === "credit_card"
           ? buildCardImportDescription({
@@ -491,6 +502,7 @@ function ImportPage() {
       setRows([]);
       setHeaders([]);
       setFileName("");
+      setDetectedFileFormat(null);
     },
     onError: (e: any) => toast.error(e.message),
     onSettled: () => setImporting(false),
