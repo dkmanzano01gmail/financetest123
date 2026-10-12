@@ -66,10 +66,11 @@ type EditForm = {
 };
 
 type RpcResult = Promise<{ error: { message: string } | null }>;
-const callRpc = supabase.rpc as unknown as (
-  functionName: string,
-  parameters: Record<string, unknown>,
-) => RpcResult;
+const callRpc = (functionName: string, parameters: Record<string, unknown>): RpcResult =>
+  (supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => RpcResult)(
+    functionName,
+    parameters,
+  );
 
 const STATUS_LABEL: Record<TransferReconciliationStatus, string> = {
   reconciled: "Conciliada",
