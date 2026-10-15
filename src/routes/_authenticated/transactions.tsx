@@ -151,18 +151,32 @@ function TransactionsPage() {
     queryKey: ["transactions", wsId, year, month],
     enabled: !!wsId,
     queryFn: async () => {
-      let q = supabase
-        .from("transactions")
-        .select(
-          "*, categories!transactions_category_id_fkey(name,color), accounts!transactions_account_id_fkey(name)",
-        )
-        .eq("workspace_id", wsId!)
-        .order("date", { ascending: false });
-      if (year !== "all") q = q.eq("year", Number(year));
-      if (month !== "all") q = q.eq("month", Number(month));
-      const { data, error } = await q;
-      if (error) throw error;
-      return data ?? [];
+      const pageSize = 1000;
+      const maximumTransactions = 10_000;
+      const transactions = [];
+
+      for (let from = 0; from < maximumTransactions; from += pageSize) {
+        let q = supabase
+          .from("transactions")
+          .select(
+            "*, categories!transactions_category_id_fkey(name,color), accounts!transactions_account_id_fkey(name)",
+          )
+          .eq("workspace_id", wsId!)
+          .order("date", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, Math.min(from + pageSize - 1, maximumTransactions - 1));
+        if (year !== "all") q = q.eq("year", Number(year));
+        if (month !== "all") q = q.eq("month", Number(month));
+
+        const { data, error } = await q;
+        if (error) throw error;
+
+        const page = data ?? [];
+        transactions.push(...page);
+        if (page.length < pageSize) break;
+      }
+
+      return transactions;
     },
   });
 
