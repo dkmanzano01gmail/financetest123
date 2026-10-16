@@ -33,6 +33,7 @@ import {
   type TransferReconciliationStatus,
   type TransferReconciliationTransaction,
 } from "@/lib/internal-transfer-reconciliation";
+import { fetchSupabasePages } from "@/lib/supabase-pagination";
 
 export const Route = createFileRoute("/_authenticated/transfer-reconciliation")({
   component: TransferReconciliationPage,
@@ -117,20 +118,21 @@ function TransferReconciliationPage() {
   const transactionsQuery = useQuery({
     queryKey: ["transfer-reconciliation-transactions", wsId, start, end],
     enabled: Boolean(wsId),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("transactions")
-        .select(
-          "id,date,type,amount,description,account_id,linked_account_id,financial_role,transfer_group_id,source,method,notes,status,reconciliation_method",
-        )
-        .eq("workspace_id", wsId!)
-        .gte("date", start)
-        .lte("date", end)
-        .not("account_id", "is", null)
-        .order("date");
-      if (error) throw error;
-      return (data ?? []) as TransferReconciliationTransaction[];
-    },
+    queryFn: () =>
+      fetchSupabasePages<TransferReconciliationTransaction>((from, to) =>
+        supabase
+          .from("transactions")
+          .select(
+            "id,date,type,amount,description,account_id,linked_account_id,financial_role,transfer_group_id,source,method,notes,status,reconciliation_method",
+          )
+          .eq("workspace_id", wsId!)
+          .gte("date", start)
+          .lte("date", end)
+          .not("account_id", "is", null)
+          .order("date")
+          .order("id")
+          .range(from, to),
+      ),
   });
 
   const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);

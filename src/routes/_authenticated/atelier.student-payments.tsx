@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { createPixPayload } from "@/lib/pix-br";
 import { parseLocaleAmount } from "@/lib/format";
+import { fetchSupabasePages } from "@/lib/supabase-pagination";
 import {
   allocateMaterialPayment,
   findPaymentSuggestions,
@@ -230,18 +231,19 @@ function Page() {
   const transactionsQuery = useQuery({
     queryKey: ["transactions", wsId, "student-payment-suggestions", year, month],
     enabled: !!wsId,
-    queryFn: async () => {
-      const { data, error } = await sb
-        .from("transactions")
-        .select("id,amount,date,description,counterparty,method")
-        .eq("workspace_id", wsId)
-        .eq("type", "income")
-        .eq("year", year)
-        .eq("month", month)
-        .order("date", { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as TransactionRow[];
-    },
+    queryFn: () =>
+      fetchSupabasePages<TransactionRow>((from, to) =>
+        sb
+          .from("transactions")
+          .select("id,amount,date,description,counterparty,method")
+          .eq("workspace_id", wsId)
+          .eq("type", "income")
+          .eq("year", year)
+          .eq("month", month)
+          .order("date", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      ),
   });
 
   const summaries = useMemo(() => {

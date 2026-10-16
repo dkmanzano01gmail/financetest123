@@ -34,6 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
+import { fetchSupabasePages } from "@/lib/supabase-pagination";
 import { Scale, Wallet, AlertCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -88,17 +89,20 @@ function ReconciliationPage() {
   const { data: txs } = useQuery({
     queryKey: ["recon-txs", wsId],
     enabled: !!wsId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("transactions")
-        .select("id,date,description,amount,type,status,category_id,account_id,credit_card_id,financial_role")
-        .eq("workspace_id", wsId!)
-        .not("account_id", "is", null)
-        .neq("status", "ignored")
-        .order("date");
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: () =>
+      fetchSupabasePages((from, to) =>
+        supabase
+          .from("transactions")
+          .select(
+            "id,date,description,amount,type,status,category_id,account_id,credit_card_id,financial_role",
+          )
+          .eq("workspace_id", wsId!)
+          .not("account_id", "is", null)
+          .neq("status", "ignored")
+          .order("date")
+          .order("id")
+          .range(from, to),
+      ),
   });
 
   function openEdit(a: any) {
@@ -193,8 +197,9 @@ function ReconciliationPage() {
     if (!selectedRow) return [];
     const byDay = new Map<string, { date: string; in: number; out: number; transactions: any[] }>();
     for (const t of selectedRow.txs) {
-      const cur: { date: string; in: number; out: number; transactions: any[] } =
-        byDay.get(t.date) ?? { date: t.date, in: 0, out: 0, transactions: [] };
+      const cur: { date: string; in: number; out: number; transactions: any[] } = byDay.get(
+        t.date,
+      ) ?? { date: t.date, in: 0, out: 0, transactions: [] };
       const amt = Math.abs(Number(t.amount));
       if (t.type === "income") cur.in += amt;
       else cur.out += amt;
@@ -205,8 +210,9 @@ function ReconciliationPage() {
     const daysInMonth = new Date(year, month, 0).getDate();
     return Array.from({ length: daysInMonth }, (_, index) => {
       const date = `${year}-${String(month).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`;
-      const day: { date: string; in: number; out: number; transactions: any[] } =
-        byDay.get(date) ?? { date, in: 0, out: 0, transactions: [] };
+      const day: { date: string; in: number; out: number; transactions: any[] } = byDay.get(
+        date,
+      ) ?? { date, in: 0, out: 0, transactions: [] };
       balance += day.in - day.out;
       return {
         ...day,
@@ -217,11 +223,14 @@ function ReconciliationPage() {
     });
   }, [selectedRow, month, year]);
 
-
   if (!accounts) {
     return (
       <PageContainer>
-        <PageHeader title="Conciliação de Conta" helpKey="financial.reconciliation" description="Carregando…" />
+        <PageHeader
+          title="Conciliação de Conta"
+          helpKey="financial.reconciliation"
+          description="Carregando…"
+        />
       </PageContainer>
     );
   }
@@ -262,18 +271,26 @@ function ReconciliationPage() {
 
       <div className="flex flex-wrap gap-3 mb-5">
         <Select value={String(month)} onValueChange={(value) => setMonth(Number(value))}>
-          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-36">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             {Array.from({ length: 12 }, (_, index) => (
-              <SelectItem key={index + 1} value={String(index + 1)}>{monthLabel(index + 1)}</SelectItem>
+              <SelectItem key={index + 1} value={String(index + 1)}>
+                {monthLabel(index + 1)}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={String(year)} onValueChange={(value) => setYear(Number(value))}>
-          <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-28">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             {[NOW.getFullYear() - 1, NOW.getFullYear(), NOW.getFullYear() + 1].map((item) => (
-              <SelectItem key={item} value={String(item)}>{item}</SelectItem>
+              <SelectItem key={item} value={String(item)}>
+                {item}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -295,7 +312,12 @@ function ReconciliationPage() {
       {selected === "__all__" ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <Stat label={`Saldo final · ${monthLabel(month)}/${year}`} value={totalCalc} currency={currency} privacy={privacy} />
+            <Stat
+              label={`Saldo final · ${monthLabel(month)}/${year}`}
+              value={totalCalc}
+              currency={currency}
+              privacy={privacy}
+            />
             <Stat
               label="Saldo informado"
               value={totalReported}

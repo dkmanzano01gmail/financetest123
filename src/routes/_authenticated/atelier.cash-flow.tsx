@@ -27,6 +27,7 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { buildCashFlowProjection, type CashFlowDay, type CashFlowEvent } from "@/lib/orna-logic";
+import { fetchSupabasePages } from "@/lib/supabase-pagination";
 import {
   type CardPaymentHistoryTransaction,
   futureInstallmentExpenseSuggestions,
@@ -146,18 +147,20 @@ function CashFlowPage() {
       const start = `${year}-${String(month).padStart(2, "0")}-01`;
       const endDate = new Date(year, month - 1 + monthsCount, 0);
       const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
-      const { data, error } = await sb
-        .from("transactions")
-        .select(
-          "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,financial_role,transfer_group_id,reversal_of_transaction_id,accounts!transactions_account_id_fkey!inner(type),categories!transactions_category_id_fkey(name,color)",
-        )
-        .eq("workspace_id", wsId)
-        .eq("accounts.type", "checking")
-        .gte("date", start)
-        .lte("date", end)
-        .order("date");
-      if (error) throw error;
-      return data ?? [];
+      return fetchSupabasePages<Record<string, unknown>>((from, to) =>
+        sb
+          .from("transactions")
+          .select(
+            "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,financial_role,transfer_group_id,reversal_of_transaction_id,accounts!transactions_account_id_fkey!inner(type),categories!transactions_category_id_fkey(name,color)",
+          )
+          .eq("workspace_id", wsId)
+          .eq("accounts.type", "checking")
+          .gte("date", start)
+          .lte("date", end)
+          .order("date")
+          .order("id")
+          .range(from, to),
+      );
     },
     retry: 1,
     refetchOnWindowFocus: true,
@@ -208,19 +211,19 @@ function CashFlowPage() {
   } = useQuery({
     queryKey: ["transactions", wsId, "cash-flow-installment-suggestions"],
     enabled: !!wsId,
-    queryFn: async () => {
-      const { data, error } = await sb
-        .from("transactions")
-        .select("id,date,type,amount,status,credit_card_id,invoice_month,installment")
-        .eq("workspace_id", wsId)
-        .eq("type", "expense")
-        .not("credit_card_id", "is", null)
-        .not("invoice_month", "is", null)
-        .order("invoice_month", { ascending: false })
-        .limit(5000);
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: () =>
+      fetchSupabasePages<Record<string, unknown>>((from, to) =>
+        sb
+          .from("transactions")
+          .select("id,date,type,amount,status,credit_card_id,invoice_month,installment")
+          .eq("workspace_id", wsId)
+          .eq("type", "expense")
+          .not("credit_card_id", "is", null)
+          .not("invoice_month", "is", null)
+          .order("invoice_month", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      ),
   });
 
   const {
@@ -248,18 +251,18 @@ function CashFlowPage() {
   } = useQuery({
     queryKey: ["transactions", wsId, "cash-flow-card-payment-history"],
     enabled: !!wsId,
-    queryFn: async () => {
-      const { data, error } = await sb
-        .from("transactions")
-        .select("date,status,linked_credit_card_id,financial_role")
-        .eq("workspace_id", wsId)
-        .eq("financial_role", "credit_card_payment")
-        .not("linked_credit_card_id", "is", null)
-        .order("date", { ascending: false })
-        .limit(500);
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: () =>
+      fetchSupabasePages<Record<string, unknown>>((from, to) =>
+        sb
+          .from("transactions")
+          .select("id,date,status,linked_credit_card_id,financial_role")
+          .eq("workspace_id", wsId)
+          .eq("financial_role", "credit_card_payment")
+          .not("linked_credit_card_id", "is", null)
+          .order("date", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      ),
   });
 
   const installmentSuggestions = useMemo(

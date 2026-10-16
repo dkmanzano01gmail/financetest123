@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/format";
 import { L } from "@/lib/labels";
+import { fetchSupabasePages } from "@/lib/supabase-pagination";
 import { PieChart, TrendingDown, Sparkles, Repeat, AlertTriangle, Check } from "lucide-react";
 import {
   financialMonthKey,
@@ -62,18 +63,20 @@ function BudgetAnalysisPage() {
   const { data: txs, isLoading } = useQuery({
     queryKey: ["ba-txs", wsId],
     enabled: !!wsId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("transactions")
-        .select(
-          "id,date,description,amount,type,status,category_id,credit_card_id,account_id,importance_level,financial_role,reversal_of_transaction_id,linked_credit_card_id,invoice_month",
-        )
-        .eq("workspace_id", wsId!)
-        .gte("date", fromISO)
-        .neq("status", "ignored");
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
+    queryFn: () =>
+      fetchSupabasePages((from, to) =>
+        supabase
+          .from("transactions")
+          .select(
+            "id,date,description,amount,type,status,category_id,credit_card_id,account_id,importance_level,financial_role,reversal_of_transaction_id,linked_credit_card_id,invoice_month",
+          )
+          .eq("workspace_id", wsId!)
+          .gte("date", fromISO)
+          .neq("status", "ignored")
+          .order("date", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      ),
   });
 
   const { data: categories } = useQuery({

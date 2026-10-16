@@ -1,8 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
-import {
-  isMovementSuggestionRule,
-  type MovementSuggestionRule,
-} from "@/lib/movement-suggestions";
+import { isMovementSuggestionRule, type MovementSuggestionRule } from "@/lib/movement-suggestions";
+import { fetchSupabasePages } from "@/lib/supabase-pagination";
 
 export type Importance = "essential" | "important" | "flexible" | "superfluous";
 
@@ -313,22 +311,16 @@ function similarHistory(tx: SuggestionInput, history: HistoryEntry[]): HistoryMa
 }
 
 async function loadCategorizationHistory(workspaceId: string): Promise<HistoryEntry[]> {
-  const pageSize = 1000;
-  const history: HistoryEntry[] = [];
-  for (let from = 0; ; from += pageSize) {
-    const result = await supabase
+  return fetchSupabasePages<HistoryEntry>((from, to) =>
+    supabase
       .from("transactions")
-      .select("id,type,description,counterparty,date,amount,category_id,importance_level" as any)
+      .select("id,type,description,counterparty,date,amount,category_id,importance_level")
       .eq("workspace_id", workspaceId)
       .not("category_id", "is", null)
       .order("date", { ascending: false })
-      .range(from, from + pageSize - 1);
-    if (result.error) throw result.error;
-    const page = ((result.data as any[]) ?? []) as HistoryEntry[];
-    history.push(...page);
-    if (page.length < pageSize) break;
-  }
-  return history;
+      .order("id", { ascending: false })
+      .range(from, to),
+  );
 }
 
 export async function loadSuggestionContext(

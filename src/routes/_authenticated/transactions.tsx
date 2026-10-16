@@ -40,6 +40,7 @@ import {
   transactionCategoryKey,
   type TransactionSourceFilter,
 } from "@/lib/transaction-summary";
+import { fetchSupabasePages } from "@/lib/supabase-pagination";
 import {
   analyticalTransactionType,
   isConsumptionTransaction,
@@ -150,12 +151,8 @@ function TransactionsPage() {
   } = useQuery({
     queryKey: ["transactions", wsId, year, month],
     enabled: !!wsId,
-    queryFn: async () => {
-      const pageSize = 1000;
-      const maximumTransactions = 10_000;
-      const transactions = [];
-
-      for (let from = 0; from < maximumTransactions; from += pageSize) {
+    queryFn: () =>
+      fetchSupabasePages((from, to) => {
         let q = supabase
           .from("transactions")
           .select(
@@ -164,20 +161,11 @@ function TransactionsPage() {
           .eq("workspace_id", wsId!)
           .order("date", { ascending: false })
           .order("id", { ascending: false })
-          .range(from, Math.min(from + pageSize - 1, maximumTransactions - 1));
+          .range(from, to);
         if (year !== "all") q = q.eq("year", Number(year));
         if (month !== "all") q = q.eq("month", Number(month));
-
-        const { data, error } = await q;
-        if (error) throw error;
-
-        const page = data ?? [];
-        transactions.push(...page);
-        if (page.length < pageSize) break;
-      }
-
-      return transactions;
-    },
+        return q;
+      }),
   });
 
   // `transactions` has two foreign keys to `credit_cards`. Fetching card names

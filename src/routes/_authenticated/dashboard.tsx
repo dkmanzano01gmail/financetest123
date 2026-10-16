@@ -19,6 +19,7 @@ import { formatCurrency, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
 import { dashboardSummary } from "@/lib/orna-logic";
 import { profitThroughSelectedMonth } from "@/lib/dashboard-profit";
+import { fetchSupabasePages } from "@/lib/supabase-pagination";
 import {
   financialDateForTransaction,
   isConsumptionTransaction,
@@ -60,17 +61,19 @@ function Dashboard() {
   const { data: yearTxs } = useQuery({
     queryKey: ["transactions-dashboard-period", wsId, year],
     enabled: !!wsId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("transactions")
-        .select(
-          "id,date,type,amount,description,counterparty,status,category_id,credit_card_id,financial_role,reversal_of_transaction_id,linked_credit_card_id,invoice_month,categories!transactions_category_id_fkey(name,color)",
-        )
-        .eq("workspace_id", wsId!)
-        .in("year", [year, year - 1]);
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: () =>
+      fetchSupabasePages((from, to) =>
+        supabase
+          .from("transactions")
+          .select(
+            "id,date,type,amount,description,counterparty,status,category_id,credit_card_id,financial_role,reversal_of_transaction_id,linked_credit_card_id,invoice_month,categories!transactions_category_id_fkey(name,color)",
+          )
+          .eq("workspace_id", wsId!)
+          .in("year", [year, year - 1])
+          .order("date", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      ),
   });
 
   const { data: accounts } = useQuery({

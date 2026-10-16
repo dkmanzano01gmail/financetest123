@@ -25,6 +25,7 @@ import {
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, formatDate, monthLabel, parseLocaleAmount } from "@/lib/format";
+import { fetchSupabasePages } from "@/lib/supabase-pagination";
 import {
   billingMonthForPurchase,
   invoiceMonthKey,
@@ -106,17 +107,19 @@ function CardsPage() {
     queryFn: async () => {
       const rangeStart = new Date(year, month - 3, 1, 12);
       const rangeEnd = new Date(year, month + 1, 0, 12);
-      const { data, error } = await supabase
-        .from("transactions")
-        .select(
-          "id,date,description,amount,type,status,source,category_id,counterparty,credit_card_id,account_id,linked_credit_card_id,invoice_month,financial_role,reconciliation_method,reversal_of_transaction_id,categories!transactions_category_id_fkey(name,color),accounts!transactions_account_id_fkey(name)",
-        )
-        .eq("workspace_id", wsId!)
-        .gte("date", isoDate(rangeStart))
-        .lte("date", isoDate(rangeEnd))
-        .order("date", { ascending: false });
-      if (error) throw error;
-      return data ?? [];
+      return fetchSupabasePages((from, to) =>
+        supabase
+          .from("transactions")
+          .select(
+            "id,date,description,amount,type,status,source,category_id,counterparty,credit_card_id,account_id,linked_credit_card_id,invoice_month,financial_role,reconciliation_method,reversal_of_transaction_id,categories!transactions_category_id_fkey(name,color),accounts!transactions_account_id_fkey(name)",
+          )
+          .eq("workspace_id", wsId!)
+          .gte("date", isoDate(rangeStart))
+          .lte("date", isoDate(rangeEnd))
+          .order("date", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      );
     },
   });
 
@@ -126,7 +129,9 @@ function CardsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("credit_card_payment_allocations" as any)
-        .select("*, original:transactions!credit_card_payment_allocations_original_transaction_id_fkey(id,date,description,amount,account_id,accounts!transactions_account_id_fkey(name))")
+        .select(
+          "*, original:transactions!credit_card_payment_allocations_original_transaction_id_fkey(id,date,description,amount,account_id,accounts!transactions_account_id_fkey(name))",
+        )
         .eq("workspace_id", wsId!)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -260,15 +265,21 @@ function CardsPage() {
     mutationFn: async () => {
       if (!selectedCardId) throw new Error("Selecione o cartão.");
       const selected = analytics.candidates
-        .map((transaction: any) => ({ transaction, amount: parseLocaleAmount(allocations[transaction.id]) }))
+        .map((transaction: any) => ({
+          transaction,
+          amount: parseLocaleAmount(allocations[transaction.id]),
+        }))
         .filter(({ amount }) => Number.isFinite(amount) && amount > 0);
-      if (!selected.length) throw new Error("Informe quanto deseja abater em pelo menos uma conta.");
+      if (!selected.length)
+        throw new Error("Informe quanto deseja abater em pelo menos uma conta.");
 
       const cardData = analytics.byCard.get(selectedCardId);
       const invoicePending = Math.max((cardData?.spend || 0) - (cardData?.paid || 0), 0);
       const requested = selected.reduce((sum, item) => sum + item.amount, 0);
       if (requested > invoicePending + 0.005)
-        throw new Error(`O total escolhido excede o saldo pendente da fatura (${formatCurrency(invoicePending, currency)}).`);
+        throw new Error(
+          `O total escolhido excede o saldo pendente da fatura (${formatCurrency(invoicePending, currency)}).`,
+        );
 
       for (const { transaction, amount } of selected) {
         const used = (paymentAllocations as any[])
@@ -276,7 +287,9 @@ function CardsPage() {
           .reduce((sum, item) => sum + Math.abs(Number(item.allocated_amount) || 0), 0);
         const available = Math.max(Math.abs(Number(transaction.amount)) - used, 0);
         if (amount > available + 0.005)
-          throw new Error(`O valor de “${transaction.description}” excede o disponível (${formatCurrency(available, currency)}).`);
+          throw new Error(
+            `O valor de “${transaction.description}” excede o disponível (${formatCurrency(available, currency)}).`,
+          );
       }
 
       const { error } = await (supabase.rpc as any)("allocate_card_payments", {
@@ -493,9 +506,12 @@ function CardsPage() {
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
             <div className="flex-1 text-sm text-sky-950">
               Encontramos <strong>{nextInvoicePurchases.count} compras</strong>, somando{" "}
-              <strong>{formatCurrency(nextInvoicePurchases.total, currency, privacy)}</strong>. Pelas
-              datas de fechamento cadastradas, elas pertencem à fatura de{" "}
-              <strong>{monthLabel(nextInvoiceDate.getMonth() + 1)} de {nextInvoiceDate.getFullYear()}</strong>.
+              <strong>{formatCurrency(nextInvoicePurchases.total, currency, privacy)}</strong>.
+              Pelas datas de fechamento cadastradas, elas pertencem à fatura de{" "}
+              <strong>
+                {monthLabel(nextInvoiceDate.getMonth() + 1)} de {nextInvoiceDate.getFullYear()}
+              </strong>
+              .
             </div>
             <Button
               variant="outline"
@@ -518,10 +534,10 @@ function CardsPage() {
               <div>
                 <CardTitle className="text-base">Pagamentos encontrados nas transações</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Mostramos pagamentos feitos no mês da fatura e nos dois meses anteriores, caso
-                  ela tenha sido paga antecipadamente. Escolha uma ou mais contas e quanto abater
-                  de cada pagamento. O original será preservado e uma compensação inversa cancelará
-                  a duplicidade nos totais. Nenhum pagamento será apagado.
+                  Mostramos pagamentos feitos no mês da fatura e nos dois meses anteriores, caso ela
+                  tenha sido paga antecipadamente. Escolha uma ou mais contas e quanto abater de
+                  cada pagamento. O original será preservado e uma compensação inversa cancelará a
+                  duplicidade nos totais. Nenhum pagamento será apagado.
                 </p>
               </div>
             </div>
@@ -583,7 +599,8 @@ function CardsPage() {
                     {formatCurrency(Math.abs(Number(transaction.amount)), currency, privacy)}
                     {paymentAvailable(transaction) < Math.abs(Number(transaction.amount)) && (
                       <div className="text-xs font-sans font-normal text-muted-foreground">
-                        Disponível: {formatCurrency(paymentAvailable(transaction), currency, privacy)}
+                        Disponível:{" "}
+                        {formatCurrency(paymentAvailable(transaction), currency, privacy)}
                       </div>
                     )}
                   </div>
@@ -749,7 +766,9 @@ function CardsPage() {
                             </div>
                             <div className="font-mono font-medium">
                               {formatCurrency(
-                                Math.abs(Number(payment.allocation?.allocated_amount ?? payment.amount)),
+                                Math.abs(
+                                  Number(payment.allocation?.allocated_amount ?? payment.amount),
+                                ),
                                 currency,
                                 privacy,
                               )}
@@ -886,8 +905,8 @@ function CardsPage() {
               })}
             </div>
             <div className="text-sm text-muted-foreground">
-              Para cada valor será criada uma transação de entrada com sinal inverso, na mesma
-              conta e categoria do pagamento. Ela neutraliza a despesa nos relatórios, enquanto o
+              Para cada valor será criada uma transação de entrada com sinal inverso, na mesma conta
+              e categoria do pagamento. Ela neutraliza a despesa nos relatórios, enquanto o
               pagamento bancário original permanece intacto e continua no Fluxo de Caixa.
             </div>
           </div>
