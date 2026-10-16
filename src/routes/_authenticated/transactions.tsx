@@ -31,6 +31,13 @@ import { TransactionDialog } from "@/components/app/transaction-dialog";
 import { SuggestReviewDialog } from "@/components/app/suggest-review-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { labelImp, importanceBadgeClass, type Importance } from "@/lib/suggestions";
 import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
@@ -41,6 +48,7 @@ import {
   type TransactionSourceFilter,
 } from "@/lib/transaction-summary";
 import { fetchSupabasePages } from "@/lib/supabase-pagination";
+import { analyzeTransactionsByMerchant } from "@/lib/merchant-analysis";
 import {
   analyticalTransactionType,
   isConsumptionTransaction,
@@ -138,6 +146,7 @@ function TransactionsPage() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestionTransactions, setSuggestionTransactions] = useState<any[]>([]);
+  const [analysisCategoryKey, setAnalysisCategoryKey] = useState<string | null>(null);
   const wsId = workspace?.id;
   const { savedFilters } = useCustomizedUI(wsId);
   const t = workspace ? L(workspace.type) : L("personal");
@@ -240,6 +249,19 @@ function TransactionsPage() {
       ),
     [filterableTransactions],
   );
+  const analysisCategory = useMemo(
+    () => categorySummary.find((category) => category.key === analysisCategoryKey) ?? null,
+    [analysisCategoryKey, categorySummary],
+  );
+  const merchantAnalysis = useMemo(() => {
+    if (!analysisCategoryKey) return null;
+    const categoryTransactions = netCardPaymentOffsets(filterableTransactions)
+      .filter(isConsumptionTransaction)
+      .filter(
+        (transaction) => analyticalTransactionCategoryKey(transaction) === analysisCategoryKey,
+      );
+    return analyzeTransactionsByMerchant(categoryTransactions);
+  }, [analysisCategoryKey, filterableTransactions]);
   const accountMovementSummary = useMemo(
     () => summarizeAccountMovements(filterableTransactions),
     [filterableTransactions],
@@ -637,51 +659,69 @@ function TransactionsPage() {
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {categorySummary.map((category) => (
-              <button
+              <div
                 key={category.key}
-                type="button"
-                aria-pressed={selectedCategoryKey === category.key}
-                aria-label={`Filtrar por ${category.name}`}
-                onClick={() => {
-                  setRequestedCategory(null);
-                  setSelectedCategoryKey((current) =>
-                    current === category.key ? null : category.key,
-                  );
-                }}
-                className={`overflow-hidden rounded-xl border bg-card/80 text-left text-card-foreground shadow transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                className={`overflow-hidden rounded-xl border bg-card/80 text-card-foreground shadow transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md ${
                   selectedCategoryKey === category.key
                     ? "border-primary bg-primary/5 ring-2 ring-primary/30"
                     : ""
                 }`}
               >
-                <CardContent className="relative p-4">
-                  <div
-                    className="absolute inset-y-0 left-0 w-1"
-                    style={{ backgroundColor: category.color }}
-                    aria-hidden="true"
-                  />
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="truncate font-semibold">{category.name}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {category.count} {category.count === 1 ? "transação" : "transações"}
+                <button
+                  type="button"
+                  aria-pressed={selectedCategoryKey === category.key}
+                  aria-label={`Filtrar por ${category.name}`}
+                  onClick={() => {
+                    setRequestedCategory(null);
+                    setSelectedCategoryKey((current) =>
+                      current === category.key ? null : category.key,
+                    );
+                  }}
+                  className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
+                  <CardContent className="relative p-4">
+                    <div
+                      className="absolute inset-y-0 left-0 w-1"
+                      style={{ backgroundColor: category.color }}
+                      aria-hidden="true"
+                    />
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold">{category.name}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {category.count} {category.count === 1 ? "transação" : "transações"}
+                        </div>
+                      </div>
+                      <div
+                        className={`shrink-0 text-right font-mono font-semibold ${
+                          category.type === "income" ? "text-income" : "text-expense"
+                        }`}
+                      >
+                        {category.type === "expense" ? "-" : ""}
+                        {formatCurrency(category.value, currency, privacy)}
                       </div>
                     </div>
-                    <div
-                      className={`shrink-0 text-right font-mono font-semibold ${
-                        category.type === "income" ? "text-income" : "text-expense"
-                      }`}
-                    >
-                      {category.type === "expense" ? "-" : ""}
-                      {formatCurrency(category.value, currency, privacy)}
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {formatCurrency(category.value, currency, privacy)} em{" "}
+                      {(category.type === "income" ? t.income : t.expense).toLowerCase()}
                     </div>
+                  </CardContent>
+                </button>
+                {category.type === "expense" && (
+                  <div className="border-t px-3 py-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-full justify-center gap-2 text-xs"
+                      onClick={() => setAnalysisCategoryKey(category.key)}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Analisar gastos por estabelecimento
+                    </Button>
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {formatCurrency(category.value, currency, privacy)} em{" "}
-                    {(category.type === "income" ? t.income : t.expense).toLowerCase()}
-                  </div>
-                </CardContent>
-              </button>
+                )}
+              </div>
             ))}
           </div>
 
@@ -1001,6 +1041,107 @@ function TransactionsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={Boolean(analysisCategoryKey)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setAnalysisCategoryKey(null);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Análise de gastos{analysisCategory ? ` · ${analysisCategory.name}` : ""}
+            </DialogTitle>
+            <DialogDescription>
+              Estabelecimentos semelhantes são agrupados usando as transações e os filtros atuais.
+              Nenhum dado financeiro é enviado para serviços externos.
+            </DialogDescription>
+          </DialogHeader>
+
+          {merchantAnalysis && merchantAnalysis.transactionCount > 0 ? (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border bg-muted/30 p-3">
+                  <div className="text-xs text-muted-foreground">Total analisado</div>
+                  <div className="mt-1 font-mono text-lg font-semibold text-expense">
+                    {formatCurrency(merchantAnalysis.total, currency, privacy)}
+                  </div>
+                </div>
+                <div className="rounded-xl border bg-muted/30 p-3">
+                  <div className="text-xs text-muted-foreground">Estabelecimentos</div>
+                  <div className="mt-1 text-lg font-semibold">{merchantAnalysis.merchantCount}</div>
+                </div>
+                <div className="rounded-xl border bg-muted/30 p-3">
+                  <div className="text-xs text-muted-foreground">Transações</div>
+                  <div className="mt-1 text-lg font-semibold">
+                    {merchantAnalysis.transactionCount}
+                  </div>
+                </div>
+              </div>
+
+              {merchantAnalysis.groups[0] && (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
+                  <strong>{merchantAnalysis.groups[0].name}</strong> concentra{" "}
+                  {Intl.NumberFormat("pt-BR", {
+                    style: "percent",
+                    maximumFractionDigits: 1,
+                  }).format(merchantAnalysis.groups[0].share)}{" "}
+                  dos gastos desta categoria, com{" "}
+                  <strong>
+                    {formatCurrency(merchantAnalysis.groups[0].total, currency, privacy)}
+                  </strong>
+                  .
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {merchantAnalysis.groups.map((group, index) => (
+                  <div key={group.key} className="rounded-xl border p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {index + 1}º
+                          </span>
+                          <span className="truncate font-semibold">{group.name}</span>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {group.count} {group.count === 1 ? "transação" : "transações"} · média de{" "}
+                          {formatCurrency(group.average, currency, privacy)}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-mono font-semibold">
+                          {formatCurrency(group.total, currency, privacy)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {Intl.NumberFormat("pt-BR", {
+                            style: "percent",
+                            maximumFractionDigits: 1,
+                          }).format(group.share)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary transition-[width]"
+                        style={{ width: `${Math.max(group.share * 100, 1)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={Receipt}
+              title="Nenhuma transação para analisar"
+              description="A categoria não possui gastos compatíveis com os filtros atuais."
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <TransactionDialog
         open={open}
