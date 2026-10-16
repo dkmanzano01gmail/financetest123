@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { isCashFlowTransaction } from "@/lib/credit-card-reconciliation";
+import { affectsAccountBalance } from "@/lib/account-balance";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
@@ -79,7 +79,6 @@ function ReconciliationPage() {
         .select("*")
         .eq("workspace_id", wsId!)
         .eq("is_active", true)
-        .in("type", ["checking", "savings", "cash"])
         .order("created_at");
       if (error) throw error;
       return (data as any[]) ?? [];
@@ -148,7 +147,10 @@ function ReconciliationPage() {
     return accounts.map((a) => {
       const initialDate = a.initial_balance_date || "0000-01-01";
       const accountTransactions = txs.filter(
-        (t) => t.account_id === a.id && t.date >= initialDate && isCashFlowTransaction(t),
+        (transaction) =>
+          transaction.account_id === a.id &&
+          transaction.date >= initialDate &&
+          affectsAccountBalance(transaction),
       );
       const beforePeriod = accountTransactions.filter((t) => t.date < periodStart);
       const periodTransactions = accountTransactions.filter(
@@ -307,6 +309,12 @@ function ReconciliationPage() {
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="mb-5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+        O saldo considera todas as movimentações vinculadas à conta: importações, transferências,
+        aportes, resgates e pagamentos de cartão. Apenas linhas ignoradas e compensações gerenciais
+        de cartão são excluídas, pois não representam movimento no banco.
       </div>
 
       {selected === "__all__" ? (
@@ -607,32 +615,30 @@ function AccountDetail({
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Movimentos da conta</CardTitle>
+          <CardTitle className="text-base">Movimentos da conta · {row.txs.length}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Data</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="text-right">Saldo</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(() => {
-                let running = Number(row.startBalance ?? 0);
-                const withBalance = [...row.txs]
-                  .sort((x: any, y: any) => x.date.localeCompare(y.date))
-                  .map((transaction: any) => {
-                    const amount = Math.abs(Number(transaction.amount));
-                    running += transaction.type === "income" ? amount : -amount;
-                    return { ...transaction, runningBalance: running };
-                  });
-                return withBalance
-                  .slice(-30)
-                  .reverse()
-                  .map((t: any) => (
+          <div className="max-h-[520px] overflow-auto">
+            <Table>
+              <TableHeader className="sticky top-0 z-10 bg-card">
+                <TableRow>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                  <TableHead className="text-right">Saldo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(() => {
+                  let running = Number(row.startBalance ?? 0);
+                  const withBalance = [...row.txs]
+                    .sort((x: any, y: any) => x.date.localeCompare(y.date))
+                    .map((transaction: any) => {
+                      const amount = Math.abs(Number(transaction.amount));
+                      running += transaction.type === "income" ? amount : -amount;
+                      return { ...transaction, runningBalance: running };
+                    });
+                  return withBalance.reverse().map((t: any) => (
                     <TableRow key={t.id}>
                       <TableCell className="text-xs">{formatDate(t.date)}</TableCell>
                       <TableCell className="text-sm">{t.description}</TableCell>
@@ -647,16 +653,20 @@ function AccountDetail({
                       </TableCell>
                     </TableRow>
                   ));
-              })()}
-              {row.txs.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-6">
-                    Sem transações vinculadas a essa conta.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                })()}
+                {row.txs.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      className="py-6 text-center text-sm text-muted-foreground"
+                    >
+                      Sem transações vinculadas a essa conta.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </>
