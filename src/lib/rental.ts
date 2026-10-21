@@ -32,16 +32,32 @@ export function itemsVolumeLiters(items: RentalItemInput[]): number {
   );
 }
 
-export function itemPrice(item: RentalItemInput, pricePerLiter: number): number {
+export function itemPrice(
+  item: RentalItemInput,
+  pricePerLiter: number,
+  horizontalSpacingCm = 0,
+): number {
+  const spacing = Math.max(horizontalSpacingCm, 0);
   return (
-    pieceVolumeLiters(toNumber(item.height_cm), toNumber(item.width_cm), toNumber(item.depth_cm)) *
+    pieceVolumeLiters(
+      toNumber(item.height_cm),
+      toNumber(item.width_cm) + spacing,
+      toNumber(item.depth_cm) + spacing,
+    ) *
     Math.max(Math.round(toNumber(item.quantity)) || 1, 1) *
     Math.max(pricePerLiter, 0)
   );
 }
 
-export function itemsPrice(items: RentalItemInput[], pricePerLiter: number): number {
-  return items.reduce((total, item) => total + itemPrice(item, pricePerLiter), 0);
+export function itemsPrice(
+  items: RentalItemInput[],
+  pricePerLiter: number,
+  horizontalSpacingCm = 0,
+): number {
+  return items.reduce(
+    (total, item) => total + itemPrice(item, pricePerLiter, horizontalSpacingCm),
+    0,
+  );
 }
 
 export function normalizeItems(items: RentalItemInput[]) {

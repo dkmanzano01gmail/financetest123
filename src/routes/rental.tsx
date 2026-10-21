@@ -18,7 +18,6 @@ import {
   RENTAL_ORDER_STATUS,
   RENTAL_PAYMENT_STATUS,
   RENTAL_WORKSPACE_ID,
-  itemPrice,
   itemsPrice,
   normalizeItems,
   type RentalItemInput,
@@ -312,8 +311,13 @@ function RentalPublicPage() {
     [slots, slotId],
   );
   const estimatedPrice = useMemo(
-    () => itemsPrice(items, Number(slot?.price_per_liter ?? 0)),
-    [items, slot?.price_per_liter],
+    () =>
+      itemsPrice(
+        items,
+        Number(slot?.price_per_liter ?? 0),
+        slot?.firing_type === "glaze" ? Number(slot?.glaze_spacing_cm ?? 1) : 0,
+      ),
+    [items, slot?.firing_type, slot?.glaze_spacing_cm, slot?.price_per_liter],
   );
   const availableDates = useMemo(
     () =>
@@ -765,20 +769,20 @@ function RentalPublicPage() {
                       <p className="mt-1 text-xs text-muted-foreground">
                         Valor por unidade = altura × largura × profundidade × coeficiente.
                       </p>
+                      {quote.firing_type === "glaze" && (
+                        <p className="mt-1 text-xs font-medium text-primary">
+                          Para esmalte, somamos{" "}
+                          {Number(quote.glaze_spacing_cm ?? 1).toLocaleString("pt-BR")} cm à largura
+                          e à profundidade para manter as peças separadas.
+                        </p>
+                      )}
                     </div>
                     <ul className="mt-3 divide-y text-sm">
                       {(quote.items ?? []).map((line: any, i: number) => {
                         const coefficient = Number(quote.price_per_liter) / 1000;
-                        const unitPrice = itemPrice(
-                          {
-                            piece_name: line.piece_name,
-                            height_cm: line.height_cm,
-                            width_cm: line.width_cm,
-                            depth_cm: line.depth_cm,
-                            quantity: 1,
-                          },
-                          Number(quote.price_per_liter),
-                        );
+                        const unitPrice = Number(line.unit_price);
+                        const calculationWidth = Number(line.calculation_width_cm ?? line.width_cm);
+                        const calculationDepth = Number(line.calculation_depth_cm ?? line.depth_cm);
                         return (
                           <li
                             key={i}
@@ -792,7 +796,8 @@ function RentalPublicPage() {
                                 {Number(line.quantity) === 1 ? "unidade" : "unidades"}
                               </span>
                               <span className="mt-1 block text-xs text-muted-foreground">
-                                {line.height_cm} × {line.width_cm} × {line.depth_cm} ×{" "}
+                                {line.height_cm} × {calculationWidth.toLocaleString("pt-BR")} ×{" "}
+                                {calculationDepth.toLocaleString("pt-BR")} ×{" "}
                                 {coefficient.toLocaleString("pt-BR", {
                                   minimumFractionDigits: 3,
                                   maximumFractionDigits: 6,

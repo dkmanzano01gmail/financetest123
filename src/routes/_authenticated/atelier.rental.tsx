@@ -263,6 +263,9 @@ function Page() {
       if (Number(patch.biscuit_coefficient) <= 0 || Number(patch.glaze_coefficient) <= 0) {
         throw new Error("Os coeficientes de Biscoito e Esmalte devem ser maiores que zero.");
       }
+      if (Number(patch.glaze_spacing_cm) < 0 || Number(patch.glaze_spacing_cm) > 20) {
+        throw new Error("A margem entre peças deve ficar entre 0 e 20 cm.");
+      }
       const { error } = await sb
         .from("rental_settings")
         .upsert({ workspace_id: wsId, ...patch }, { onConflict: "workspace_id" });
@@ -974,6 +977,7 @@ function SettingsForm({
     customer_instructions: settings?.customer_instructions ?? "",
     biscuit_coefficient: settings?.biscuit_coefficient ?? 0.0045,
     glaze_coefficient: settings?.glaze_coefficient ?? 0.007,
+    glaze_spacing_cm: settings?.glaze_spacing_cm ?? 1,
     is_published: settings?.is_published ?? true,
   });
 
@@ -1008,6 +1012,21 @@ function SettingsForm({
             />
             <p className="mt-1 text-xs text-muted-foreground">
               Usado no cálculo automático conforme as dimensões informadas pelo cliente.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Margem entre peças no esmalte (cm)</Label>
+            <Input
+              type="number"
+              min="0"
+              max="20"
+              step="0.1"
+              value={state.glaze_spacing_cm}
+              onChange={(e) => setState({ ...state, glaze_spacing_cm: Number(e.target.value) })}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Acrescentada à largura e à profundidade de cada peça. A altura não é alterada. O
+              padrão é 1 cm.
             </p>
           </div>
         </CardContent>
@@ -1134,14 +1153,20 @@ function SettingsForm({
                 >
                   <div>
                     <p className="font-medium">
-                      {entry.firing_type === "biscuit" ? "Biscoito" : "Esmalte"}:{" "}
+                      {entry.firing_type === "biscuit"
+                        ? "Coeficiente Biscoito"
+                        : entry.firing_type === "glaze"
+                          ? "Coeficiente Esmalte"
+                          : "Margem entre peças no esmalte"}
+                      :{" "}
                       {Number(entry.old_coefficient).toLocaleString("pt-BR", {
-                        minimumFractionDigits: 4,
+                        minimumFractionDigits: entry.firing_type === "glaze_spacing" ? 1 : 4,
                       })}{" "}
                       →{" "}
                       {Number(entry.new_coefficient).toLocaleString("pt-BR", {
-                        minimumFractionDigits: 4,
+                        minimumFractionDigits: entry.firing_type === "glaze_spacing" ? 1 : 4,
                       })}
+                      {entry.firing_type === "glaze_spacing" ? " cm" : ""}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {entry.changed_by_email || "Sistema"}
