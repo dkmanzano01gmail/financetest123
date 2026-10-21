@@ -21,6 +21,10 @@ import { dashboardSummary } from "@/lib/orna-logic";
 import { profitThroughSelectedMonth } from "@/lib/dashboard-profit";
 import { fetchSupabasePages } from "@/lib/supabase-pagination";
 import {
+  buildDashboardAccountGroups,
+  matchesDashboardAccountGroup,
+} from "@/lib/dashboard-account-groups";
+import {
   financialDateForTransaction,
   isConsumptionTransaction,
   netCardPaymentOffsets,
@@ -46,6 +50,7 @@ function Dashboard() {
   const { workspace } = useCurrentWorkspace();
   const [month, setMonth] = useState(NOW.getMonth() + 1);
   const [year, setYear] = useState(NOW.getFullYear());
+  const [accountFilterId, setAccountFilterId] = useState("all");
 
   const wsId = workspace?.id;
   const privacy = workspace?.privacy_mode ?? false;
@@ -66,7 +71,7 @@ function Dashboard() {
         supabase
           .from("transactions")
           .select(
-            "id,date,type,amount,description,counterparty,status,category_id,credit_card_id,financial_role,reversal_of_transaction_id,linked_credit_card_id,invoice_month,categories!transactions_category_id_fkey(name,color)",
+            "id,date,type,amount,description,counterparty,status,category_id,account_id,credit_card_id,financial_role,reversal_of_transaction_id,linked_account_id,linked_credit_card_id,invoice_month,categories!transactions_category_id_fkey(name,color)",
           )
           .eq("workspace_id", wsId!)
           .in("year", [year, year - 1])
@@ -90,10 +95,44 @@ function Dashboard() {
     },
   });
 
+  const { data: creditCards = [] } = useQuery({
+    queryKey: ["credit-cards", "dashboard", wsId],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("credit_cards")
+        .select("id,name,institution")
+        .eq("workspace_id", wsId!)
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const accountGroups = useMemo(
+    () => buildDashboardAccountGroups(accounts ?? [], creditCards),
+    [accounts, creditCards],
+  );
+  const selectedAccountGroup =
+    accountFilterId === "all"
+      ? null
+      : (accountGroups.find((group) => group.account.id === accountFilterId) ?? null);
+  const effectiveAccountFilterId = selectedAccountGroup ? accountFilterId : "all";
+  const filteredYearTxs = useMemo(
+    () =>
+      selectedAccountGroup
+        ? (yearTxs ?? []).filter((transaction) =>
+            matchesDashboardAccountGroup(transaction, selectedAccountGroup),
+          )
+        : (yearTxs ?? []),
+    [yearTxs, selectedAccountGroup],
+  );
+
   const summary = useMemo(
     () =>
       dashboardSummary(
-        netCardPaymentOffsets((yearTxs ?? []) as any[])
+        netCardPaymentOffsets(filteredYearTxs as any[])
           .filter(isConsumptionTransaction)
           .map((transaction) => ({
             ...transaction,
@@ -102,7 +141,7 @@ function Dashboard() {
         month,
         year,
       ),
-    [yearTxs, month, year],
+    [filteredYearTxs, month, year],
   );
   const totals = {
     income: summary.income,
@@ -116,12 +155,15 @@ function Dashboard() {
 
   const accountsBalance = useMemo(() => {
     if (!accounts) return 0;
-    return accounts.reduce(
-      (sum: number, account: any) =>
+    const visibleAccounts = selectedAccountGroup
+      ? accounts.filter((account) => account.id === selectedAccountGroup.account.id)
+      : accounts;
+    return visibleAccounts.reduce(
+      (sum, account) =>
         sum + Number(account.current_manual_balance ?? account.initial_balance ?? 0),
       0,
     );
-  }, [accounts]);
+  }, [accounts, selectedAccountGroup]);
 
   const expenseByCategory = summary.expenseCategories;
   const incomeByCategory = summary.incomeCategories;
@@ -154,7 +196,23 @@ function Dashboard() {
         helpKey="financial.dashboard"
         description={`Visão financeira de ${workspace.name}`}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
+            <Select value={effectiveAccountFilterId} onValueChange={setAccountFilterId}>
+              <SelectTrigger className="w-[230px] max-w-full">
+                <SelectValue placeholder="Todas as contas e cartões" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as contas e cartões</SelectItem>
+                {accountGroups.map((group) => (
+                  <SelectItem key={group.account.id} value={group.account.id}>
+                    {group.account.name}
+                    {group.cards.length > 0
+                      ? ` + ${group.cards.length} cartão${group.cards.length === 1 ? "" : "ões"}`
+                      : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -182,6 +240,16 @@ function Dashboard() {
           </div>
         }
       />
+
+      {selectedAccountGroup && (
+        <div className="mb-4 text-sm text-muted-foreground">
+          Exibindo {selectedAccountGroup.account.name}
+          {selectedAccountGroup.cards.length > 0 && (
+            <> com {selectedAccountGroup.cards.map((card) => card.name).join(", ")}</>
+          )}
+          .
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {(() => {
