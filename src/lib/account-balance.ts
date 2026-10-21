@@ -1,5 +1,6 @@
 export type AccountBalanceTransaction = {
   account_id?: string | null;
+  exclude_from_account_reconciliation?: boolean | null;
   financial_role?: string | null;
   status?: string | null;
 };
@@ -16,5 +17,16 @@ export function affectsAccountBalance(transaction: AccountBalanceTransaction) {
     Boolean(transaction.account_id) &&
     transaction.status !== "ignored" &&
     transaction.financial_role !== "credit_card_payment_offset"
+  );
+}
+
+/**
+ * A transaction can be removed from the account reconciliation without being
+ * ignored elsewhere in the financial product. This dedicated flag keeps the
+ * managerial reports and transaction history unchanged.
+ */
+export function affectsAccountReconciliation(transaction: AccountBalanceTransaction) {
+  return (
+    affectsAccountBalance(transaction) && transaction.exclude_from_account_reconciliation !== true
   );
 }

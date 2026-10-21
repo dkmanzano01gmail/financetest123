@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { affectsAccountBalance } from "@/lib/account-balance";
+import { affectsAccountBalance, affectsAccountReconciliation } from "@/lib/account-balance";
 import { useCurrentWorkspace } from "@/hooks/use-workspaces";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/table";
 import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
 import { fetchSupabasePages } from "@/lib/supabase-pagination";
-import { Scale, Wallet, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Scale, Wallet, AlertCircle, CheckCircle2, EyeOff, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AreaChart,
@@ -93,7 +93,7 @@ function ReconciliationPage() {
         supabase
           .from("transactions")
           .select(
-            "id,date,description,amount,type,status,category_id,account_id,credit_card_id,financial_role",
+            "id,date,description,amount,type,status,category_id,account_id,credit_card_id,financial_role,exclude_from_account_reconciliation",
           )
           .eq("workspace_id", wsId!)
           .not("account_id", "is", null)
@@ -140,6 +140,32 @@ function ReconciliationPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const toggleReconciliationMut = useMutation({
+    mutationFn: async ({
+      transactionId,
+      excluded,
+    }: {
+      transactionId: string;
+      excluded: boolean;
+    }) => {
+      const { error } = await supabase
+        .from("transactions")
+        .update({ exclude_from_account_reconciliation: excluded })
+        .eq("id", transactionId)
+        .eq("workspace_id", wsId!);
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ["recon-txs", wsId] });
+      toast.success(
+        variables.excluded
+          ? "Operação removida da conciliação"
+          : "Operação incluída novamente na conciliação",
+      );
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const computed = useMemo(() => {
     if (!accounts || !txs) return [];
     const periodStart = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -152,17 +178,19 @@ function ReconciliationPage() {
           transaction.date >= initialDate &&
           affectsAccountBalance(transaction),
       );
-      const beforePeriod = accountTransactions.filter((t) => t.date < periodStart);
+      const reconciliationTransactions = accountTransactions.filter(affectsAccountReconciliation);
+      const beforePeriod = reconciliationTransactions.filter((t) => t.date < periodStart);
       const periodTransactions = accountTransactions.filter(
         (t) => t.date >= periodStart && t.date <= periodEnd,
       );
+      const effectivePeriodTransactions = periodTransactions.filter(affectsAccountReconciliation);
       const signed = (t: any) =>
         t.type === "income" ? Math.abs(Number(t.amount)) : -Math.abs(Number(t.amount));
       const startBalance =
         Number(a.initial_balance ?? 0) + beforePeriod.reduce((sum, t) => sum + signed(t), 0);
       let income = 0;
       let expense = 0;
-      for (const t of periodTransactions) {
+      for (const t of effectivePeriodTransactions) {
         const amt = Math.abs(Number(t.amount));
         if (t.type === "income") income += amt;
         else expense += amt;
@@ -188,6 +216,7 @@ function ReconciliationPage() {
         diff,
         status,
         txs: periodTransactions,
+        excludedCount: periodTransactions.length - effectivePeriodTransactions.length,
       };
     });
   }, [accounts, txs, month, year]);
@@ -199,6 +228,7 @@ function ReconciliationPage() {
     if (!selectedRow) return [];
     const byDay = new Map<string, { date: string; in: number; out: number; transactions: any[] }>();
     for (const t of selectedRow.txs) {
+      if (!affectsAccountReconciliation(t)) continue;
       const cur: { date: string; in: number; out: number; transactions: any[] } = byDay.get(
         t.date,
       ) ?? { date: t.date, in: 0, out: 0, transactions: [] };
@@ -314,7 +344,8 @@ function ReconciliationPage() {
       <div className="mb-5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
         O saldo considera todas as movimentações vinculadas à conta: importações, transferências,
         aportes, resgates e pagamentos de cartão. Apenas linhas ignoradas e compensações gerenciais
-        de cartão são excluídas, pois não representam movimento no banco.
+        de cartão são excluídas, pois não representam movimento no banco. Você também pode retirar
+        uma operação somente desta conciliação, sem alterar os demais relatórios financeiros.
       </div>
 
       {selected === "__all__" ? (
@@ -413,6 +444,14 @@ function ReconciliationPage() {
           privacy={privacy}
           dailySeries={dailySeries}
           onEdit={() => openEdit(selectedRow.account)}
+          onToggleTransaction={(transactionId, excluded) =>
+            toggleReconciliationMut.mutate({ transactionId, excluded })
+          }
+          togglingTransactionId={
+            toggleReconciliationMut.isPending
+              ? toggleReconciliationMut.variables?.transactionId
+              : undefined
+          }
         />
       ) : null}
 
@@ -483,12 +522,16 @@ function AccountDetail({
   privacy,
   dailySeries,
   onEdit,
+  onToggleTransaction,
+  togglingTransactionId,
 }: {
   row: any;
   currency: string;
   privacy: boolean;
   dailySeries: any[];
   onEdit: () => void;
+  onToggleTransaction: (transactionId: string, excluded: boolean) => void;
+  togglingTransactionId?: string;
 }) {
   const a = row.account;
   const hasInitial = a.initial_balance != null && a.initial_balance_date;
@@ -615,7 +658,16 @@ function AccountDetail({
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Movimentos da conta · {row.txs.length}</CardTitle>
+          <CardTitle className="text-base flex flex-wrap items-center gap-2">
+            <span>Movimentos da conta · {row.txs.length}</span>
+            {row.excludedCount > 0 && (
+              <Badge variant="secondary">{row.excludedCount} fora da conciliação</Badge>
+            )}
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            “Não considerar” retira apenas o efeito no saldo conciliado. A transação continua nos
+            demais relatórios.
+          </p>
         </CardHeader>
         <CardContent className="p-0">
           <div className="max-h-[520px] overflow-auto">
@@ -626,6 +678,7 @@ function AccountDetail({
                   <TableHead>Descrição</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead className="text-right">Saldo</TableHead>
+                  <TableHead className="text-right">Conciliação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -635,29 +688,65 @@ function AccountDetail({
                     .sort((x: any, y: any) => x.date.localeCompare(y.date))
                     .map((transaction: any) => {
                       const amount = Math.abs(Number(transaction.amount));
-                      running += transaction.type === "income" ? amount : -amount;
+                      if (affectsAccountReconciliation(transaction)) {
+                        running += transaction.type === "income" ? amount : -amount;
+                      }
                       return { ...transaction, runningBalance: running };
                     });
-                  return withBalance.reverse().map((t: any) => (
-                    <TableRow key={t.id}>
-                      <TableCell className="text-xs">{formatDate(t.date)}</TableCell>
-                      <TableCell className="text-sm">{t.description}</TableCell>
-                      <TableCell
-                        className={`text-right text-sm ${t.type === "income" ? "text-emerald-700" : "text-rose-700"}`}
-                      >
-                        {t.type === "income" ? "+" : "−"}
-                        {formatCurrency(Math.abs(Number(t.amount)), currency, privacy)}
-                      </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">
-                        {formatCurrency(t.runningBalance, currency, privacy)}
-                      </TableCell>
-                    </TableRow>
-                  ));
+                  return withBalance.reverse().map((t: any) => {
+                    const excluded = t.exclude_from_account_reconciliation === true;
+                    return (
+                      <TableRow key={t.id} className={excluded ? "bg-muted/40" : undefined}>
+                        <TableCell className="text-xs">{formatDate(t.date)}</TableCell>
+                        <TableCell className="text-sm">
+                          <div className={excluded ? "text-muted-foreground" : undefined}>
+                            {t.description}
+                          </div>
+                          {excluded && (
+                            <Badge variant="outline" className="mt-1 text-[10px] font-normal">
+                              Não afeta a conciliação
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell
+                          className={`text-right text-sm ${excluded ? "text-muted-foreground line-through" : t.type === "income" ? "text-emerald-700" : "text-rose-700"}`}
+                        >
+                          {t.type === "income" ? "+" : "−"}
+                          {formatCurrency(Math.abs(Number(t.amount)), currency, privacy)}
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">
+                          {formatCurrency(t.runningBalance, currency, privacy)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={excluded ? "outline" : "ghost"}
+                            className="gap-1.5 whitespace-nowrap"
+                            disabled={togglingTransactionId === t.id}
+                            onClick={() => onToggleTransaction(t.id, !excluded)}
+                          >
+                            {excluded ? (
+                              <>
+                                <Undo2 className="h-3.5 w-3.5" />
+                                Considerar
+                              </>
+                            ) : (
+                              <>
+                                <EyeOff className="h-3.5 w-3.5" />
+                                Não considerar
+                              </>
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  });
                 })()}
                 {row.txs.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={4}
+                      colSpan={5}
                       className="py-6 text-center text-sm text-muted-foreground"
                     >
                       Sem transações vinculadas a essa conta.

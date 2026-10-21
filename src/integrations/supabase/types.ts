@@ -3316,6 +3316,7 @@ export type Database = {
           credit_card_id: string | null
           date: string
           description: string
+          exclude_from_account_reconciliation: boolean
           financial_role: string
           id: string
           import_hash: string | null
@@ -3362,6 +3363,7 @@ export type Database = {
           credit_card_id?: string | null
           date: string
           description: string
+          exclude_from_account_reconciliation?: boolean
           financial_role?: string
           id?: string
           import_hash?: string | null
@@ -3408,6 +3410,7 @@ export type Database = {
           credit_card_id?: string | null
           date?: string
           description?: string
+          exclude_from_account_reconciliation?: boolean
           financial_role?: string
           id?: string
           import_hash?: string | null
