@@ -6,10 +6,17 @@ import {
   normalizeRentalWhatsAppPhone,
 } from "./rental.ts";
 
-test("adds the one centimeter edge margin to width and depth", () => {
+test("adds the configured glaze spacing to width and depth", () => {
   assert.equal(
     itemPrice({ piece_name: "Vaso", height_cm: 5, width_cm: 7, depth_cm: 7, quantity: 2 }, 15, 1),
     9.6,
+  );
+});
+
+test("keeps biscuit dimensions unchanged when no glaze spacing is provided", () => {
+  assert.equal(
+    itemPrice({ piece_name: "Vaso", height_cm: 5, width_cm: 7, depth_cm: 7, quantity: 2 }, 15),
+    7.35,
   );
 });
 
