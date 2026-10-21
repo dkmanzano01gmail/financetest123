@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { formatCurrency } from "@/lib/format";
 import { createPixPayload } from "@/lib/pix-br";
 import {
@@ -24,6 +25,7 @@ import { ptBR } from "date-fns/locale";
 import {
   CalendarDays,
   Check,
+  ChevronDown,
   Clock3,
   Copy,
   Flame,
@@ -156,6 +158,7 @@ function RentalPublicPage() {
   const [selectedDay, setSelectedDay] = useState<Date>();
   const [items, setItems] = useState<RentalItemInput[]>([emptyItem()]);
   const [quote, setQuote] = useState<any>(null);
+  const [quoteDetailsOpen, setQuoteDetailsOpen] = useState(false);
   const [name, setName] = useState("");
   const [studioName, setStudioName] = useState("");
   const [email, setEmail] = useState("");
@@ -281,6 +284,7 @@ function RentalPublicPage() {
 
   const resetQuote = () => {
     setQuote(null);
+    setQuoteDetailsOpen(false);
     setConfirmation(null);
   };
 
@@ -299,6 +303,7 @@ function RentalPublicPage() {
     },
     onSuccess: (data) => {
       setQuote(data);
+      setQuoteDetailsOpen(false);
       setConfirmation(null);
     },
     onError: (e: any) => toast.error(e.message),
@@ -653,38 +658,69 @@ function RentalPublicPage() {
             {quote && (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
                 <p className="font-medium">Orçamento — {quote.slot_title}</p>
-                <ul className="mt-2 space-y-1 text-sm">
-                  {(quote.items ?? []).map((line: any, i: number) => (
-                    <li key={i} className="flex justify-between gap-4">
-                      <span>
-                        {line.piece_name} × {line.quantity}
-                      </span>
-                      <span className="text-right">
-                        {formatCurrency(Number(line.total_price), currency)}
-                        <span className="block text-xs font-normal text-muted-foreground">
-                          {formatCurrency(
-                            itemPrice(
-                              {
-                                piece_name: line.piece_name,
-                                height_cm: line.height_cm,
-                                width_cm: line.width_cm,
-                                depth_cm: line.depth_cm,
-                                quantity: 1,
-                              },
-                              Number(quote.price_per_liter),
-                            ),
-                            currency,
-                          )}{" "}
-                          por unidade
-                        </span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-3 flex justify-between border-t pt-2 text-sm font-semibold">
+                <div className="mt-3 flex justify-between border-t pt-3 text-base font-semibold">
                   <span>Total</span>
                   <span>{formatCurrency(Number(quote.total), currency)}</span>
                 </div>
+                <Collapsible
+                  open={quoteDetailsOpen}
+                  onOpenChange={setQuoteDetailsOpen}
+                  className="mt-3"
+                >
+                  <CollapsibleTrigger asChild>
+                    <Button type="button" variant="outline" size="sm">
+                      {quoteDetailsOpen ? "Ocultar informações" : "Mais informações"}
+                      <ChevronDown
+                        className={`ml-2 size-4 transition-transform ${
+                          quoteDetailsOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-3 rounded-lg border bg-background p-4">
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      O valor é calculado automaticamente a partir das dimensões e da quantidade
+                      informadas para cada peça, usando o coeficiente da modalidade de queima.
+                    </p>
+                    <ul className="mt-3 divide-y text-sm">
+                      {(quote.items ?? []).map((line: any, i: number) => {
+                        const unitPrice = itemPrice(
+                          {
+                            piece_name: line.piece_name,
+                            height_cm: line.height_cm,
+                            width_cm: line.width_cm,
+                            depth_cm: line.depth_cm,
+                            quantity: 1,
+                          },
+                          Number(quote.price_per_liter),
+                        );
+                        return (
+                          <li
+                            key={i}
+                            className="flex flex-col justify-between gap-1 py-3 first:pt-0 last:pb-0 sm:flex-row sm:gap-4"
+                          >
+                            <span>
+                              <span className="font-medium">{line.piece_name}</span>
+                              <span className="block text-xs text-muted-foreground">
+                                {line.height_cm} × {line.width_cm} × {line.depth_cm} cm ·{" "}
+                                {line.quantity}{" "}
+                                {Number(line.quantity) === 1 ? "unidade" : "unidades"}
+                              </span>
+                            </span>
+                            <span className="text-left sm:text-right">
+                              <span className="font-medium">
+                                {formatCurrency(Number(line.total_price), currency)}
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                {formatCurrency(unitPrice, currency)} por unidade
+                              </span>
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </CollapsibleContent>
+                </Collapsible>
                 <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
                   <div className="rounded-md bg-background p-3">
                     <p className="text-xs text-muted-foreground">Entrada para reservar</p>
