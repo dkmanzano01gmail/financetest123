@@ -33,7 +33,7 @@ import {
   RENTAL_PAYMENT_STATUS,
   RENTAL_SLOT_STATUS,
 } from "@/lib/rental";
-import { ExternalLink, Flame, Pencil, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, Flame, Mail, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/atelier/rental")({ component: Page });
@@ -65,6 +65,8 @@ function Page() {
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(emptySlot());
+  const [statusChange, setStatusChange] = useState<{ order: any; status: string } | null>(null);
+  const [statusMessage, setStatusMessage] = useState("");
 
   const { data: settings } = useQuery({
     queryKey: ["rental-settings", wsId],
@@ -257,9 +259,71 @@ function Page() {
       const { error } = await sb.from("rental_orders").update(patch).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["rental-orders", wsId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rental-orders", wsId] });
+      toast.success("Status do pedido atualizado.");
+    },
     onError: (e: any) => toast.error(e.message),
   });
+
+  const buildStatusMessage = (order: any, nextStatus: string) => {
+    const paid = (order.rental_payments ?? [])
+      .filter((payment: any) => payment.status === "paid")
+      .reduce((sum: number, payment: any) => sum + Number(payment.amount ?? 0), 0);
+    const remaining = Math.max(Number(order.total ?? 0) - paid, 0);
+    const lines = [
+      `Olá, ${order.rental_customers?.name || "tudo bem"}!`,
+      "",
+      `O status do seu pedido ${order.code} foi atualizado para: ${RENTAL_ORDER_STATUS[nextStatus] ?? nextStatus}.`,
+      "",
+      `Queima: ${order.rental_slots?.title || "a definir"}`,
+    ];
+
+    if (order.rental_slots?.firing_date)
+      lines.push(`Data da queima: ${order.rental_slots.firing_date}`);
+    if (order.rental_slots?.pickup_date)
+      lines.push(`Previsão de retirada: ${order.rental_slots.pickup_date}`);
+    lines.push(
+      `Valor pago: ${formatCurrency(paid, currency)}`,
+      `Valor restante: ${formatCurrency(remaining, currency)}`,
+      "",
+      "Você pode acompanhar o pedido na página do Selá Queimas usando seu código e e-mail.",
+      "",
+      "Selá Queimas",
+    );
+    return lines.join("\n");
+  };
+
+  const requestStatusChange = (order: any, status: string) => {
+    setStatusChange({ order, status });
+    setStatusMessage(buildStatusMessage(order, status));
+  };
+
+  const applyStatusChange = async (channel?: "email" | "whatsapp") => {
+    if (!statusChange) return;
+    const { order, status } = statusChange;
+    const targetWindow = channel ? window.open("about:blank", "_blank") : null;
+
+    try {
+      await updateOrder.mutateAsync({ id: order.id, patch: { status } });
+      if (channel === "email") {
+        const subject = `Atualização do pedido ${order.code} — Selá Queimas`;
+        const href = `mailto:${encodeURIComponent(order.rental_customers?.email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(statusMessage)}`;
+        if (targetWindow) targetWindow.location.href = href;
+        else window.location.href = href;
+      }
+      if (channel === "whatsapp") {
+        let phone = String(order.rental_customers?.phone || "").replace(/\D/g, "");
+        if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
+        const href = `https://wa.me/${phone}?text=${encodeURIComponent(statusMessage)}`;
+        if (targetWindow) targetWindow.location.href = href;
+        else window.open(href, "_blank", "noopener,noreferrer");
+      }
+      setStatusChange(null);
+    } catch {
+      targetWindow?.close();
+    }
+  };
 
   const registerPayment = useMutation({
     mutationFn: async ({ order, payment }: { order: any; payment: any }) => {
@@ -482,10 +546,7 @@ function Page() {
                   </div>
                   {o.notes && <p className="text-xs italic text-muted-foreground">{o.notes}</p>}
                   <div className="flex flex-wrap gap-2">
-                    <Select
-                      value={o.status}
-                      onValueChange={(v) => updateOrder.mutate({ id: o.id, patch: { status: v } })}
-                    >
+                    <Select value={o.status} onValueChange={(v) => requestStatusChange(o, v)}>
                       <SelectTrigger className="w-44">
                         <SelectValue />
                       </SelectTrigger>
@@ -531,6 +592,59 @@ function Page() {
           />
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!statusChange} onOpenChange={(nextOpen) => !nextOpen && setStatusChange(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Atualizar status e avisar o cliente</DialogTitle>
+          </DialogHeader>
+          {statusChange && (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+                <p className="text-muted-foreground">Novo status</p>
+                <p className="font-semibold">
+                  {RENTAL_ORDER_STATUS[statusChange.status] ?? statusChange.status}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="status-notification-message">Mensagem para o cliente</Label>
+                <Textarea
+                  id="status-notification-message"
+                  className="min-h-64 resize-y"
+                  value={statusMessage}
+                  onChange={(event) => setStatusMessage(event.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Revise a mensagem antes de abrir o canal escolhido. O envio só acontece quando
+                  você confirmar no seu e-mail ou WhatsApp.
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            <Button
+              variant="ghost"
+              disabled={updateOrder.isPending}
+              onClick={() => applyStatusChange()}
+            >
+              Atualizar sem avisar
+            </Button>
+            <Button
+              variant="outline"
+              disabled={updateOrder.isPending || !statusChange?.order.rental_customers?.email}
+              onClick={() => applyStatusChange("email")}
+            >
+              <Mail className="mr-2 h-4 w-4" /> Abrir e-mail
+            </Button>
+            <Button
+              disabled={updateOrder.isPending || !statusChange?.order.rental_customers?.phone}
+              onClick={() => applyStatusChange("whatsapp")}
+            >
+              <MessageCircle className="mr-2 h-4 w-4" /> Abrir WhatsApp
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
