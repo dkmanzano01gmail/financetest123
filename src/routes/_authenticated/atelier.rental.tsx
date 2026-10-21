@@ -264,7 +264,7 @@ function Page() {
         throw new Error("Os coeficientes de Biscoito e Esmalte devem ser maiores que zero.");
       }
       if (Number(patch.glaze_spacing_cm) < 0 || Number(patch.glaze_spacing_cm) > 20) {
-        throw new Error("A margem entre peças deve ficar entre 0 e 20 cm.");
+        throw new Error("A margem das bordas deve ficar entre 0 e 20 cm.");
       }
       const { error } = await sb
         .from("rental_settings")
@@ -1015,7 +1015,7 @@ function SettingsForm({
             </p>
           </div>
           <div className="sm:col-span-2">
-            <Label>Margem entre peças no esmalte (cm)</Label>
+            <Label>Margem das bordas (cm)</Label>
             <Input
               type="number"
               min="0"
@@ -1025,8 +1025,8 @@ function SettingsForm({
               onChange={(e) => setState({ ...state, glaze_spacing_cm: Number(e.target.value) })}
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              Acrescentada à largura e à profundidade de cada peça. A altura não é alterada. O
-              padrão é 1 cm.
+              Acrescentada ao comprimento e à profundidade de cada peça em todas as queimas. A
+              altura não é alterada. O padrão é 1 cm.
             </p>
           </div>
         </CardContent>
@@ -1157,7 +1157,7 @@ function SettingsForm({
                         ? "Coeficiente Biscoito"
                         : entry.firing_type === "glaze"
                           ? "Coeficiente Esmalte"
-                          : "Margem entre peças no esmalte"}
+                          : "Margem das bordas"}
                       :{" "}
                       {Number(entry.old_coefficient).toLocaleString("pt-BR", {
                         minimumFractionDigits: entry.firing_type === "glaze_spacing" ? 1 : 4,

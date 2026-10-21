@@ -312,12 +312,8 @@ function RentalPublicPage() {
   );
   const estimatedPrice = useMemo(
     () =>
-      itemsPrice(
-        items,
-        Number(slot?.price_per_liter ?? 0),
-        slot?.firing_type === "glaze" ? Number(slot?.glaze_spacing_cm ?? 1) : 0,
-      ),
-    [items, slot?.firing_type, slot?.glaze_spacing_cm, slot?.price_per_liter],
+      itemsPrice(items, Number(slot?.price_per_liter ?? 0), Number(slot?.glaze_spacing_cm ?? 1)),
+    [items, slot?.glaze_spacing_cm, slot?.price_per_liter],
   );
   const availableDates = useMemo(
     () =>
@@ -769,13 +765,11 @@ function RentalPublicPage() {
                       <p className="mt-1 text-xs text-muted-foreground">
                         Valor por unidade = altura × largura × profundidade × coeficiente.
                       </p>
-                      {quote.firing_type === "glaze" && (
-                        <p className="mt-1 text-xs font-medium text-primary">
-                          Para esmalte, somamos{" "}
-                          {Number(quote.glaze_spacing_cm ?? 1).toLocaleString("pt-BR")} cm à largura
-                          e à profundidade para manter as peças separadas.
-                        </p>
-                      )}
+                      <p className="mt-1 text-xs font-medium text-primary">
+                        Margem das bordas: somamos{" "}
+                        {Number(quote.glaze_spacing_cm ?? 1).toLocaleString("pt-BR")} cm ao
+                        comprimento e à profundidade. A altura não é alterada.
+                      </p>
                     </div>
                     <ul className="mt-3 divide-y text-sm">
                       {(quote.items ?? []).map((line: any, i: number) => {

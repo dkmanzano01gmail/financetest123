@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildRentalOrderStatusMessage, normalizeRentalWhatsAppPhone } from "./rental.ts";
+import {
+  buildRentalOrderStatusMessage,
+  itemPrice,
+  normalizeRentalWhatsAppPhone,
+} from "./rental.ts";
+
+test("adds the one centimeter edge margin to width and depth", () => {
+  assert.equal(
+    itemPrice({ piece_name: "Vaso", height_cm: 5, width_cm: 7, depth_cm: 7, quantity: 2 }, 15, 1),
+    9.6,
+  );
+});
 
 test("builds a status message with the selected firing slot", () => {
   const message = buildRentalOrderStatusMessage({

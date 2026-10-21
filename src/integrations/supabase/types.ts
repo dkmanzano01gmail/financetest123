@@ -2786,6 +2786,7 @@ export type Database = {
           default_price_per_liter: number
           deposit_percentage: number
           description: string | null
+          glaze_spacing_cm: number
           glaze_coefficient: number
           headline: string
           is_published: boolean
@@ -2807,6 +2808,7 @@ export type Database = {
           default_price_per_liter?: number
           deposit_percentage?: number
           description?: string | null
+          glaze_spacing_cm?: number
           glaze_coefficient?: number
           headline?: string
           is_published?: boolean
@@ -2828,6 +2830,7 @@ export type Database = {
           default_price_per_liter?: number
           deposit_percentage?: number
           description?: string | null
+          glaze_spacing_cm?: number
           glaze_coefficient?: number
           headline?: string
           is_published?: boolean
@@ -4197,6 +4200,7 @@ export type Database = {
           price_per_liter: number
           title: string
           used_liters: number
+          glaze_spacing_cm: number
         }[]
       }
       rental_quote_items: {
