@@ -15,6 +15,8 @@ import { formatCurrency } from "@/lib/format";
 import { createPixPayload } from "@/lib/pix-br";
 import {
   RENTAL_ERRORS,
+  RENTAL_ORDER_STATUS,
+  RENTAL_PAYMENT_STATUS,
   RENTAL_WORKSPACE_ID,
   itemPrice,
   itemsPrice,
@@ -25,12 +27,15 @@ import { ptBR } from "date-fns/locale";
 import {
   CalendarDays,
   Check,
+  CheckCircle2,
   ChevronDown,
+  CircleDollarSign,
   Clock3,
   Copy,
   Flame,
   Loader2,
   MapPin,
+  PackageCheck,
   Plus,
   Search,
   ShieldCheck,
@@ -88,6 +93,54 @@ function displayDate(value?: string | null) {
   return date
     ? date.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
     : "A definir";
+}
+
+function displayDateTime(value?: string | null) {
+  if (!value) return "Não informado";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Não informado"
+    : date.toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      });
+}
+
+const trackingStages = ["Reserva", "Entrega das peças", "No ateliê", "Queima", "Retirada"] as const;
+
+function trackingStageIndex(status?: string) {
+  if (["pending", "awaiting_payment", "confirmed"].includes(status ?? "")) return 0;
+  if (status === "awaiting_delivery") return 1;
+  if (["received", "awaiting_firing"].includes(status ?? "")) return 2;
+  if (["firing", "cooling"].includes(status ?? "")) return 3;
+  if (["ready_for_pickup", "completed"].includes(status ?? "")) return 4;
+  return 0;
+}
+
+function nextStepFor(status?: string, pendingAmount = 0) {
+  if (status === "cancelled")
+    return "Esta reserva foi cancelada. Entre em contato conosco se precisar de ajuda.";
+  if (["pending", "awaiting_payment"].includes(status ?? "")) {
+    return "Realize o pagamento da entrada para confirmarmos sua reserva.";
+  }
+  if (status === "confirmed")
+    return "Aguarde nossas orientações para entregar suas peças no ateliê.";
+  if (status === "awaiting_delivery")
+    return "Entregue suas peças no Selá dentro do prazo combinado.";
+  if (status === "received") return "Suas peças estão conosco e serão preparadas para a fornada.";
+  if (status === "awaiting_firing") return "Suas peças estão aguardando a próxima etapa da queima.";
+  if (status === "firing")
+    return "Suas peças estão no forno. Avisaremos quando o processo avançar.";
+  if (status === "cooling") return "A queima terminou e as peças estão resfriando com segurança.";
+  if (status === "ready_for_pickup") {
+    return pendingAmount > 0
+      ? "Suas peças estão prontas. Quite o saldo restante e combine a retirada."
+      : "Suas peças estão prontas. Combine a retirada conosco.";
+  }
+  if (status === "completed")
+    return "Pedido concluído. Obrigado por realizar sua queima com o Selá.";
+  return "Estamos atualizando seu pedido. Entre em contato conosco se precisar de ajuda.";
 }
 
 function SelaLogo({
@@ -372,6 +425,19 @@ function RentalPublicPage() {
     },
     onError: (e: any) => toast.error(e.message),
   });
+
+  const lookupStageIndex = trackingStageIndex(lookupResult?.status);
+  const lookupPaid = Number(lookupResult?.paid_amount ?? 0);
+  const lookupPending = Number(
+    lookupResult?.pending_amount ?? Math.max(Number(lookupResult?.total ?? 0) - lookupPaid, 0),
+  );
+  const lookupPieceCount = Number(
+    lookupResult?.piece_count ??
+      (lookupResult?.items ?? []).reduce(
+        (sum: number, item: any) => sum + Number(item.quantity ?? 0),
+        0,
+      ),
+  );
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -923,14 +989,159 @@ function RentalPublicPage() {
               </Button>
             </div>
             {lookupResult && (
-              <div className="rounded-lg border p-4 text-sm">
-                <p className="font-medium">
-                  {lookupResult.slot_title} · {lookupResult.status}
-                </p>
-                <p className="text-muted-foreground">
-                  {formatCurrency(Number(lookupResult.total), currency)} · pagamento:{" "}
-                  {lookupResult.payment_status}
-                </p>
+              <div className="space-y-5 rounded-xl border border-primary/20 bg-primary/[0.03] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-semibold">{lookupResult.slot_title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Pedido <span className="font-mono">{lookupResult.code}</span> · realizado em{" "}
+                      {displayDateTime(lookupResult.created_at)}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={lookupResult.status === "cancelled" ? "destructive" : "default"}
+                    className="text-xs"
+                  >
+                    {RENTAL_ORDER_STATUS[lookupResult.status] ?? "Em atualização"}
+                  </Badge>
+                </div>
+
+                {lookupResult.status !== "cancelled" && (
+                  <div>
+                    <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Etapa do pedido
+                    </p>
+                    <div className="grid grid-cols-5 gap-1">
+                      {trackingStages.map((stage, index) => {
+                        const reached = index <= lookupStageIndex;
+                        return (
+                          <div key={stage} className="min-w-0 text-center">
+                            <div
+                              className={`mx-auto flex size-7 items-center justify-center rounded-full border text-xs font-semibold ${
+                                reached
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-muted-foreground/30 bg-background text-muted-foreground"
+                              }`}
+                            >
+                              {index < lookupStageIndex ? (
+                                <Check className="size-3.5" />
+                              ) : (
+                                index + 1
+                              )}
+                            </div>
+                            <div
+                              className={`mt-1.5 h-1 rounded-full ${
+                                reached ? "bg-primary" : "bg-muted"
+                              }`}
+                            />
+                            <p
+                              className={`mt-1 text-[10px] leading-tight sm:text-xs ${
+                                reached ? "font-medium text-foreground" : "text-muted-foreground"
+                              }`}
+                            >
+                              {stage}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border bg-background p-3">
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <CircleDollarSign className="size-3.5" /> Valor total
+                    </p>
+                    <p className="mt-1 font-semibold">
+                      {formatCurrency(Number(lookupResult.total), currency)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border bg-background p-3">
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <CheckCircle2 className="size-3.5 text-emerald-600" /> Valor pago
+                    </p>
+                    <p className="mt-1 font-semibold text-emerald-700">
+                      {formatCurrency(lookupPaid, currency)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border bg-background p-3">
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Clock3 className="size-3.5" /> Falta pagar
+                    </p>
+                    <p className="mt-1 font-semibold">{formatCurrency(lookupPending, currency)}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Situação do pagamento</p>
+                    <p className="mt-0.5 font-medium">
+                      {RENTAL_PAYMENT_STATUS[lookupResult.payment_status] ?? "Em atualização"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Data da queima</p>
+                    <p className="mt-0.5 font-medium">{displayDate(lookupResult.firing_date)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Previsão de retirada</p>
+                    <p className="mt-0.5 font-medium">{displayDate(lookupResult.pickup_date)}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 border-t pt-4 md:grid-cols-2">
+                  <div>
+                    <p className="flex items-center gap-1.5 text-sm font-medium">
+                      <PackageCheck className="size-4 text-primary" /> Peças do pedido
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {lookupPieceCount}{" "}
+                      {lookupPieceCount === 1 ? "peça cadastrada" : "peças cadastradas"}
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {(lookupResult.items ?? []).map((item: any, index: number) => (
+                        <li key={index} className="flex justify-between gap-3">
+                          <span>
+                            {item.piece_name} × {item.quantity}
+                          </span>
+                          <span>{formatCurrency(Number(item.total_price), currency)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Pagamentos</p>
+                    <div className="mt-2 space-y-2">
+                      {(lookupResult.payments ?? []).map((payment: any, index: number) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between gap-3 rounded-md bg-background p-2 text-sm"
+                        >
+                          <span>
+                            <span className="font-medium">
+                              {payment.type === "deposit" ? "Entrada" : "Saldo"}
+                            </span>
+                            <span className="block text-xs text-muted-foreground">
+                              {RENTAL_PAYMENT_STATUS[payment.status] ?? "Em atualização"}
+                              {payment.paid_at ? ` · pago em ${displayDate(payment.paid_at)}` : ""}
+                            </span>
+                          </span>
+                          <span className="font-medium">
+                            {formatCurrency(Number(payment.amount), currency)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-accent/60 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Próximo passo
+                  </p>
+                  <p className="mt-1 text-sm">{nextStepFor(lookupResult.status, lookupPending)}</p>
+                </div>
               </div>
             )}
           </CardContent>
