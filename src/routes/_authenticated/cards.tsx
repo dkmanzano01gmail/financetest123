@@ -74,6 +74,8 @@ function CardsPage() {
   const [form, setForm] = useState(empty());
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState("");
+  const [cardFilterId, setCardFilterId] = useState("all");
+  const [accountFilterId, setAccountFilterId] = useState("all");
   const [allocations, setAllocations] = useState<Record<string, string>>({});
   const selectedInvoiceMonth = invoiceMonthKey(year, month);
   const previousInvoiceDate = new Date(year, month - 2, 1, 12);
@@ -96,6 +98,20 @@ function CardsPage() {
         .select("*")
         .eq("workspace_id", wsId!)
         .order("created_at");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: paymentAccounts = [] } = useQuery({
+    queryKey: ["accounts", "card-reconciliation-filter", wsId],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("id,name,institution,is_active")
+        .eq("workspace_id", wsId!)
+        .order("name");
       if (error) throw error;
       return data ?? [];
     },
@@ -261,10 +277,59 @@ function CardsPage() {
     qc.invalidateQueries({ queryKey: ["card-payment-allocations"] });
   };
 
+  const visibleCards = useMemo(
+    () => (cardFilterId === "all" ? cards : cards.filter((card) => card.id === cardFilterId)),
+    [cards, cardFilterId],
+  );
+
+  const reconciliationCandidates = useMemo(
+    () =>
+      analytics.candidates.filter(
+        (transaction) => accountFilterId === "all" || transaction.account_id === accountFilterId,
+      ),
+    [analytics.candidates, accountFilterId],
+  );
+
+  const visibleTotals = useMemo(
+    () =>
+      visibleCards.reduce(
+        (total, card) => {
+          const data = analytics.byCard.get(card.id);
+          if (!data) return total;
+          total.spend += data.spend;
+          total.paid += data.paid;
+          total.purchaseCount += data.purchases.length;
+          return total;
+        },
+        { spend: 0, paid: 0, purchaseCount: 0 },
+      ),
+    [analytics.byCard, visibleCards],
+  );
+
+  const matchingCandidates = useMemo(
+    () =>
+      reconciliationCandidates.filter((transaction) => {
+        if (analytics.duplicates.has(transaction.id)) return false;
+        const targetCardId =
+          cardFilterId === "all" ? analytics.suggestions.get(transaction.id) : cardFilterId;
+        if (!targetCardId) return false;
+        const cardData = analytics.byCard.get(targetCardId);
+        const pending = Math.max((cardData?.spend || 0) - (cardData?.paid || 0), 0);
+        return Math.abs(pending - Math.abs(Number(transaction.amount))) <= 0.01;
+      }),
+    [
+      analytics.byCard,
+      analytics.duplicates,
+      analytics.suggestions,
+      cardFilterId,
+      reconciliationCandidates,
+    ],
+  );
+
   const allocatePayments = useMutation({
     mutationFn: async () => {
       if (!selectedCardId) throw new Error("Selecione o cartão.");
-      const selected = analytics.candidates
+      const selected = reconciliationCandidates
         .map((transaction: any) => ({
           transaction,
           amount: parseLocaleAmount(allocations[transaction.id]),
@@ -393,6 +458,7 @@ function CardsPage() {
 
   function openPayment(transaction?: any) {
     const cardId =
+      (cardFilterId !== "all" ? cardFilterId : null) ||
       (transaction ? analytics.suggestions.get(transaction.id) : null) ||
       (cards[0] as any)?.id ||
       "";
@@ -418,7 +484,7 @@ function CardsPage() {
     return Math.max(Math.abs(Number(transaction.amount)) - used, 0);
   }
 
-  const totalDifference = analytics.totalSpend - analytics.totalPaid;
+  const totalDifference = visibleTotals.spend - visibleTotals.paid;
   const nextInvoiceDate = new Date(year, month, 1, 12);
   const nextInvoiceMonth = invoiceMonthKey(
     nextInvoiceDate.getFullYear(),
@@ -473,11 +539,38 @@ function CardsPage() {
               ))}
             </SelectContent>
           </Select>
-          {analytics.exactMatches.length > 0 && (
+          <Select value={cardFilterId} onValueChange={setCardFilterId}>
+            <SelectTrigger className="w-52" aria-label="Filtrar conciliação por cartão">
+              <SelectValue placeholder="Todos os cartões" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os cartões</SelectItem>
+              {cards.map((card) => (
+                <SelectItem key={card.id} value={card.id}>
+                  {card.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={accountFilterId} onValueChange={setAccountFilterId}>
+            <SelectTrigger className="w-56" aria-label="Filtrar pagamentos por conta">
+              <SelectValue placeholder="Todas as contas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as contas de pagamento</SelectItem>
+              {paymentAccounts.map((account) => (
+                <SelectItem key={account.id} value={account.id}>
+                  {account.name}
+                  {account.is_active ? "" : " (inativa)"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {matchingCandidates.length > 0 && (
             <Badge className="ml-auto bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
               <CheckCircle2 className="mr-1 h-3 w-3" />
-              {analytics.exactMatches.length} valor
-              {analytics.exactMatches.length > 1 ? "es conferem" : " confere"}
+              {matchingCandidates.length} valor
+              {matchingCandidates.length > 1 ? "es conferem" : " confere"}
             </Badge>
           )}
         </CardContent>
@@ -486,45 +579,48 @@ function CardsPage() {
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat
           label="Compras da fatura"
-          value={formatCurrency(analytics.totalSpend, currency, privacy)}
+          value={formatCurrency(visibleTotals.spend, currency, privacy)}
           tone="expense"
         />
         <Stat
           label="Pagamentos conciliados"
-          value={formatCurrency(analytics.totalPaid, currency, privacy)}
+          value={formatCurrency(visibleTotals.paid, currency, privacy)}
         />
         <Stat
           label="Falta conciliar"
           value={formatCurrency(totalDifference, currency, privacy)}
           tone={totalDifference > 0.01 ? "expense" : undefined}
         />
-        <Stat label="Compras detalhadas" value={String(analytics.purchaseCount)} />
+        <Stat label="Compras detalhadas" value={String(visibleTotals.purchaseCount)} />
       </div>
 
-      {analytics.purchaseCount === 0 && nextInvoicePurchases && nextInvoicePurchases.count > 0 && (
-        <Card className="mb-4 border-sky-200 bg-sky-50/50">
-          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-            <div className="flex-1 text-sm text-sky-950">
-              Encontramos <strong>{nextInvoicePurchases.count} compras</strong>, somando{" "}
-              <strong>{formatCurrency(nextInvoicePurchases.total, currency, privacy)}</strong>.
-              Pelas datas de fechamento cadastradas, elas pertencem à fatura de{" "}
-              <strong>
-                {monthLabel(nextInvoiceDate.getMonth() + 1)} de {nextInvoiceDate.getFullYear()}
-              </strong>
-              .
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setMonth(nextInvoiceDate.getMonth() + 1);
-                setYear(nextInvoiceDate.getFullYear());
-              }}
-            >
-              Ver fatura de {monthLabel(nextInvoiceDate.getMonth() + 1)}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {cardFilterId === "all" &&
+        visibleTotals.purchaseCount === 0 &&
+        nextInvoicePurchases &&
+        nextInvoicePurchases.count > 0 && (
+          <Card className="mb-4 border-sky-200 bg-sky-50/50">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+              <div className="flex-1 text-sm text-sky-950">
+                Encontramos <strong>{nextInvoicePurchases.count} compras</strong>, somando{" "}
+                <strong>{formatCurrency(nextInvoicePurchases.total, currency, privacy)}</strong>.
+                Pelas datas de fechamento cadastradas, elas pertencem à fatura de{" "}
+                <strong>
+                  {monthLabel(nextInvoiceDate.getMonth() + 1)} de {nextInvoiceDate.getFullYear()}
+                </strong>
+                .
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setMonth(nextInvoiceDate.getMonth() + 1);
+                  setYear(nextInvoiceDate.getFullYear());
+                }}
+              >
+                Ver fatura de {monthLabel(nextInvoiceDate.getMonth() + 1)}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
       {analytics.candidates.length > 0 && (
         <Card className="mb-4 border-amber-300/70 bg-amber-50/30">
@@ -543,13 +639,12 @@ function CardsPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
-            {analytics.candidates.map((transaction: any) => {
-              const cardId = analytics.suggestions.get(transaction.id);
+            {reconciliationCandidates.map((transaction: any) => {
+              const cardId =
+                cardFilterId === "all" ? analytics.suggestions.get(transaction.id) : cardFilterId;
               const card = (cards as any[]).find((item) => item.id === cardId);
               const duplicate = analytics.duplicates.has(transaction.id);
-              const exact = analytics.exactMatches.some(
-                (item) => item.transaction.id === transaction.id,
-              );
+              const exact = matchingCandidates.some((item) => item.id === transaction.id);
               const transactionMonth = transaction.date.slice(0, 7);
               const monthsPaidInAdvance =
                 transactionMonth === twoMonthsPriorInvoiceMonth.slice(0, 7)
@@ -618,6 +713,11 @@ function CardsPage() {
                 </div>
               );
             })}
+            {reconciliationCandidates.length === 0 && (
+              <div className="rounded-lg border border-dashed bg-background p-6 text-center text-sm text-muted-foreground">
+                Nenhum pagamento encontrado na conta selecionada para este período.
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -626,7 +726,7 @@ function CardsPage() {
         <EmptyState icon={CreditCard} title="Nenhum cartão cadastrado" />
       ) : (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {(cards as any[]).map((card) => {
+          {visibleCards.map((card) => {
             const data = analytics.byCard.get(card.id)!;
             const difference = data.spend - data.paid;
             const reconciled = data.spend > 0 && Math.abs(difference) <= 0.01;
@@ -838,6 +938,16 @@ function CardsPage() {
                 </SelectContent>
               </Select>
             </Field>
+            {accountFilterId !== "all" && (
+              <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 text-sm text-sky-950">
+                Exibindo pagamentos da conta{" "}
+                <strong>
+                  {paymentAccounts.find((account) => account.id === accountFilterId)?.name ??
+                    "selecionada"}
+                </strong>
+                . Para usar outra conta, altere o filtro no topo da página.
+              </div>
+            )}
             <div className="rounded-lg border bg-muted/25 p-3 text-sm">
               <div className="flex justify-between gap-3">
                 <span className="text-muted-foreground">Saldo pendente da fatura</span>
@@ -857,7 +967,7 @@ function CardsPage() {
                 <span className="text-muted-foreground">Total escolhido</span>
                 <strong className="font-mono">
                   {formatCurrency(
-                    analytics.candidates.reduce((sum: number, transaction: any) => {
+                    reconciliationCandidates.reduce((sum: number, transaction) => {
                       const amount = parseLocaleAmount(allocations[transaction.id]);
                       return sum + (Number.isFinite(amount) && amount > 0 ? amount : 0);
                     }, 0),
@@ -868,7 +978,7 @@ function CardsPage() {
               </div>
             </div>
             <div className="max-h-[45vh] space-y-2 overflow-auto pr-1">
-              {analytics.candidates.map((transaction: any) => {
+              {reconciliationCandidates.map((transaction: any) => {
                 const available = paymentAvailable(transaction);
                 return (
                   <div
