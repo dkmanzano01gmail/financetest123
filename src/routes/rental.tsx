@@ -1147,20 +1147,32 @@ function RentalPublicPage() {
           </CardContent>
         </Card>
 
-        <footer className="relative mt-4 overflow-hidden rounded-2xl bg-[#b2b3a3] px-6 py-8 text-[#392c29]">
+        <footer className="relative mt-4 overflow-hidden rounded-2xl border border-[#392c29]/10 bg-[#b2b3a3] px-6 py-7 text-[#392c29] shadow-sm sm:px-8">
           <div
             aria-hidden="true"
-            className="absolute inset-y-0 right-0 w-2/5 opacity-20"
+            className="absolute inset-y-0 right-0 hidden w-1/2 opacity-[0.12] sm:block"
             style={{
               backgroundImage:
                 "repeating-linear-gradient(90deg, #382b28 0, #382b28 4px, transparent 4px, transparent 11px)",
+              maskImage: "linear-gradient(90deg, transparent, black 35%)",
+              WebkitMaskImage: "linear-gradient(90deg, transparent, black 35%)",
             }}
           />
-          <div className="relative flex flex-wrap items-center justify-between gap-6">
-            <SelaLogo tone="earth" className="h-16 w-28" />
-            <div className="text-sm">
-              <p className="font-medium">Do seu ateliê ao nosso forno.</p>
-              <p className="mt-1 text-xs opacity-75">
+          <div className="relative grid items-center gap-6 sm:grid-cols-[1fr_auto]">
+            <div>
+              <SelaLogo tone="earth" className="h-16 w-28 sm:h-20 sm:w-36" />
+              <p className="mt-2 max-w-xs text-xs leading-5 text-[#392c29]/70">
+                Queimas cuidadosas para peças feitas com intenção.
+              </p>
+            </div>
+            <div className="w-full rounded-xl border border-[#87480d]/15 bg-[#faf5e7]/95 px-5 py-4 shadow-sm sm:w-[360px] sm:px-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#87480d]">
+                Selá Queimas
+              </p>
+              <p className="mt-1 text-lg font-semibold leading-snug text-[#392c29]">
+                Do seu ateliê ao nosso forno.
+              </p>
+              <p className="mt-2 text-sm font-medium leading-5 text-[#392c29]/80">
                 {info?.contact_phone || info?.contact_email
                   ? [info?.contact_phone, info?.contact_email].filter(Boolean).join(" · ")
                   : "Selá Cerâmica"}
