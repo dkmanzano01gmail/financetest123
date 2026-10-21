@@ -394,22 +394,24 @@ function Dashboard() {
         />
       </div>
 
-      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-        <AudienceCard
-          icon={Users}
-          label="Alunos pagantes — aulas regulares"
-          value={summary.audience.regularPayingStudents}
-          sub={`${summary.audience.regularPayments} recebimento(s) · ${formatCurrency(summary.audience.regularRevenue, currency, privacy)}`}
-          onClick={() => openCategory("income", "Aulas regulares")}
-        />
-        <AudienceCard
-          icon={CalendarCheck}
-          label="Participantes de workshops no mês"
-          value={summary.audience.workshopParticipants}
-          sub={`${summary.audience.workshopPayments} recebimento(s) · estimativa por R$ 290 com até 10% de desconto`}
-          onClick={() => openCategory("income", "Workshops")}
-        />
-      </div>
+      {workspace.is_atelier && (
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <AudienceCard
+            icon={Users}
+            label="Alunos pagantes — aulas regulares"
+            value={summary.audience.regularPayingStudents}
+            sub={`${summary.audience.regularPayments} recebimento(s) · ${formatCurrency(summary.audience.regularRevenue, currency, privacy)}`}
+            onClick={() => openCategory("income", "Aulas regulares")}
+          />
+          <AudienceCard
+            icon={CalendarCheck}
+            label="Participantes de workshops no mês"
+            value={summary.audience.workshopParticipants}
+            sub={`${summary.audience.workshopPayments} recebimento(s) · estimativa por R$ 290 com até 10% de desconto`}
+            onClick={() => openCategory("income", "Workshops")}
+          />
+        </div>
+      )}
 
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <CategoryComparison
