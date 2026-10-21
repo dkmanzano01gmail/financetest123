@@ -28,17 +28,63 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, parseLocaleAmount } from "@/lib/format";
 import {
+  buildRentalOrderStatusMessage,
+  normalizeRentalWhatsAppPhone,
   RENTAL_FIRING_PRICE_PER_LITER,
+  RENTAL_FIRING_TYPE,
   RENTAL_ORDER_STATUS,
   RENTAL_PAYMENT_STATUS,
   RENTAL_SLOT_STATUS,
 } from "@/lib/rental";
-import { ExternalLink, Flame, Mail, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  ExternalLink,
+  Flame,
+  Mail,
+  MessageCircle,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/atelier/rental")({ component: Page });
 
 const sb = supabase as any;
+
+function formatFullDate(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatOrderCreatedAt(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function orderMonthLabel(value: string) {
+  const date = new Date(`${value}-01T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  const label = new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+  }).format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
 
 const emptySlot = () => ({
   title: "",
@@ -65,8 +111,13 @@ function Page() {
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(emptySlot());
-  const [statusChange, setStatusChange] = useState<{ order: any; status: string } | null>(null);
-  const [statusMessage, setStatusMessage] = useState("");
+  const [orderEmailFilter, setOrderEmailFilter] = useState("");
+  const [orderSlotFilter, setOrderSlotFilter] = useState("__all__");
+  const [orderMonthFilter, setOrderMonthFilter] = useState("__all__");
+  const [statusNotification, setStatusNotification] = useState<{
+    order: any;
+    status: string;
+  } | null>(null);
 
   const { data: settings } = useQuery({
     queryKey: ["rental-settings", wsId],
@@ -128,7 +179,7 @@ function Page() {
       const { data, error } = await sb
         .from("rental_orders")
         .select(
-          "*, rental_slots(title, firing_date, pickup_date), rental_customers(name, studio_name, email, phone, document), rental_order_items(piece_name, quantity, height_cm, width_cm, depth_cm, volume_liters, unit_price, total_price), rental_payments(id, type, amount, status, method, paid_at)",
+          "*, rental_slots(title, kiln_name, firing_type, firing_date, pickup_date, closes_at), rental_customers(name, studio_name, email, phone, document), rental_order_items(piece_name, quantity, height_cm, width_cm, depth_cm, volume_liters, unit_price, total_price), rental_payments(id, type, amount, status, method, paid_at)",
         )
         .eq("workspace_id", wsId)
         .order("created_at", { ascending: false });
@@ -137,6 +188,46 @@ function Page() {
     },
   });
 
+  const orderMonths = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (orders as any[])
+            .map((order) => String(order.created_at || "").slice(0, 7))
+            .filter((value) => /^\d{4}-\d{2}$/.test(value)),
+        ),
+      ).sort((a, b) => b.localeCompare(a)),
+    [orders],
+  );
+
+  const filteredOrders = useMemo(() => {
+    const email = orderEmailFilter.trim().toLowerCase();
+    return (orders as any[]).filter((order) => {
+      if (orderSlotFilter !== "__all__" && order.slot_id !== orderSlotFilter) return false;
+      if (orderMonthFilter !== "__all__") {
+        const createdMonth = String(order.created_at || "").slice(0, 7);
+        if (createdMonth !== orderMonthFilter) return false;
+      }
+      if (
+        email &&
+        !String(order.rental_customers?.email || "")
+          .toLowerCase()
+          .includes(email)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [orders, orderEmailFilter, orderMonthFilter, orderSlotFilter]);
+
+  const usageBySlot = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const o of orders as any[]) {
+      if (o.status === "cancelled") continue;
+      map[o.slot_id] = (map[o.slot_id] ?? 0) + Number(o.total_liters ?? 0);
+    }
+    return map;
+  }, [orders]);
   const totals = useMemo(() => {
     const active = (orders as any[]).filter((o) => o.status !== "cancelled");
     const quantityFor = (order: any) =>
@@ -261,68 +352,55 @@ function Page() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["rental-orders", wsId] });
-      toast.success("Status do pedido atualizado.");
+      toast.success("Pedido atualizado.");
     },
     onError: (e: any) => toast.error(e.message),
   });
 
-  const buildStatusMessage = (order: any, nextStatus: string) => {
-    const paid = (order.rental_payments ?? [])
-      .filter((payment: any) => payment.status === "paid")
-      .reduce((sum: number, payment: any) => sum + Number(payment.amount ?? 0), 0);
-    const remaining = Math.max(Number(order.total ?? 0) - paid, 0);
-    const lines = [
-      `Olá, ${order.rental_customers?.name || "tudo bem"}!`,
-      "",
-      `O status do seu pedido ${order.code} foi atualizado para: ${RENTAL_ORDER_STATUS[nextStatus] ?? nextStatus}.`,
-      "",
-      `Queima: ${order.rental_slots?.title || "a definir"}`,
-    ];
-
-    if (order.rental_slots?.firing_date)
-      lines.push(`Data da queima: ${order.rental_slots.firing_date}`);
-    if (order.rental_slots?.pickup_date)
-      lines.push(`Previsão de retirada: ${order.rental_slots.pickup_date}`);
-    lines.push(
-      `Valor pago: ${formatCurrency(paid, currency)}`,
-      `Valor restante: ${formatCurrency(remaining, currency)}`,
-      "",
-      "Você pode acompanhar o pedido na página do Selá Queimas usando seu código e e-mail.",
-      "",
-      "Selá Queimas",
+  const changeOrderStatus = (order: any, status: string) => {
+    if (status === order.status) return;
+    updateOrder.mutate(
+      { id: order.id, patch: { status } },
+      { onSuccess: () => setStatusNotification({ order, status }) },
     );
-    return lines.join("\n");
   };
 
-  const requestStatusChange = (order: any, status: string) => {
-    setStatusChange({ order, status });
-    setStatusMessage(buildStatusMessage(order, status));
-  };
+  const statusMessage = statusNotification
+    ? buildRentalOrderStatusMessage({
+        customerName: statusNotification.order.rental_customers?.name || "cliente",
+        orderCode: statusNotification.order.code,
+        status: statusNotification.status,
+        slotTitle: statusNotification.order.rental_slots?.title || "Vaga de queima",
+        firingType: statusNotification.order.rental_slots?.firing_type,
+        firingDate: statusNotification.order.rental_slots?.firing_date,
+        pickupDate:
+          statusNotification.order.estimated_pickup_date ||
+          statusNotification.order.rental_slots?.pickup_date,
+        trackingUrl: `${typeof window === "undefined" ? "https://selafinance.lovable.app" : window.location.origin}/rental`,
+      })
+    : "";
 
-  const applyStatusChange = async (channel?: "email" | "whatsapp") => {
-    if (!statusChange) return;
-    const { order, status } = statusChange;
-    const targetWindow = channel ? window.open("about:blank", "_blank") : null;
-
-    try {
-      await updateOrder.mutateAsync({ id: order.id, patch: { status } });
-      if (channel === "email") {
-        const subject = `Atualização do pedido ${order.code} — Selá Queimas`;
-        const href = `mailto:${encodeURIComponent(order.rental_customers?.email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(statusMessage)}`;
-        if (targetWindow) targetWindow.location.href = href;
-        else window.location.href = href;
-      }
-      if (channel === "whatsapp") {
-        let phone = String(order.rental_customers?.phone || "").replace(/\D/g, "");
-        if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
-        const href = `https://wa.me/${phone}?text=${encodeURIComponent(statusMessage)}`;
-        if (targetWindow) targetWindow.location.href = href;
-        else window.open(href, "_blank", "noopener,noreferrer");
-      }
-      setStatusChange(null);
-    } catch {
-      targetWindow?.close();
+  const openStatusEmail = () => {
+    if (!statusNotification) return;
+    const recipient = String(statusNotification.order.rental_customers?.email || "").trim();
+    if (!recipient) {
+      toast.error("Este cliente não possui e-mail cadastrado.");
+      return;
     }
+    const subject = `Atualização do pedido ${statusNotification.order.code} — Selá Queimas`;
+    window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(statusMessage)}`;
+    setStatusNotification(null);
+  };
+
+  const openStatusWhatsApp = () => {
+    if (!statusNotification) return;
+    const phone = normalizeRentalWhatsAppPhone(statusNotification.order.rental_customers?.phone);
+    const destination = phone
+      ? `https://wa.me/${phone}?text=${encodeURIComponent(statusMessage)}`
+      : `https://wa.me/?text=${encodeURIComponent(statusMessage)}`;
+    window.open(destination, "_blank", "noopener,noreferrer");
+    if (!phone) toast.info("Telefone não cadastrado; escolha o contato no WhatsApp.");
+    setStatusNotification(null);
   };
 
   const registerPayment = useMutation({
@@ -482,14 +560,95 @@ function Page() {
         </TabsContent>
 
         <TabsContent value="orders" className="space-y-3">
+          <Card>
+            <CardContent className="p-4">
+              <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_minmax(180px,0.7fr)_auto]">
+                <div className="space-y-1.5">
+                  <Label htmlFor="rental-order-email-filter">E-mail do cliente</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="rental-order-email-filter"
+                      value={orderEmailFilter}
+                      onChange={(event) => setOrderEmailFilter(event.target.value)}
+                      className="pl-9"
+                      placeholder="Buscar por e-mail..."
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Vaga de queima</Label>
+                  <Select value={orderSlotFilter} onValueChange={setOrderSlotFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Todas as vagas</SelectItem>
+                      {(slots as any[]).map((slot) => (
+                        <SelectItem key={slot.id} value={slot.id}>
+                          {slot.title}
+                          {slot.firing_date ? ` · ${formatFullDate(slot.firing_date)}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Mês do pedido</Label>
+                  <Select value={orderMonthFilter} onValueChange={setOrderMonthFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Todos os meses</SelectItem>
+                      {orderMonths.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {orderMonthLabel(value)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full md:w-auto"
+                    disabled={
+                      !orderEmailFilter &&
+                      orderSlotFilter === "__all__" &&
+                      orderMonthFilter === "__all__"
+                    }
+                    onClick={() => {
+                      setOrderEmailFilter("");
+                      setOrderSlotFilter("__all__");
+                      setOrderMonthFilter("__all__");
+                    }}
+                  >
+                    Limpar
+                  </Button>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                {filteredOrders.length} de {(orders as any[]).length} pedido(s) exibido(s)
+              </p>
+            </CardContent>
+          </Card>
+
           {(orders as any[]).length === 0 ? (
             <EmptyState
               icon={Flame}
               title="Nenhum pedido ainda"
               description="Os pedidos feitos em /rental aparecem aqui."
             />
+          ) : filteredOrders.length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="Nenhum pedido encontrado"
+              description="Ajuste ou limpe os filtros para ver outros pedidos."
+            />
           ) : (
-            (orders as any[]).map((o) => (
+            filteredOrders.map((o) => (
               <Card key={o.id}>
                 <CardContent className="space-y-2 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -507,6 +666,35 @@ function Page() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold">{formatCurrency(Number(o.total), currency)}</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Pedido realizado</p>
+                      <p className="font-medium">{formatOrderCreatedAt(o.created_at)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Vaga selecionada</p>
+                      <p className="font-medium">{o.rental_slots?.title ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Tipo de queima</p>
+                      <p className="font-medium">
+                        {RENTAL_FIRING_TYPE[o.rental_slots?.firing_type] ??
+                          o.rental_slots?.firing_type ??
+                          "—"}
+                        {o.rental_slots?.kiln_name ? ` · ${o.rental_slots.kiln_name}` : ""}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Datas previstas</p>
+                      <p className="font-medium">
+                        Queima: {formatFullDate(o.rental_slots?.firing_date)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Retirada:{" "}
+                        {formatFullDate(o.estimated_pickup_date || o.rental_slots?.pickup_date)}
+                      </p>
                     </div>
                   </div>
                   <ul className="text-xs text-muted-foreground">
@@ -546,7 +734,11 @@ function Page() {
                   </div>
                   {o.notes && <p className="text-xs italic text-muted-foreground">{o.notes}</p>}
                   <div className="flex flex-wrap gap-2">
-                    <Select value={o.status} onValueChange={(v) => requestStatusChange(o, v)}>
+                    <Select
+                      value={o.status}
+                      disabled={updateOrder.isPending}
+                      onValueChange={(value) => changeOrderStatus(o, value)}
+                    >
                       <SelectTrigger className="w-44">
                         <SelectValue />
                       </SelectTrigger>
@@ -593,55 +785,45 @@ function Page() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={!!statusChange} onOpenChange={(nextOpen) => !nextOpen && setStatusChange(null)}>
+      <Dialog
+        open={!!statusNotification}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setStatusNotification(null);
+        }}
+      >
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Atualizar status e avisar o cliente</DialogTitle>
+            <DialogTitle>Avisar cliente sobre o novo status</DialogTitle>
           </DialogHeader>
-          {statusChange && (
-            <div className="space-y-4">
-              <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
-                <p className="text-muted-foreground">Novo status</p>
-                <p className="font-semibold">
-                  {RENTAL_ORDER_STATUS[statusChange.status] ?? statusChange.status}
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="status-notification-message">Mensagem para o cliente</Label>
-                <Textarea
-                  id="status-notification-message"
-                  className="min-h-64 resize-y"
-                  value={statusMessage}
-                  onChange={(event) => setStatusMessage(event.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Revise a mensagem antes de abrir o canal escolhido. O envio só acontece quando
-                  você confirmar no seu e-mail ou WhatsApp.
-                </p>
-              </div>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              O status já foi atualizado para{" "}
+              <strong className="text-foreground">
+                {statusNotification
+                  ? (RENTAL_ORDER_STATUS[statusNotification.status] ?? statusNotification.status)
+                  : ""}
+              </strong>
+              . Escolha como avisar o cliente ou feche esta janela para não enviar nada.
+            </p>
+            <Textarea value={statusMessage} readOnly rows={11} className="resize-none text-sm" />
+          </div>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+            <Button type="button" variant="ghost" onClick={() => setStatusNotification(null)}>
+              Agora não
+            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={openStatusEmail}
+                disabled={!statusNotification?.order.rental_customers?.email}
+              >
+                <Mail className="mr-2 h-4 w-4" /> Abrir e-mail
+              </Button>
+              <Button type="button" onClick={openStatusWhatsApp}>
+                <MessageCircle className="mr-2 h-4 w-4" /> Abrir WhatsApp
+              </Button>
             </div>
-          )}
-          <DialogFooter className="flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-            <Button
-              variant="ghost"
-              disabled={updateOrder.isPending}
-              onClick={() => applyStatusChange()}
-            >
-              Atualizar sem avisar
-            </Button>
-            <Button
-              variant="outline"
-              disabled={updateOrder.isPending || !statusChange?.order.rental_customers?.email}
-              onClick={() => applyStatusChange("email")}
-            >
-              <Mail className="mr-2 h-4 w-4" /> Abrir e-mail
-            </Button>
-            <Button
-              disabled={updateOrder.isPending || !statusChange?.order.rental_customers?.phone}
-              onClick={() => applyStatusChange("whatsapp")}
-            >
-              <MessageCircle className="mr-2 h-4 w-4" /> Abrir WhatsApp
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -93,6 +93,64 @@ export const RENTAL_SLOT_STATUS: Record<string, string> = {
   cancelled: "Cancelada",
 };
 
+export const RENTAL_FIRING_TYPE: Record<string, string> = {
+  biscuit: "Queima biscoito",
+  glaze: "Queima esmalte",
+  other: "Outra queima",
+};
+
+export function normalizeRentalWhatsAppPhone(phone?: string | null) {
+  const digits = String(phone || "")
+    .replace(/\D/g, "")
+    .replace(/^00/, "");
+  if (!digits) return "";
+  return digits.startsWith("55") ? digits : `55${digits}`;
+}
+
+export function buildRentalOrderStatusMessage(input: {
+  customerName: string;
+  orderCode: string;
+  status: string;
+  slotTitle: string;
+  firingType?: string | null;
+  firingDate?: string | null;
+  pickupDate?: string | null;
+  trackingUrl: string;
+}) {
+  const formatFullDate = (value?: string | null) => {
+    if (!value) return "";
+    const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date);
+  };
+  const lines = [
+    `Olá, ${input.customerName}! Tudo bem?`,
+    "",
+    `O status do seu pedido ${input.orderCode} no Selá Queimas foi atualizado.`,
+    `Novo status: ${RENTAL_ORDER_STATUS[input.status] ?? input.status}`,
+    "",
+    `Vaga selecionada: ${input.slotTitle}`,
+  ];
+  if (input.firingType) {
+    lines.push(`Tipo de queima: ${RENTAL_FIRING_TYPE[input.firingType] ?? input.firingType}`);
+  }
+  if (input.firingDate) lines.push(`Data prevista da queima: ${formatFullDate(input.firingDate)}`);
+  if (input.pickupDate) lines.push(`Retirada prevista: ${formatFullDate(input.pickupDate)}`);
+  lines.push(
+    "",
+    "Você pode acompanhar o pedido usando o código e seu e-mail em:",
+    input.trackingUrl,
+    "",
+    "Obrigada!",
+    "Selá Queimas",
+  );
+  return lines.join("\n");
+}
+
 export const RENTAL_ERRORS: Record<string, string> = {
   slot_unavailable: "Esta vaga não está mais disponível.",
   invalid_items: "Adicione ao menos uma peça válida.",
