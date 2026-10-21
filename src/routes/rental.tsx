@@ -408,9 +408,14 @@ function RentalPublicPage() {
 
   const lookup = useMutation({
     mutationFn: async () => {
+      const code = lookupCode.trim();
+      const email = lookupEmail.trim();
+      if (!code && !email) {
+        throw new Error("Informe o código do pedido ou o e-mail usado na reserva.");
+      }
       const { data, error } = await sb.rpc("rental_public_order_status", {
-        _code: lookupCode,
-        _email: lookupEmail,
+        _code: code || null,
+        _email: email || null,
       });
       if (error) throw error;
       return data;
@@ -966,16 +971,23 @@ function RentalPublicPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Acompanhar pedido</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Consulte pelo código, pelo e-mail cadastrado ou pelos dois. Se houver mais de um
+              pedido no mesmo e-mail, mostraremos primeiro o mais recente.
+            </p>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-3">
               <Input
-                placeholder="Código (SQ-2026-XXXXX)"
+                aria-label="Código do pedido"
+                placeholder="Código do pedido (opcional)"
                 value={lookupCode}
                 onChange={(e) => setLookupCode(e.target.value)}
               />
               <Input
-                placeholder="E-mail usado na reserva"
+                aria-label="E-mail usado na reserva"
+                type="email"
+                placeholder="E-mail cadastrado (opcional)"
                 value={lookupEmail}
                 onChange={(e) => setLookupEmail(e.target.value)}
               />
