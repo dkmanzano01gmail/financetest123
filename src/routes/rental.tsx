@@ -753,8 +753,22 @@ function RentalPublicPage() {
                       O valor é calculado automaticamente a partir das dimensões e da quantidade
                       informadas para cada peça, usando o coeficiente da modalidade de queima.
                     </p>
+                    <div className="mt-3 rounded-md border border-primary/15 bg-primary/[0.04] px-3 py-2.5 text-sm">
+                      <span className="text-muted-foreground">Coeficiente utilizado: </span>
+                      <strong>
+                        {(Number(quote.price_per_liter) / 1000).toLocaleString("pt-BR", {
+                          minimumFractionDigits: 3,
+                          maximumFractionDigits: 6,
+                        })}
+                      </strong>
+                      <span className="text-muted-foreground"> por cm³</span>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Valor por unidade = altura × largura × profundidade × coeficiente.
+                      </p>
+                    </div>
                     <ul className="mt-3 divide-y text-sm">
                       {(quote.items ?? []).map((line: any, i: number) => {
+                        const coefficient = Number(quote.price_per_liter) / 1000;
                         const unitPrice = itemPrice(
                           {
                             piece_name: line.piece_name,
@@ -776,6 +790,14 @@ function RentalPublicPage() {
                                 {line.height_cm} × {line.width_cm} × {line.depth_cm} cm ·{" "}
                                 {line.quantity}{" "}
                                 {Number(line.quantity) === 1 ? "unidade" : "unidades"}
+                              </span>
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                {line.height_cm} × {line.width_cm} × {line.depth_cm} ×{" "}
+                                {coefficient.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 3,
+                                  maximumFractionDigits: 6,
+                                })}{" "}
+                                = {formatCurrency(unitPrice, currency)} por unidade
                               </span>
                             </span>
                             <span className="text-left sm:text-right">
