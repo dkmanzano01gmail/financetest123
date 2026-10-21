@@ -1191,26 +1191,17 @@ function RentalPublicPage() {
               WebkitMaskImage: "linear-gradient(90deg, transparent, black 35%)",
             }}
           />
-          <div className="relative grid items-center gap-6 sm:grid-cols-[1fr_auto]">
-            <div>
-              <SelaLogo tone="earth" className="h-16 w-28 sm:h-20 sm:w-36" />
-              <p className="mt-2 max-w-xs text-xs leading-5 text-[#392c29]/70">
-                Queimas cuidadosas para peças feitas com intenção.
-              </p>
-            </div>
-            <div className="w-full rounded-xl border border-[#87480d]/15 bg-[#faf5e7]/95 px-5 py-4 shadow-sm sm:w-[360px] sm:px-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#87480d]">
-                Selá Queimas
-              </p>
-              <p className="mt-1 text-lg font-semibold leading-snug text-[#392c29]">
-                Do seu ateliê ao nosso forno.
-              </p>
-              <p className="mt-2 text-sm font-medium leading-5 text-[#392c29]/80">
-                {info?.contact_phone || info?.contact_email
-                  ? [info?.contact_phone, info?.contact_email].filter(Boolean).join(" · ")
-                  : "Selá Cerâmica"}
-              </p>
-            </div>
+          <div className="relative flex flex-col items-center justify-between gap-5 sm:flex-row">
+            <SelaLogo tone="earth" className="h-16 w-28 sm:h-20 sm:w-36" />
+            <a
+              href="https://wa.me/5511939241904"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Conversar com a Selá Queimas pelo WhatsApp no número +55 11 93924-1904"
+              className="rounded-full border border-[#87480d]/20 bg-[#faf5e7]/95 px-5 py-3 text-sm font-semibold text-[#392c29] shadow-sm transition hover:border-[#87480d]/40 hover:bg-[#faf5e7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#87480d]/50"
+            >
+              WhatsApp: +55 11 93924-1904
+            </a>
           </div>
         </footer>
       </div>
