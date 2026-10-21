@@ -17,7 +17,6 @@ import {
   RENTAL_WORKSPACE_ID,
   itemPrice,
   itemsPrice,
-  itemsVolumeLiters,
   normalizeItems,
   type RentalItemInput,
 } from "@/lib/rental";
@@ -44,13 +43,12 @@ export const Route = createFileRoute("/rental")({
       {
         name: "description",
         content:
-          "Reserve espaço nas queimas do ateliê Selá Cerâmica: escolha a vaga, calcule o orçamento por litro e faça sua reserva online.",
+          "Reserve sua queima no ateliê Selá Cerâmica: escolha a data, informe suas peças e receba o orçamento online.",
       },
       { property: "og:title", content: "Selá Queimas — Agende sua queima" },
       {
         property: "og:description",
-        content:
-          "Reserve espaço nas queimas do ateliê Selá Cerâmica: orçamento por litro e reserva online.",
+        content: "Reserve sua queima no ateliê Selá Cerâmica com orçamento e pagamento online.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -257,7 +255,6 @@ function RentalPublicPage() {
     () => (slots as any[]).find((s) => s.id === slotId) ?? null,
     [slots, slotId],
   );
-  const estimatedLiters = useMemo(() => itemsVolumeLiters(items), [items]);
   const estimatedPrice = useMemo(
     () => itemsPrice(items, Number(slot?.price_per_liter ?? 0)),
     [items, slot?.price_per_liter],
@@ -265,19 +262,6 @@ function RentalPublicPage() {
   const availableDates = useMemo(
     () =>
       (slots as any[])
-        .filter((entry) => Number(entry.available_liters) > 0)
-        .map((entry) => parseLocalDate(entry.firing_date ?? entry.closes_at))
-        .filter((entry): entry is Date => Boolean(entry)),
-    [slots],
-  );
-  const limitedDates = useMemo(
-    () =>
-      (slots as any[])
-        .filter(
-          (entry) =>
-            Number(entry.available_liters) > 0 &&
-            Number(entry.available_liters) / Math.max(Number(entry.capacity_liters), 1) <= 0.25,
-        )
         .map((entry) => parseLocalDate(entry.firing_date ?? entry.closes_at))
         .filter((entry): entry is Date => Boolean(entry)),
     [slots],
@@ -349,13 +333,7 @@ function RentalPublicPage() {
       if (error) throw error;
       if (!data?.ok) {
         const base = RENTAL_ERRORS[data?.error] ?? "Não foi possível concluir a reserva.";
-        const extra =
-          data?.available_liters != null
-            ? ` Disponível: ${Number(data.available_liters).toFixed(1)} L.`
-            : data?.min_liters != null
-              ? ` Mínimo: ${Number(data.min_liters).toFixed(1)} L.`
-              : "";
-        throw new Error(base + extra);
+        throw new Error(base);
       }
       return data;
     },
@@ -476,19 +454,15 @@ function RentalPublicPage() {
                     disabled={(day) =>
                       !availableDates.some((available) => dateKey(available) === dateKey(day))
                     }
-                    modifiers={{ available: availableDates, limited: limitedDates }}
+                    modifiers={{ available: availableDates }}
                     modifiersClassNames={{
                       available: "font-semibold text-primary",
-                      limited: "text-amber-700",
                     }}
                     className="mx-auto w-full [--cell-size:2.65rem]"
                   />
                   <div className="flex flex-wrap justify-center gap-4 border-t px-2 pt-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                       <span className="size-2 rounded-full bg-primary" /> Disponível
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="size-2 rounded-full bg-amber-500" /> Poucas vagas
                     </span>
                   </div>
                 </div>
@@ -508,35 +482,28 @@ function RentalPublicPage() {
                   ) : (
                     slotsForSelectedDay.map((s) => {
                       const selected = s.id === slotId;
-                      const full = Number(s.available_liters) <= 0;
-                      const pct = Math.min(
-                        100,
-                        (Number(s.used_liters) / Math.max(Number(s.capacity_liters), 1)) * 100,
-                      );
                       return (
                         <button
                           key={s.id}
                           type="button"
-                          disabled={full}
                           onClick={() => {
-                            if (full) return;
                             setSlotId(s.id);
                             resetQuote();
                           }}
                           className={`w-full rounded-xl border p-5 text-left transition-all ${
                             selected
                               ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary"
-                              : full
-                                ? "cursor-not-allowed opacity-60"
-                                : "hover:bg-muted/50"
+                              : "hover:bg-muted/50"
                           }`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="text-base font-semibold">{s.title}</span>
-                            <Badge variant={full ? "secondary" : "default"}>
-                              {full
-                                ? "Lotado"
-                                : `${formatCurrency(Number(s.price_per_liter), currency)} / L`}
+                            <Badge variant="default">
+                              {s.firing_type === "biscuit"
+                                ? "Biscoito"
+                                : s.firing_type === "glaze"
+                                  ? "Esmalte"
+                                  : "Queima especial"}
                             </Badge>
                           </div>
                           {s.description && (
@@ -558,15 +525,6 @@ function RentalPublicPage() {
                                 <MapPin className="size-3.5" /> {s.kiln_name}
                               </span>
                             )}
-                          </div>
-                          <div className="mt-3">
-                            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                              <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
-                            </div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {Number(s.available_liters).toFixed(1)} L disponíveis de{" "}
-                              {Number(s.capacity_liters).toFixed(1)} L
-                            </p>
                           </div>
                         </button>
                       );
@@ -603,7 +561,11 @@ function RentalPublicPage() {
                   </p>
                 </div>
                 <Badge variant="outline">
-                  {formatCurrency(Number(slot.price_per_liter), currency)} / L
+                  {slot.firing_type === "biscuit"
+                    ? "Queima de biscoito"
+                    : slot.firing_type === "glaze"
+                      ? "Queima de esmalte"
+                      : "Queima especial"}
                 </Badge>
               </div>
             )}
@@ -676,10 +638,11 @@ function RentalPublicPage() {
               >
                 <Plus className="mr-2 h-4 w-4" /> Adicionar peça
               </Button>
-              <span className="text-sm text-muted-foreground">
-                Volume estimado: {estimatedLiters.toFixed(2)} L
-                {slot ? ` · Estimativa: ${formatCurrency(estimatedPrice, currency)}` : ""}
-              </span>
+              {slot && (
+                <span className="text-sm text-muted-foreground">
+                  Estimativa: {formatCurrency(estimatedPrice, currency)}
+                </span>
+              )}
               {getQuote.isPending && (
                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Loader2 className="size-3.5 animate-spin" /> Atualizando orçamento…
@@ -694,8 +657,7 @@ function RentalPublicPage() {
                   {(quote.items ?? []).map((line: any, i: number) => (
                     <li key={i} className="flex justify-between gap-4">
                       <span>
-                        {line.piece_name} × {line.quantity} ·{" "}
-                        {Number(line.volume_liters).toFixed(2)} L
+                        {line.piece_name} × {line.quantity}
                       </span>
                       <span className="text-right">
                         {formatCurrency(Number(line.total_price), currency)}
@@ -720,7 +682,7 @@ function RentalPublicPage() {
                   ))}
                 </ul>
                 <div className="mt-3 flex justify-between border-t pt-2 text-sm font-semibold">
-                  <span>Total · {Number(quote.total_liters).toFixed(2)} L</span>
+                  <span>Total</span>
                   <span>{formatCurrency(Number(quote.total), currency)}</span>
                 </div>
                 <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
@@ -744,17 +706,6 @@ function RentalPublicPage() {
                     </p>
                   </div>
                 </div>
-                {!quote.fits && (
-                  <p className="mt-2 text-sm text-destructive">
-                    Espaço insuficiente: restam {Number(quote.available_liters).toFixed(2)} L nesta
-                    queima.
-                  </p>
-                )}
-                {!quote.meets_minimum && (
-                  <p className="mt-2 text-sm text-destructive">
-                    Volume mínimo desta vaga: {Number(quote.min_liters).toFixed(2)} L.
-                  </p>
-                )}
               </div>
             )}
           </CardContent>
@@ -813,8 +764,7 @@ function RentalPublicPage() {
               onClick={() => reserve.mutate()}
               disabled={
                 !slotId ||
-                !quote?.fits ||
-                !quote?.meets_minimum ||
+                !quote ||
                 !name.trim() ||
                 !studioName.trim() ||
                 !email.trim() ||
@@ -834,7 +784,6 @@ function RentalPublicPage() {
                   {items.reduce((sum, item) => sum + Math.max(Number(item.quantity) || 1, 1), 0)}{" "}
                   peças
                   {" · "}
-                  {Number(confirmation.total_liters).toFixed(2)} L ·{" "}
                   {formatCurrency(Number(confirmation.total), currency)}
                 </p>
                 <p className="mt-1 text-muted-foreground">
@@ -943,7 +892,6 @@ function RentalPublicPage() {
                   {lookupResult.slot_title} · {lookupResult.status}
                 </p>
                 <p className="text-muted-foreground">
-                  {Number(lookupResult.total_liters).toFixed(2)} L ·{" "}
                   {formatCurrency(Number(lookupResult.total), currency)} · pagamento:{" "}
                   {lookupResult.payment_status}
                 </p>

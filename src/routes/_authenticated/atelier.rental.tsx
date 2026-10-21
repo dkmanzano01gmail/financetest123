@@ -45,7 +45,7 @@ const emptySlot = () => ({
   description: "",
   kiln_name: "",
   firing_type: "glaze",
-  capacity_liters: "100",
+  capacity_liters: "999999999",
   price_per_liter: "7",
   min_liters: "0",
   opens_at: "",
@@ -135,15 +135,6 @@ function Page() {
     },
   });
 
-  const usageBySlot = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const o of orders as any[]) {
-      if (o.status === "cancelled") continue;
-      map[o.slot_id] = (map[o.slot_id] ?? 0) + Number(o.total_liters ?? 0);
-    }
-    return map;
-  }, [orders]);
-
   const totals = useMemo(() => {
     const active = (orders as any[]).filter((o) => o.status !== "cancelled");
     const quantityFor = (order: any) =>
@@ -196,8 +187,6 @@ function Page() {
   const saveSlot = useMutation({
     mutationFn: async () => {
       if (!form.title.trim()) throw new Error("Informe o título da vaga.");
-      const capacity = parseLocaleAmount(form.capacity_liters);
-      if (!Number.isFinite(capacity) || capacity <= 0) throw new Error("Capacidade inválida.");
       const { error: settingsError } = await sb.from("rental_settings").upsert(
         {
           workspace_id: wsId,
@@ -225,9 +214,9 @@ function Page() {
         description: form.description.trim() || null,
         kiln_name: form.kiln_name.trim() || null,
         firing_type: form.firing_type,
-        capacity_liters: capacity,
+        capacity_liters: 999999999,
         price_per_liter: currentConfiguredPrice ?? (parseLocaleAmount(form.price_per_liter) || 0),
-        min_liters: parseLocaleAmount(form.min_liters) || 0,
+        min_liters: 0,
         opens_at: form.opens_at || null,
         closes_at: form.closes_at || null,
         firing_date: form.firing_date || null,
@@ -311,7 +300,7 @@ function Page() {
       description: row.description ?? "",
       kiln_name: row.kiln_name ?? "",
       firing_type: row.firing_type ?? "glaze",
-      capacity_liters: String(row.capacity_liters ?? ""),
+      capacity_liters: "999999999",
       price_per_liter: String(row.price_per_liter ?? ""),
       min_liters: String(row.min_liters ?? "0"),
       opens_at: row.opens_at ?? "",
@@ -393,43 +382,38 @@ function Page() {
               description="Crie uma vaga de queima para publicá-la na plataforma pública."
             />
           ) : (
-            (slots as any[]).map((s) => {
-              const used = usageBySlot[s.id] ?? 0;
-              return (
-                <Card key={s.id}>
-                  <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{s.title}</span>
-                        <Badge variant={s.status === "open" ? "default" : "secondary"}>
-                          {RENTAL_SLOT_STATUS[s.status] ?? s.status}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {used.toFixed(1)} L de {Number(s.capacity_liters).toFixed(1)} L ·{" "}
-                        {formatCurrency(Number(s.price_per_liter), currency)}/L
-                        {s.firing_date ? ` · queima ${s.firing_date}` : ""}
-                        {s.closes_at ? ` · inscrições até ${s.closes_at}` : ""}
-                      </p>
+            (slots as any[]).map((s) => (
+              <Card key={s.id}>
+                <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{s.title}</span>
+                      <Badge variant={s.status === "open" ? "default" : "secondary"}>
+                        {RENTAL_SLOT_STATUS[s.status] ?? s.status}
+                      </Badge>
                     </div>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => startEdit(s)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          if (confirm("Remover esta vaga e seus pedidos?")) removeSlot.mutate(s.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {s.firing_date ? `Queima em ${s.firing_date}` : "Data da queima a definir"}
+                      {s.closes_at ? ` · inscrições até ${s.closes_at}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => startEdit(s)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        if (confirm("Remover esta vaga e seus pedidos?")) removeSlot.mutate(s.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
           )}
         </TabsContent>
 
@@ -459,15 +443,12 @@ function Page() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold">{formatCurrency(Number(o.total), currency)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {Number(o.total_liters).toFixed(2)} L
-                      </p>
                     </div>
                   </div>
                   <ul className="text-xs text-muted-foreground">
                     {(o.rental_order_items ?? []).map((i: any, idx: number) => (
                       <li key={idx}>
-                        {i.piece_name} × {i.quantity} · {Number(i.volume_liters).toFixed(2)} L
+                        {i.piece_name} × {i.quantity}
                       </li>
                     ))}
                   </ul>
@@ -604,31 +585,6 @@ function Page() {
               </Select>
             </div>
             <div>
-              <Label>Capacidade (L)</Label>
-              <Input
-                value={form.capacity_liters}
-                onChange={(e) => setForm({ ...form, capacity_liters: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Preço por litro</Label>
-              <Input
-                value={form.price_per_liter}
-                disabled={["biscuit", "glaze"].includes(form.firing_type)}
-                onChange={(e) => setForm({ ...form, price_per_liter: e.target.value })}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Biscoito e Esmalte usam os coeficientes definidos em Configurações.
-              </p>
-            </div>
-            <div>
-              <Label>Volume mínimo (L)</Label>
-              <Input
-                value={form.min_liters}
-                onChange={(e) => setForm({ ...form, min_liters: e.target.value })}
-              />
-            </div>
-            <div>
               <Label>Situação</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                 <SelectTrigger>
@@ -742,8 +698,7 @@ function SettingsForm({
               onChange={(e) => setState({ ...state, biscuit_coefficient: Number(e.target.value) })}
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              Fórmula: coeficiente × altura × largura × profundidade. Atual:{" "}
-              {formatCurrency(Number(state.biscuit_coefficient) * 1000, "BRL")}/L.
+              Usado no cálculo automático conforme as dimensões informadas pelo cliente.
             </p>
           </div>
           <div>
@@ -756,8 +711,7 @@ function SettingsForm({
               onChange={(e) => setState({ ...state, glaze_coefficient: Number(e.target.value) })}
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              Fórmula: coeficiente × altura × largura × profundidade. Atual:{" "}
-              {formatCurrency(Number(state.glaze_coefficient) * 1000, "BRL")}/L.
+              Usado no cálculo automático conforme as dimensões informadas pelo cliente.
             </p>
           </div>
         </CardContent>
