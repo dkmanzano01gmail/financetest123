@@ -99,6 +99,8 @@ export const Route = createFileRoute("/_authenticated/transactions")({
 });
 
 const NOW = new Date();
+const DEFAULT_PAGE_SIZE = 100;
+
 function accountTypeLabel(type: string) {
   return (
     {
@@ -137,6 +139,10 @@ function TransactionsPage() {
   const [type, setType] = useState<string>(routeSearch.type ?? "all");
   const [source, setSource] = useState<TransactionSourceFilter>("all");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [categoryEditId, setCategoryEditId] = useState<string | null>(null);
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
   const [requestedCategory, setRequestedCategory] = useState(routeSearch.category ?? null);
   const [open, setOpen] = useState(false);
@@ -152,6 +158,11 @@ function TransactionsPage() {
   const t = workspace ? L(workspace.type) : L("personal");
   const currency = workspace?.currency ?? "BRL";
   const privacy = workspace?.privacy_mode ?? false;
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setDebouncedSearch(search), 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [search]);
 
   const {
     data: txs,
@@ -237,10 +248,11 @@ function TransactionsPage() {
         return false;
       }
       if (!matchesTransactionSource(tx, source)) return false;
-      if (search && !tx.description?.toLowerCase().includes(search.toLowerCase())) return false;
+      if (debouncedSearch && !tx.description?.toLowerCase().includes(debouncedSearch.toLowerCase()))
+        return false;
       return true;
     });
-  }, [txs, type, source, search]);
+  }, [txs, type, source, debouncedSearch]);
 
   const categorySummary = useMemo(
     () =>
@@ -299,19 +311,45 @@ function TransactionsPage() {
     return filterableTransactions;
   }, [filterableTransactions, requestedCategory, selectedCategoryKey]);
 
-  const visibleIds = useMemo(
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const effectivePage = Math.min(page, pageCount);
+  const pagedTransactions = useMemo(() => {
+    const start = (effectivePage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [effectivePage, filtered, pageSize]);
+  const firstVisibleTransaction = filtered.length === 0 ? 0 : (effectivePage - 1) * pageSize + 1;
+  const lastVisibleTransaction = Math.min(effectivePage * pageSize, filtered.length);
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    month,
+    year,
+    type,
+    source,
+    debouncedSearch,
+    selectedCategoryKey,
+    requestedCategory,
+    pageSize,
+  ]);
+
+  const filteredIds = useMemo(
     () => new Set(filtered.map((transaction) => transaction.id)),
     [filtered],
   );
-  const allVisibleSelected = filtered.length > 0 && filtered.every((tx) => selectedIds.has(tx.id));
-  const someVisibleSelected = filtered.some((tx) => selectedIds.has(tx.id));
+  const allVisibleSelected =
+    pagedTransactions.length > 0 &&
+    pagedTransactions.every((transaction) => selectedIds.has(transaction.id));
+  const someVisibleSelected = pagedTransactions.some((transaction) =>
+    selectedIds.has(transaction.id),
+  );
 
   useEffect(() => {
     setSelectedIds((current) => {
-      const next = new Set([...current].filter((id) => visibleIds.has(id)));
+      const next = new Set([...current].filter((id) => filteredIds.has(id)));
       return next.size === current.size ? current : next;
     });
-  }, [visibleIds]);
+  }, [filteredIds]);
 
   function toggleTransaction(id: string, selected: boolean) {
     setSelectedIds((current) => {
@@ -323,7 +361,14 @@ function TransactionsPage() {
   }
 
   function toggleAllVisible(selected: boolean) {
-    setSelectedIds(selected ? new Set(filtered.map((transaction) => transaction.id)) : new Set());
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      for (const transaction of pagedTransactions) {
+        if (selected) next.add(transaction.id);
+        else next.delete(transaction.id);
+      }
+      return next;
+    });
   }
 
   const protectedAllocationTransactionIds = useMemo(() => {
@@ -896,7 +941,7 @@ function TransactionsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((tx: any) => (
+                  {pagedTransactions.map((tx: any) => (
                     <TableRow key={tx.id} className={selectedIds.has(tx.id) ? "bg-muted/40" : ""}>
                       <TableCell>
                         <Checkbox
@@ -939,28 +984,49 @@ function TransactionsPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Select
-                          value={tx.category_id ?? ""}
-                          disabled={
-                            protectedAllocationTransactionIds.has(tx.id) || isAccountMovement(tx)
-                          }
-                          onValueChange={(v) =>
-                            updateCat.mutate({ id: tx.id, category_id: v || null })
-                          }
-                        >
-                          <SelectTrigger className="h-8 w-44 border-transparent hover:border-border bg-transparent">
-                            <SelectValue placeholder="—" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(categories ?? [])
-                              .filter((c: any) => c.type === analyticalTransactionType(tx))
-                              .map((c: any) => (
-                                <SelectItem key={c.id} value={c.id}>
-                                  {c.name}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
+                        {categoryEditId === tx.id ? (
+                          <Select
+                            open
+                            value={tx.category_id ?? ""}
+                            disabled={
+                              protectedAllocationTransactionIds.has(tx.id) || isAccountMovement(tx)
+                            }
+                            onOpenChange={(isOpen) => {
+                              if (!isOpen) setCategoryEditId(null);
+                            }}
+                            onValueChange={(value) => {
+                              updateCat.mutate({ id: tx.id, category_id: value || null });
+                              setCategoryEditId(null);
+                            }}
+                          >
+                            <SelectTrigger className="h-8 w-44">
+                              <SelectValue placeholder="—" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(categories ?? [])
+                                .filter(
+                                  (category) => category.type === analyticalTransactionType(tx),
+                                )
+                                .map((category) => (
+                                  <SelectItem key={category.id} value={category.id}>
+                                    {category.name}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <button
+                            type="button"
+                            className="h-8 max-w-44 truncate rounded-md px-3 text-left text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={
+                              protectedAllocationTransactionIds.has(tx.id) || isAccountMovement(tx)
+                            }
+                            onClick={() => setCategoryEditId(tx.id)}
+                            title="Alterar categoria"
+                          >
+                            {tx.categories?.name ?? "—"}
+                          </button>
+                        )}
                       </TableCell>
                       <TableCell>
                         {tx.importance_level ? (
@@ -1037,6 +1103,49 @@ function TransactionsPage() {
                   ))}
                 </TableBody>
               </Table>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3">
+                <div className="text-sm text-muted-foreground">
+                  Exibindo {firstVisibleTransaction}–{lastVisibleTransaction} de {filtered.length}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={String(pageSize)}
+                    onValueChange={(value) => setPageSize(Number(value))}
+                  >
+                    <SelectTrigger className="h-9 w-[145px]" aria-label="Transações por página">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[50, 100, 200].map((size) => (
+                        <SelectItem key={size} value={String(size)}>
+                          {size} por página
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={effectivePage <= 1}
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="min-w-20 text-center text-sm text-muted-foreground">
+                    {effectivePage} de {pageCount}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={effectivePage >= pageCount}
+                    onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                  >
+                    Próxima
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>
