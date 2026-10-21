@@ -2786,8 +2786,8 @@ export type Database = {
           default_price_per_liter: number
           deposit_percentage: number
           description: string | null
-          glaze_spacing_cm: number
           glaze_coefficient: number
+          glaze_spacing_cm: number
           headline: string
           is_published: boolean
           min_order_amount: number
@@ -2808,8 +2808,8 @@ export type Database = {
           default_price_per_liter?: number
           deposit_percentage?: number
           description?: string | null
-          glaze_spacing_cm?: number
           glaze_coefficient?: number
+          glaze_spacing_cm?: number
           headline?: string
           is_published?: boolean
           min_order_amount?: number
@@ -2830,8 +2830,8 @@ export type Database = {
           default_price_per_liter?: number
           deposit_percentage?: number
           description?: string | null
-          glaze_spacing_cm?: number
           glaze_coefficient?: number
+          glaze_spacing_cm?: number
           headline?: string
           is_published?: boolean
           min_order_amount?: number
@@ -4134,7 +4134,23 @@ export type Database = {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
       }
+      merge_internal_transfer_groups: {
+        Args: {
+          p_matching_group_id: string
+          p_primary_group_id: string
+          p_workspace_id: string
+        }
+        Returns: string
+      }
       purchase_credit_pack: { Args: { _pack_code: string }; Returns: string }
+      reconcile_internal_transfer_counterpart: {
+        Args: {
+          p_candidate_transaction_id: string
+          p_transfer_group_id: string
+          p_workspace_id: string
+        }
+        Returns: string
+      }
       release_customization_credits: {
         Args: { _reason?: string; _request_id: string }
         Returns: number
@@ -4192,6 +4208,7 @@ export type Database = {
           description: string
           firing_date: string
           firing_type: string
+          glaze_spacing_cm: number
           id: string
           kiln_name: string
           min_liters: number
@@ -4200,7 +4217,6 @@ export type Database = {
           price_per_liter: number
           title: string
           used_liters: number
-          glaze_spacing_cm: number
         }[]
       }
       rental_quote_items: {
@@ -4210,6 +4226,26 @@ export type Database = {
           height_cm: number
           piece_name: string
           quantity: number
+          total_price: number
+          unit_price: number
+          volume_liters: number
+          width_cm: number
+        }[]
+      }
+      rental_quote_items_with_spacing: {
+        Args: {
+          _horizontal_spacing_cm?: number
+          _items: Json
+          _price_per_liter: number
+        }
+        Returns: {
+          calculation_depth_cm: number
+          calculation_width_cm: number
+          depth_cm: number
+          height_cm: number
+          piece_name: string
+          quantity: number
+          spacing_cm: number
           total_price: number
           unit_price: number
           volume_liters: number
@@ -4381,6 +4417,19 @@ export type Database = {
       }
       undo_card_payment_allocation: {
         Args: { target_allocation_id: string }
+        Returns: string
+      }
+      update_internal_transfer_group: {
+        Args: {
+          p_amount: number
+          p_date: string
+          p_description: string
+          p_destination_account_id: string
+          p_notes?: string
+          p_source_account_id: string
+          p_transfer_group_id: string
+          p_workspace_id: string
+        }
         Returns: string
       }
       user_approve_test: {
