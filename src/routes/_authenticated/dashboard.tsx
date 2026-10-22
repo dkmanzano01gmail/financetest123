@@ -611,6 +611,13 @@ function ExecutiveDashboard({
         />
       </div>
 
+      <MonthlyHighlights
+        summary={summary}
+        currency={currency}
+        privacy={privacy}
+        onSelect={(category) => onOpenCategory("expense", category)}
+      />
+
       <Card className="mb-4">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -811,6 +818,13 @@ function AnalyticalDashboard({
         />
       </div>
 
+      <MonthlyHighlights
+        summary={summary}
+        currency={currency}
+        privacy={privacy}
+        onSelect={(category) => onOpenCategory("expense", category)}
+      />
+
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
         <MovementRanking
           title="Maiores receitas individuais"
@@ -847,6 +861,161 @@ function AnalyticalDashboard({
       />
     </>
   );
+}
+
+function MonthlyHighlights({
+  summary,
+  currency,
+  privacy,
+  onSelect,
+}: {
+  summary: DashboardSummaryData;
+  currency: string;
+  privacy: boolean;
+  onSelect: (category: string) => void;
+}) {
+  const surprisingExpenses = summary.expenseBenchmarks
+    .filter((item) => item.current > item.average && item.current > 0)
+    .sort((a, b) => b.difference - a.difference)
+    .slice(0, 3);
+  const previousByCategory = new Map(
+    summary.previous.expenseCategories.map((item) => [item.name, item.value]),
+  );
+  const monthGrowth = summary.expenseCategories
+    .map((item) => {
+      const previous = previousByCategory.get(item.name) ?? 0;
+      return {
+        name: item.name,
+        current: item.value,
+        previous,
+        difference: item.value - previous,
+        differencePct: previous ? (item.value - previous) / previous : null,
+      };
+    })
+    .filter((item) => item.difference > 0)
+    .sort((a, b) => b.difference - a.difference)
+    .slice(0, 3);
+  const hasHighlights = surprisingExpenses.length > 0 || monthGrowth.length > 0;
+
+  return (
+    <Card className="mb-4 overflow-hidden border-primary/20 bg-gradient-to-br from-card via-card to-primary/[0.035]">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <TriangleAlert className="h-4 w-4 text-primary" />
+          Destaques do mês
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Gastos acima do comportamento histórico e categorias que mais cresceram frente ao mês
+          anterior.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {!hasHighlights ? (
+          <div className="rounded-xl border border-dashed bg-background/60 px-4 py-6 text-center text-sm text-muted-foreground">
+            Nenhum aumento relevante de gastos foi identificado neste período.
+          </div>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <HighlightList
+              title="Acima da média"
+              description="Maiores desvios em reais contra a média dos meses anteriores."
+              items={surprisingExpenses.map((item) => ({
+                name: item.name,
+                value: item.current,
+                delta: item.difference,
+                detail:
+                  item.average > 0
+                    ? `${formatPercentage(item.differencePct)} acima da média de ${formatCurrency(item.average, currency, privacy)}`
+                    : "Novo gasto sem média histórica",
+              }))}
+              currency={currency}
+              privacy={privacy}
+              onSelect={onSelect}
+            />
+            <HighlightList
+              title="Maiores crescimentos"
+              description="Categorias com maior aumento em reais comparado ao mês anterior."
+              items={monthGrowth.map((item) => ({
+                name: item.name,
+                value: item.current,
+                delta: item.difference,
+                detail:
+                  item.differencePct == null
+                    ? "Novo gasto neste mês"
+                    : `${formatPercentage(item.differencePct)} vs. ${formatCurrency(item.previous, currency, privacy)} no mês anterior`,
+              }))}
+              currency={currency}
+              privacy={privacy}
+              onSelect={onSelect}
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function HighlightList({
+  title,
+  description,
+  items,
+  currency,
+  privacy,
+  onSelect,
+}: {
+  title: string;
+  description: string;
+  items: Array<{ name: string; value: number; delta: number; detail: string }>;
+  currency: string;
+  privacy: boolean;
+  onSelect: (category: string) => void;
+}) {
+  return (
+    <div className="rounded-xl border bg-background/75 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-medium">{title}</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+        </div>
+        <TrendingUp className="h-4 w-4 shrink-0 text-expense" />
+      </div>
+      <div className="mt-3 space-y-2">
+        {items.map((item, index) => (
+          <button
+            key={item.name}
+            type="button"
+            onClick={() => onSelect(item.name)}
+            className="flex w-full items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left transition hover:border-border hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-expense/10 text-xs font-semibold text-expense">
+              {index + 1}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">{item.name}</span>
+              <span className="block truncate text-xs text-muted-foreground">{item.detail}</span>
+            </span>
+            <span className="shrink-0 text-right">
+              <span className="block font-mono text-sm">
+                {formatCurrency(item.value, currency, privacy)}
+              </span>
+              <span className="block text-[11px] font-medium text-expense">
+                +{formatCurrency(item.delta, currency, privacy)}
+              </span>
+            </span>
+          </button>
+        ))}
+        {!items.length && (
+          <div className="py-5 text-center text-xs text-muted-foreground">
+            Nenhum crescimento nesta comparação.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatPercentage(value: number) {
+  return `${(value * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 }
 
 function CashFlowProjectionCard({
