@@ -245,6 +245,33 @@ function Dashboard() {
       }),
     [cashFlowEntries, cashFlowTransactions, month, monthlyBalance, year],
   );
+  const dashboardProjection = useMemo(() => {
+    const futureDays = cashFlowProjection.daily.filter(
+      (day) => day.actualMode === "forecastAfterActual",
+    );
+    const futureIncome = futureDays.reduce((sum, day) => sum + day.projectedIncome, 0);
+    const futureExpense = futureDays.reduce((sum, day) => sum + day.projectedExpense, 0);
+    let runningBalance = summary.balance;
+    let minBalance = runningBalance;
+    let firstNegativeDate: string | null = runningBalance < 0 ? selectedMonthStart : null;
+
+    for (const day of futureDays) {
+      runningBalance += day.projectedNet;
+      if (runningBalance < minBalance) minBalance = runningBalance;
+      if (runningBalance < 0 && !firstNegativeDate) firstNegativeDate = day.date;
+    }
+
+    return {
+      realizedBalance: summary.balance,
+      futureIncome,
+      futureExpense,
+      endingBalance: runningBalance,
+      minBalance,
+      firstNegativeDate,
+      cashNeedAmount: minBalance < 0 ? Math.abs(minBalance) : 0,
+      futureEventsCount: futureDays.reduce((sum, day) => sum + day.projectedEvents.length, 0),
+    };
+  }, [cashFlowProjection.daily, selectedMonthStart, summary.balance]);
   const yearTotals = useMemo(
     () =>
       summary.monthly.reduce(
@@ -469,7 +496,7 @@ function Dashboard() {
       {view === "executive" ? (
         <ExecutiveDashboard
           summary={summary}
-          projection={cashFlowProjection}
+          projectionSummary={dashboardProjection}
           month={month}
           year={year}
           currency={currency}
@@ -485,6 +512,7 @@ function Dashboard() {
           summary={summary}
           profitSummary={profitSummary}
           projection={cashFlowProjection}
+          projectionSummary={dashboardProjection}
           projectionChart={projectionChart}
           monthlyChart={monthlyChart}
           yearTotals={yearTotals}
@@ -508,6 +536,16 @@ function Dashboard() {
 
 type DashboardSummaryData = ReturnType<typeof dashboardSummary>;
 type DashboardProjection = ReturnType<typeof buildCashFlowProjection>;
+type DashboardProjectionSummary = {
+  realizedBalance: number;
+  futureIncome: number;
+  futureExpense: number;
+  endingBalance: number;
+  minBalance: number;
+  firstNegativeDate: string | null;
+  cashNeedAmount: number;
+  futureEventsCount: number;
+};
 type MonthlyChartRow = DashboardSummaryData["monthly"][number] & { label: string };
 type ProjectionChartRow = DashboardProjection["daily"][number] & {
   label: string;
@@ -517,7 +555,7 @@ type ProjectionChartRow = DashboardProjection["daily"][number] & {
 
 function ExecutiveDashboard({
   summary,
-  projection,
+  projectionSummary,
   month,
   year,
   currency,
@@ -529,7 +567,7 @@ function ExecutiveDashboard({
   onOpenCategory,
 }: {
   summary: DashboardSummaryData;
-  projection: DashboardProjection;
+  projectionSummary: DashboardProjectionSummary;
   month: number;
   year: number;
   currency: string;
@@ -582,7 +620,7 @@ function ExecutiveDashboard({
           </CardContent>
         </Card>
         <CashFlowProjectionCard
-          projection={projection}
+          projectionSummary={projectionSummary}
           month={month}
           year={year}
           currency={currency}
@@ -678,6 +716,7 @@ function AnalyticalDashboard({
   summary,
   profitSummary,
   projection,
+  projectionSummary,
   projectionChart,
   monthlyChart,
   yearTotals,
@@ -697,6 +736,7 @@ function AnalyticalDashboard({
   summary: DashboardSummaryData;
   profitSummary: ReturnType<typeof profitThroughSelectedMonth>;
   projection: DashboardProjection;
+  projectionSummary: DashboardProjectionSummary;
   projectionChart: ProjectionChartRow[];
   monthlyChart: MonthlyChartRow[];
   yearTotals: { income: number; expense: number; balance: number; count: number };
@@ -763,9 +803,9 @@ function AnalyticalDashboard({
         />
         <MetricCard
           label="Saldo previsto do mês"
-          value={formatCurrency(projection.endingActualForecast, currency, privacy)}
-          sub={`${projection.projectedEvents.length} previsão(ões) cadastrada(s)`}
-          positive={projection.endingActualForecast >= 0}
+          value={formatCurrency(projectionSummary.endingBalance, currency, privacy)}
+          sub={`${formatCurrency(projectionSummary.realizedBalance, currency, privacy)} realizado + projeções futuras`}
+          positive={projectionSummary.endingBalance >= 0}
         />
       </div>
 
@@ -1019,19 +1059,19 @@ function formatPercentage(value: number) {
 }
 
 function CashFlowProjectionCard({
-  projection,
+  projectionSummary,
   month,
   year,
   currency,
   privacy,
 }: {
-  projection: DashboardProjection;
+  projectionSummary: DashboardProjectionSummary;
   month: number;
   year: number;
   currency: string;
   privacy: boolean;
 }) {
-  const hasForecast = projection.projectedEvents.length > 0;
+  const hasForecast = projectionSummary.futureEventsCount > 0;
   return (
     <Card className="border-primary/20 bg-primary/[0.025]">
       <CardHeader className="pb-3">
@@ -1047,9 +1087,9 @@ function CashFlowProjectionCard({
               Saldo previsto
             </div>
             <div
-              className={`mt-1 font-mono text-xl ${projection.endingActualForecast >= 0 ? "text-income" : "text-expense"}`}
+              className={`mt-1 font-mono text-xl ${projectionSummary.endingBalance >= 0 ? "text-income" : "text-expense"}`}
             >
-              {formatCurrency(projection.endingActualForecast, currency, privacy)}
+              {formatCurrency(projectionSummary.endingBalance, currency, privacy)}
             </div>
           </div>
           <div className="rounded-xl border bg-background/75 p-3">
@@ -1057,38 +1097,44 @@ function CashFlowProjectionCard({
               Menor caixa
             </div>
             <div
-              className={`mt-1 font-mono text-xl ${projection.minCash >= 0 ? "" : "text-expense"}`}
+              className={`mt-1 font-mono text-xl ${projectionSummary.minBalance >= 0 ? "" : "text-expense"}`}
             >
-              {formatCurrency(projection.minCash, currency, privacy)}
+              {formatCurrency(projectionSummary.minBalance, currency, privacy)}
             </div>
           </div>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
           <div>
-            <span className="text-muted-foreground">Receitas previstas</span>
+            <span className="text-muted-foreground">Receitas futuras</span>
             <strong className="mt-1 block text-income">
-              {formatCurrency(projection.totalProjectedIncome, currency, privacy)}
+              {formatCurrency(projectionSummary.futureIncome, currency, privacy)}
             </strong>
           </div>
           <div>
-            <span className="text-muted-foreground">Despesas previstas</span>
+            <span className="text-muted-foreground">Despesas futuras</span>
             <strong className="mt-1 block text-expense">
-              {formatCurrency(projection.totalProjectedExpense, currency, privacy)}
+              {formatCurrency(projectionSummary.futureExpense, currency, privacy)}
             </strong>
           </div>
         </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Saldo realizado pelas transações:{" "}
+          {formatCurrency(projectionSummary.realizedBalance, currency, privacy)}. O saldo previsto
+          adiciona somente os lançamentos futuros a esse valor.
+        </p>
         {!hasForecast && (
           <p className="mt-3 text-xs text-muted-foreground">
-            Não há previsões cadastradas para este mês. O saldo considera apenas o realizado e o
-            saldo inicial.
+            Não há lançamentos futuros cadastrados para este mês. O saldo considera apenas as
+            transações já registradas.
           </p>
         )}
-        {projection.firstNegativeDate && (
+        {projectionSummary.firstNegativeDate && (
           <div className="mt-3 flex gap-2 rounded-lg bg-expense/10 p-2.5 text-xs text-expense">
             <TriangleAlert className="h-4 w-4 shrink-0" />
             <span>
-              Previsão de caixa negativo em {formatDate(projection.firstNegativeDate)}. Necessidade
-              estimada: {formatCurrency(projection.cashNeedAmount, currency, privacy)}.
+              Previsão de caixa negativo em {formatDate(projectionSummary.firstNegativeDate)}.
+              Necessidade estimada:{" "}
+              {formatCurrency(projectionSummary.cashNeedAmount, currency, privacy)}.
             </span>
           </div>
         )}
