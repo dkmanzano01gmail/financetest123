@@ -68,6 +68,11 @@ const sb = supabase as any;
 const TODAY = new Date();
 type MovementSeriesKey = "actualIncome" | "actualExpense" | "projectedIncome" | "projectedExpense";
 
+function monthPeriodEnd(year: number, month: number, monthsCount: number) {
+  const endDate = new Date(year, month - 1 + monthsCount, 0);
+  return `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
+}
+
 const emptyForm = () => ({
   entry_date: new Date().toISOString().slice(0, 10),
   specific_date: new Date().toISOString().slice(0, 10),
@@ -91,6 +96,13 @@ function CashFlowPage() {
   const [month, setMonth] = useState(TODAY.getMonth() + 1);
   const [year, setYear] = useState(TODAY.getFullYear());
   const [monthsCount, setMonthsCount] = useState(1);
+  const [customPeriod, setCustomPeriod] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState(
+    `${TODAY.getFullYear()}-${String(TODAY.getMonth() + 1).padStart(2, "0")}-01`,
+  );
+  const [customEndDate, setCustomEndDate] = useState(
+    monthPeriodEnd(TODAY.getFullYear(), TODAY.getMonth() + 1, 1),
+  );
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm());
@@ -105,7 +117,29 @@ function CashFlowPage() {
     projectedIncome: false,
     projectedExpense: false,
   });
-  const selectedMonthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const quickStartDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const quickEndDate = monthPeriodEnd(year, month, monthsCount);
+  const projectionStartDate = customPeriod ? customStartDate : quickStartDate;
+  const projectionEndDate = customPeriod ? customEndDate : quickEndDate;
+  const projectionStartYear = Number(projectionStartDate.slice(0, 4));
+  const projectionStartMonth = Number(projectionStartDate.slice(5, 7));
+  const selectedMonthStart = `${projectionStartDate.slice(0, 7)}-01`;
+
+  function changeCustomStartDate(value: string) {
+    if (!value) return;
+    const currentEnd = customPeriod ? customEndDate : quickEndDate;
+    setCustomStartDate(value);
+    setCustomEndDate(value > currentEnd ? value : currentEnd);
+    setCustomPeriod(true);
+  }
+
+  function changeCustomEndDate(value: string) {
+    if (!value) return;
+    const currentStart = customPeriod ? customStartDate : quickStartDate;
+    setCustomEndDate(value);
+    setCustomStartDate(value < currentStart ? value : currentStart);
+    setCustomPeriod(true);
+  }
 
   const { data: entries = [], isLoading: entriesLoading } = useQuery({
     queryKey: ["cash_flow_entries", wsId],
@@ -141,12 +175,9 @@ function CashFlowPage() {
     isFetching: txFetching,
     refetch: refetchTransactions,
   } = useQuery({
-    queryKey: ["transactions", wsId, "cash-flow", year, month, monthsCount],
+    queryKey: ["transactions", wsId, "cash-flow", projectionStartDate, projectionEndDate],
     enabled: !!wsId,
     queryFn: async () => {
-      const start = `${year}-${String(month).padStart(2, "0")}-01`;
-      const endDate = new Date(year, month - 1 + monthsCount, 0);
-      const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
       return fetchSupabasePages<Record<string, unknown>>((from, to) =>
         sb
           .from("transactions")
@@ -155,8 +186,8 @@ function CashFlowPage() {
           )
           .eq("workspace_id", wsId)
           .eq("accounts.type", "checking")
-          .gte("date", start)
-          .lte("date", end)
+          .gte("date", projectionStartDate)
+          .lte("date", projectionEndDate)
           .order("date")
           .order("id")
           .range(from, to),
@@ -304,6 +335,8 @@ function CashFlowPage() {
         year,
         monthsCount,
         startingCash: projectionStartCash,
+        startDate: projectionStartDate,
+        endDate: projectionEndDate,
       }),
     [
       entries,
@@ -314,6 +347,8 @@ function CashFlowPage() {
       year,
       monthsCount,
       projectionStartCash,
+      projectionStartDate,
+      projectionEndDate,
     ],
   );
 
@@ -483,7 +518,13 @@ function CashFlowPage() {
 
       <Card className="mb-4">
         <CardContent className="flex flex-wrap items-center gap-2 p-3">
-          <Select value={String(month)} onValueChange={(value) => setMonth(Number(value))}>
+          <Select
+            value={String(month)}
+            onValueChange={(value) => {
+              setMonth(Number(value));
+              setCustomPeriod(false);
+            }}
+          >
             <SelectTrigger className="w-36">
               <SelectValue />
             </SelectTrigger>
@@ -495,7 +536,13 @@ function CashFlowPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={String(year)} onValueChange={(value) => setYear(Number(value))}>
+          <Select
+            value={String(year)}
+            onValueChange={(value) => {
+              setYear(Number(value));
+              setCustomPeriod(false);
+            }}
+          >
             <SelectTrigger className="w-28">
               <SelectValue />
             </SelectTrigger>
@@ -511,7 +558,10 @@ function CashFlowPage() {
           </Select>
           <Select
             value={String(monthsCount)}
-            onValueChange={(value) => setMonthsCount(Number(value))}
+            onValueChange={(value) => {
+              setMonthsCount(Number(value));
+              setCustomPeriod(false);
+            }}
           >
             <SelectTrigger className="w-40">
               <SelectValue />
@@ -524,10 +574,42 @@ function CashFlowPage() {
               <SelectItem value="12">12 meses</SelectItem>
             </SelectContent>
           </Select>
-          <Badge variant="outline" className="ml-auto">
-            <CalendarRange className="mr-1 h-3.5 w-3.5" />
-            {projection.startDate} a {projection.endDate}
-          </Badge>
+          <div className="ml-auto flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="cash-flow-start-date" className="text-xs text-muted-foreground">
+                Projeção de
+              </Label>
+              <Input
+                id="cash-flow-start-date"
+                type="date"
+                value={projectionStartDate}
+                max={projectionEndDate}
+                onChange={(event) => changeCustomStartDate(event.target.value)}
+                className="w-40"
+                aria-label="Data inicial da projeção"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="cash-flow-end-date" className="text-xs text-muted-foreground">
+                até
+              </Label>
+              <Input
+                id="cash-flow-end-date"
+                type="date"
+                value={projectionEndDate}
+                min={projectionStartDate}
+                onChange={(event) => changeCustomEndDate(event.target.value)}
+                className="w-40"
+                aria-label="Data final da projeção"
+              />
+            </div>
+            {customPeriod && (
+              <Badge variant="outline" className="mb-1 h-7">
+                <CalendarRange className="mr-1 h-3.5 w-3.5" />
+                Período personalizado
+              </Badge>
+            )}
+          </div>
           {txFetching && !txLoading && (
             <span className="text-xs text-muted-foreground">Atualizando transações…</span>
           )}
@@ -641,7 +723,7 @@ function CashFlowPage() {
         <StatCard
           label="Saldo inicial"
           value={formatCurrency(projection.startingCash, currency, privacy)}
-          sub={`${monthLabel(month)} de ${year}`}
+          sub={`${projection.startDate} a ${projection.endDate}`}
         />
         <StatCard
           label="Entradas realizadas"
@@ -1127,7 +1209,7 @@ function CashFlowPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Saldo inicial de {monthLabel(month)} de {year}
+              Saldo inicial de {monthLabel(projectionStartMonth)} de {projectionStartYear}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">

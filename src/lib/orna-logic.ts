@@ -496,11 +496,21 @@ export function buildCashFlowProjection(args: {
   year: number;
   monthsCount: number;
   startingCash: number;
+  startDate?: string | Date;
+  endDate?: string | Date;
   today?: Date;
 }) {
   const horizon = Math.max(1, Math.min(12, Math.trunc(args.monthsCount || 1)));
-  const startDate = new Date(args.year, args.month - 1, 1, 12);
-  const endDate = monthEnd(args.year, args.month - 2 + horizon);
+  const requestedStartDate = args.startDate ? parseDateKey(args.startDate) : null;
+  const requestedEndDate = args.endDate ? parseDateKey(args.endDate) : null;
+  const startDate =
+    requestedStartDate && Number.isFinite(requestedStartDate.getTime())
+      ? requestedStartDate
+      : new Date(args.year, args.month - 1, 1, 12);
+  const endDate =
+    requestedEndDate && Number.isFinite(requestedEndDate.getTime()) && requestedEndDate >= startDate
+      ? requestedEndDate
+      : monthEnd(args.year, args.month - 2 + horizon);
   const projectedEvents = expandCashFlowEntries(args.entries, startDate, endDate);
   const actualEvents = actualCashFlowEvents(args.transactions, startDate, endDate);
   const projectedByDate = new Map<string, CashFlowEvent[]>();
