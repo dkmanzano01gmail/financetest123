@@ -30,6 +30,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/atelier/raw-materials")({ component: Page });
 const sb = supabase as any;
+const MATERIAL_TYPE_OPTIONS = ["Argila", "Esmalte", "Engobe", "Corante/Óxido", "Gesso", "Outro"];
 const empty = () => ({
   name: "",
   material_type: "Argila",
@@ -39,7 +40,7 @@ const empty = () => ({
   unit: "kg",
   quantity_purchased: "0",
   quantity_available: "0",
-  unit_cost: "0",
+  purchase_total: "0",
   purchase_date: "",
   expiration_date: "",
   min_stock: "0",
@@ -101,15 +102,27 @@ function Page() {
     return acc;
   }, { active: 0, low: 0, expired: 0, value: 0 }), [items]);
   const types = useMemo<string[]>(() => Array.from(new Set((items as any[]).map((item: any) => String(item.material_type ?? "")).filter(Boolean))).sort(), [items]);
+  const materialTypeOptions = useMemo(
+    () => Array.from(new Set([...MATERIAL_TYPE_OPTIONS, ...types])),
+    [types],
+  );
+  const purchaseTotal = parseLocaleAmount(form.purchase_total);
+  const purchaseQuantity = parseLocaleAmount(form.quantity_purchased);
+  const calculatedUnitCost = Number.isFinite(purchaseTotal) && Number.isFinite(purchaseQuantity) && purchaseQuantity > 0
+    ? purchaseTotal / purchaseQuantity
+    : 0;
 
   const save = useMutation({
     mutationFn: async () => {
       if (!form.name.trim()) throw new Error("Informe o nome.");
       const quantityPurchased = parseLocaleAmount(form.quantity_purchased);
       const quantityAvailable = parseLocaleAmount(form.quantity_available);
-      const unitCost = parseLocaleAmount(form.unit_cost);
+      const totalPaid = parseLocaleAmount(form.purchase_total);
       const minStock = parseLocaleAmount(form.min_stock);
-      if (![quantityPurchased, quantityAvailable, unitCost, minStock].every(Number.isFinite)) throw new Error("Revise quantidades e custos.");
+      if (![quantityPurchased, quantityAvailable, totalPaid, minStock].every(Number.isFinite)) throw new Error("Revise quantidades e custos.");
+      if (quantityPurchased <= 0) throw new Error("Informe uma quantidade comprada maior que zero.");
+      if (totalPaid < 0) throw new Error("O valor total pago não pode ser negativo.");
+      const unitCost = totalPaid / quantityPurchased;
       const payload = {
         workspace_id: wsId,
         name: form.name.trim(),
@@ -117,7 +130,7 @@ function Page() {
         supplier: form.supplier.trim() || null,
         supplier_url: form.supplier_url.trim() || null,
         purchase_link: form.purchase_link.trim() || null,
-        unit: form.unit.trim() || "un",
+        unit: form.unit || "kg",
         quantity_purchased: quantityPurchased,
         quantity_available: quantityAvailable,
         unit_cost: unitCost,
@@ -161,7 +174,9 @@ function Page() {
 
   function edit(item: any) {
     setEditId(item.id);
-    setForm(Object.fromEntries(Object.keys(empty()).map((key) => [key, key === "is_active" ? item[key] !== false : item[key] == null ? "" : String(item[key])])) as ReturnType<typeof empty>);
+    const nextForm = Object.fromEntries(Object.keys(empty()).map((key) => [key, key === "is_active" ? item[key] !== false : item[key] == null ? "" : String(item[key])])) as ReturnType<typeof empty>;
+    nextForm.purchase_total = (Number(item.quantity_purchased || 0) * Number(item.unit_cost || 0)).toFixed(2);
+    setForm(nextForm);
     setOpen(true);
   }
 
@@ -171,16 +186,21 @@ function Page() {
     <Card className="mb-4"><CardContent className="flex flex-wrap gap-2 p-3"><Input className="max-w-xs" placeholder="Buscar material, fornecedor ou SKU" value={query} onChange={(event) => setQuery(event.target.value)} /><Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger className="w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os tipos</SelectItem>{types.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><Select value={stockFilter} onValueChange={setStockFilter}><SelectTrigger className="w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Ativos</SelectItem><SelectItem value="low">Estoque baixo</SelectItem><SelectItem value="all">Ativos e inativos</SelectItem></SelectContent></Select></CardContent></Card>
     {filtered.length === 0 ? <EmptyState icon={Package} title="Sem materiais encontrados" /> : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{filtered.map((item: any) => {
       const low = Number(item.min_stock) > 0 && Number(item.quantity_available) <= Number(item.min_stock);
-      return <Card key={item.id} className={item.is_active === false ? "opacity-60" : ""}><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate font-medium">{item.name}</div><div className="text-xs text-muted-foreground">{item.material_type ?? "—"} · {item.supplier ?? "Sem fornecedor"}</div></div>{low && <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive"><AlertTriangle className="h-3 w-3" />baixo</span>}</div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><Info label="Disponível" value={`${item.quantity_available} ${item.unit}`} /><Info label="Custo/un." value={formatCurrency(Number(item.unit_cost), currency, privacy)} /><Info label="Estoque mínimo" value={`${item.min_stock} ${item.unit}`} /><Info label="Valor atual" value={formatCurrency(Number(item.quantity_available) * Number(item.unit_cost), currency, privacy)} /><Info label="Cone/faixa" value={[item.recommended_cone, item.temperature_min_c && item.temperature_max_c ? `${item.temperature_min_c}–${item.temperature_max_c}°C` : ""].filter(Boolean).join(" · ") || "—"} /><Info label="Local" value={item.stock_location || "—"} /></div>{(item.purchase_link || item.supplier_url) && <a className="mt-3 inline-flex items-center gap-1 text-xs text-primary" href={item.purchase_link || item.supplier_url} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3" />Abrir fornecedor/produto</a>}<div className="mt-2 flex justify-end gap-1"><Button variant="ghost" size="icon" onClick={() => edit(item)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => remove.mutate(item.id)}><Trash2 className="h-4 w-4" /></Button></div></CardContent></Card>;
+      return <Card key={item.id} className={item.is_active === false ? "opacity-60" : ""}><CardContent className="p-4"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate font-medium">{item.name}</div><div className="text-xs text-muted-foreground">{item.material_type ?? "—"} · {item.supplier ?? "Sem fornecedor"}</div></div>{low && <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive"><AlertTriangle className="h-3 w-3" />baixo</span>}</div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><Info label="Disponível" value={`${item.quantity_available} ${item.unit}`} /><Info label={`Custo por ${item.unit || "un."}`} value={formatCurrency(Number(item.unit_cost), currency, privacy)} /><Info label="Estoque mínimo" value={`${item.min_stock} ${item.unit}`} /><Info label="Valor atual" value={formatCurrency(Number(item.quantity_available) * Number(item.unit_cost), currency, privacy)} /><Info label="Cone/faixa" value={[item.recommended_cone, item.temperature_min_c && item.temperature_max_c ? `${item.temperature_min_c}–${item.temperature_max_c}°C` : ""].filter(Boolean).join(" · ") || "—"} /><Info label="Local" value={item.stock_location || "—"} /></div>{(item.purchase_link || item.supplier_url) && <a className="mt-3 inline-flex items-center gap-1 text-xs text-primary" href={item.purchase_link || item.supplier_url} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3" />Abrir fornecedor/produto</a>}<div className="mt-2 flex justify-end gap-1"><Button variant="ghost" size="icon" onClick={() => edit(item)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => remove.mutate(item.id)}><Trash2 className="h-4 w-4" /></Button></div></CardContent></Card>;
     })}</div>}
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{editId ? "Editar matéria-prima" : "Nova matéria-prima"}</DialogTitle></DialogHeader><div className="grid grid-cols-2 gap-3">
+    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{editId ? "Editar matéria-prima" : "Nova matéria-prima"}</DialogTitle></DialogHeader><div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <Field className="col-span-2" label="Nome"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
-      <Field label="Tipo"><Input value={form.material_type} onChange={(event) => setForm({ ...form, material_type: event.target.value })} /></Field><Field label="SKU"><Input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} /></Field>
+      <Field label="Tipo"><Select value={form.material_type} onValueChange={(value) => setForm({ ...form, material_type: value })}><SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger><SelectContent>{materialTypeOptions.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></Field><Field label="SKU"><Input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} /></Field>
       <Field label="Fornecedor"><Input value={form.supplier} onChange={(event) => setForm({ ...form, supplier: event.target.value })} /></Field><Field label="Site do fornecedor"><Input value={form.supplier_url} onChange={(event) => setForm({ ...form, supplier_url: event.target.value })} /></Field>
       <Field className="col-span-2" label="Link do produto"><Input value={form.purchase_link} onChange={(event) => setForm({ ...form, purchase_link: event.target.value })} /></Field>
-      <Field label="Unidade"><Input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} /></Field><Field label="Custo unitário"><Input inputMode="decimal" value={form.unit_cost} onChange={(event) => setForm({ ...form, unit_cost: event.target.value })} /></Field>
-      <Field label="Qtd. comprada"><Input inputMode="decimal" value={form.quantity_purchased} onChange={(event) => setForm({ ...form, quantity_purchased: event.target.value })} /></Field><Field label="Qtd. disponível"><Input inputMode="decimal" value={form.quantity_available} onChange={(event) => setForm({ ...form, quantity_available: event.target.value })} /></Field>
-      <Field label="Estoque mínimo"><Input inputMode="decimal" value={form.min_stock} onChange={(event) => setForm({ ...form, min_stock: event.target.value })} /></Field><Field label="Local do estoque"><Input value={form.stock_location} onChange={(event) => setForm({ ...form, stock_location: event.target.value })} /></Field>
+      <div className="col-span-2 grid grid-cols-1 gap-3 rounded-xl border bg-muted/20 p-3 sm:grid-cols-2">
+        <Field label="Valor total pago pelo produto"><Input inputMode="decimal" placeholder="Ex.: 85,90" value={form.purchase_total} onChange={(event) => setForm({ ...form, purchase_total: event.target.value })} /></Field>
+        <Field label="Quantidade comprada"><Input inputMode="decimal" placeholder="Ex.: 10" value={form.quantity_purchased} onChange={(event) => setForm({ ...form, quantity_purchased: event.target.value, quantity_available: editId ? form.quantity_available : event.target.value })} /></Field>
+        <Field label="Unidade da quantidade"><Select value={form.unit} onValueChange={(value) => setForm({ ...form, unit: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="kg">kg — quilogramas</SelectItem><SelectItem value="g">g — gramas</SelectItem>{form.unit !== "kg" && form.unit !== "g" && form.unit && <SelectItem value={form.unit}>{form.unit} — unidade existente</SelectItem>}</SelectContent></Select></Field>
+        <Field label={`Custo calculado por ${form.unit || "unidade"}`}><Input readOnly value={formatCurrency(calculatedUnitCost, currency, privacy)} className="bg-muted font-mono" /><p className="text-xs text-muted-foreground">Calculado automaticamente: valor total ÷ quantidade.</p></Field>
+      </div>
+      <Field label={`Qtd. disponível (${form.unit})`}><Input inputMode="decimal" value={form.quantity_available} onChange={(event) => setForm({ ...form, quantity_available: event.target.value })} /></Field><Field label={`Estoque mínimo (${form.unit})`}><Input inputMode="decimal" value={form.min_stock} onChange={(event) => setForm({ ...form, min_stock: event.target.value })} /></Field>
+      <Field label="Local do estoque"><Input value={form.stock_location} onChange={(event) => setForm({ ...form, stock_location: event.target.value })} /></Field><div className="hidden sm:block" />
       <Field label="Data da compra"><Input type="date" value={form.purchase_date} onChange={(event) => setForm({ ...form, purchase_date: event.target.value })} /></Field><Field label="Validade"><Input type="date" value={form.expiration_date} onChange={(event) => setForm({ ...form, expiration_date: event.target.value })} /></Field>
       <Field label="Temperatura mínima"><Input type="number" value={form.temperature_min_c} onChange={(event) => setForm({ ...form, temperature_min_c: event.target.value })} /></Field><Field label="Temperatura máxima"><Input type="number" value={form.temperature_max_c} onChange={(event) => setForm({ ...form, temperature_max_c: event.target.value })} /></Field>
       <Field label="Cone recomendado"><Input value={form.recommended_cone} onChange={(event) => setForm({ ...form, recommended_cone: event.target.value })} /></Field><Field label="Cone máximo"><Input value={form.max_cone} onChange={(event) => setForm({ ...form, max_cone: event.target.value })} /></Field>
