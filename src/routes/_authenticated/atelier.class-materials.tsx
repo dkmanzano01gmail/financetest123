@@ -27,7 +27,7 @@ import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, formatDate, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { calculateClassPieceCost } from "@/lib/orna-logic";
-import { Calculator, Camera, Copy, ImagePlus, Mail, MessageCircle, Package, Pencil, Plus, Printer, Settings2, Trash2, Users, X } from "lucide-react";
+import { Calculator, Camera, Copy, ImagePlus, Mail, MessageCircle, Package, Pencil, Plus, Printer, RotateCcw, Settings2, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { createPixPayload, SELA_PIX_KEY } from "@/lib/pix-br";
 
@@ -1002,6 +1002,46 @@ function Page() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const undoInvoiced = useMutation({
+    mutationFn: async ({ piece, quantity }: { piece: any; quantity: number; selectionKey: string }) => {
+      if (!wsId) throw new Error("Selecione um workspace.");
+      const tracked = trackedQuantities(piece);
+      const unitsToUndo = Math.min(tracked.invoiced, Math.max(1, Math.round(quantity)));
+      const nextInvoiced = tracked.invoiced - unitsToUndo;
+      const nextBilledAmount = (Number(piece.amount_charged || piece.charged || 0) / tracked.total) * nextInvoiced;
+      const paid = Number(piece.amount_paid || 0);
+      if (paid > nextBilledAmount + 0.005) {
+        throw new Error("Não é possível desfaturar estas unidades porque há um valor pago vinculado. Ajuste primeiro o valor pago em Editar.");
+      }
+      const { error } = await sb
+        .from("class_materials_usage")
+        .update({
+          invoiced_quantity: nextInvoiced,
+          amount_pending: Math.max(0, nextBilledAmount - paid),
+          payment_status: paid >= nextBilledAmount && nextBilledAmount > 0
+            ? "paid"
+            : paid > 0
+              ? "partial"
+              : "pending",
+        })
+        .eq("id", piece.id)
+        .eq("workspace_id", wsId);
+      if (error) throw error;
+      return { unitsToUndo };
+    },
+    onSuccess: ({ unitsToUndo }, variables) => {
+      qc.invalidateQueries({ queryKey: ["class_materials_usage"] });
+      setReportPieceQuantitiesByStudent((current) => ({
+        ...current,
+        [variables.selectionKey]: {
+          ...(current[variables.selectionKey] || {}),
+          [variables.piece.id]: unitsToUndo,
+        },
+      }));
+      toast.success(`${unitsToUndo} ${unitsToUndo === 1 ? "unidade voltou" : "unidades voltaram"} para a cobrança`);
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const saveSettings = useMutation({
     mutationFn: async () => {
       const resistanceBaseCost = n(
@@ -1184,6 +1224,8 @@ function Page() {
                 emailing={emailingStudent === item.student}
                 invoicing={markInvoiced.isPending}
                 onMarkInvoiced={() => markInvoiced.mutate({ pieces: item.pieces, quantities: selectedPieceQuantities, selectionKey })}
+                undoingInvoice={undoInvoiced.isPending}
+                onUndoInvoiced={(piece, quantity) => undoInvoiced.mutateAsync({ piece, quantity, selectionKey })}
                 onEdit={edit}
               />
             );
@@ -1339,6 +1381,8 @@ function StudentStatement({
   emailing,
   onMarkInvoiced,
   invoicing,
+  onUndoInvoiced,
+  undoingInvoice,
   onEdit,
 }: {
   item: any;
@@ -1359,6 +1403,8 @@ function StudentStatement({
   emailing: boolean;
   onMarkInvoiced: () => void;
   invoicing: boolean;
+  onUndoInvoiced: (piece: any, quantity: number) => Promise<unknown>;
+  undoingInvoice: boolean;
   onEdit: (piece: any) => void;
 }) {
   const allChargeableQuantities = defaultPieceQuantities(availablePieces);
@@ -1387,6 +1433,22 @@ function StudentStatement({
   const studentWhatsAppPhone = whatsappPhone(item.phone);
   const photoCount = item.pieces.filter((piece: any) => Boolean(piece.photo_url)).length;
   const [preparingWhatsApp, setPreparingWhatsApp] = useState(false);
+  const [pieceToUnbill, setPieceToUnbill] = useState<any | null>(null);
+  const [unbillQuantity, setUnbillQuantity] = useState(1);
+  function openUndoInvoice(piece: any) {
+    const invoiced = trackedQuantities(piece).invoiced;
+    setPieceToUnbill(piece);
+    setUnbillQuantity(invoiced);
+  }
+  async function confirmUndoInvoice() {
+    if (!pieceToUnbill) return;
+    try {
+      await onUndoInvoiced(pieceToUnbill, unbillQuantity);
+      setPieceToUnbill(null);
+    } catch {
+      // The mutation displays the actionable error and keeps the dialog open.
+    }
+  }
   async function createWhatsAppMessageWithPdf() {
     if (!workspaceId) throw new Error("Selecione um workspace.");
     const { createClassMaterialsPdf } = await import("@/lib/class-material-statement-pdf");
@@ -1625,6 +1687,17 @@ function StudentStatement({
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
+                    {tracked.invoiced > 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        data-print-hide="true"
+                        onClick={() => openUndoInvoice(piece)}
+                      >
+                        <RotateCcw className="mr-1 h-4 w-4" />Desfazer faturamento
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -1660,6 +1733,37 @@ function StudentStatement({
             );
           })}
         </div>
+        <Dialog open={Boolean(pieceToUnbill)} onOpenChange={(open) => { if (!open) setPieceToUnbill(null); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Desfazer faturamento</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                As unidades de <strong className="text-foreground">{pieceToUnbill?.piece_name || "Peça sem nome"}</strong> voltarão a ficar disponíveis e já serão selecionadas para gerar o PDF.
+              </p>
+              <Field label="Quantidade a desfaturar">
+                <Input
+                  type="number"
+                  min={1}
+                  max={pieceToUnbill ? trackedQuantities(pieceToUnbill).invoiced : 1}
+                  value={unbillQuantity}
+                  onChange={(event) => setUnbillQuantity(Math.min(
+                    pieceToUnbill ? trackedQuantities(pieceToUnbill).invoiced : 1,
+                    Math.max(1, Math.round(Number(event.target.value || 1))),
+                  ))}
+                />
+              </Field>
+              <p className="text-xs text-muted-foreground">Esta ação não altera a quantidade concluída ou entregue. Se houver pagamento vinculado, o sistema impedirá uma alteração inconsistente.</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setPieceToUnbill(null)}>Cancelar</Button>
+              <Button type="button" onClick={confirmUndoInvoice} disabled={undoingInvoice}>
+                <RotateCcw className="mr-1 h-4 w-4" />{undoingInvoice ? "Desfazendo..." : "Confirmar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <PixPaymentBlock amount={studentSummary.outstandingBalance} studentName={item.student} currency={currency} privacy={privacy} />
       </CardContent>
     </Card>
