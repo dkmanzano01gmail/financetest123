@@ -39,6 +39,8 @@ const n = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 const BISQUE_FIRING_INDEX = 0.009;
+const BISQUE_FROM_MODELED_FACTOR = 0.8 * 0.95;
+const GLAZED_FROM_BISQUE_FACTOR = 1.07;
 const GLAZE_FIRING_INDEXES: Record<string, number> = {
   "6": 0.013,
   "7": 0.014,
@@ -626,6 +628,19 @@ function Page() {
       chargeAmount,
     };
   }, [form, materials, selectedKiln, classSettings]);
+  const weightSuggestions = useMemo(() => {
+    const modeled = n(form.modeled_weight_g) > 0 ? n(form.modeled_weight_g) : null;
+    const bisque = n(form.bisque_weight_g) > 0 ? n(form.bisque_weight_g) : null;
+    const glazed = n(form.glazed_weight_g) > 0 ? n(form.glazed_weight_g) : null;
+    const referenceBisque = bisque
+      ?? (modeled ? modeled * BISQUE_FROM_MODELED_FACTOR : null)
+      ?? (glazed ? glazed / GLAZED_FROM_BISQUE_FACTOR : null);
+    return {
+      modeled: modeled || !referenceBisque ? null : referenceBisque / BISQUE_FROM_MODELED_FACTOR,
+      bisque: bisque || !referenceBisque ? null : referenceBisque,
+      glazed: glazed || !referenceBisque ? null : referenceBisque * GLAZED_FROM_BISQUE_FACTOR,
+    };
+  }, [form.modeled_weight_g, form.bisque_weight_g, form.glazed_weight_g]);
 
   const totals = useMemo(
     () =>
@@ -1284,9 +1299,9 @@ function Page() {
             <Field label="Qtd. concluída"><Input type="number" min={0} max={Math.max(1, Math.round(n(form.quantity)))} value={form.completed_quantity} onChange={(event) => setForm({ ...form, completed_quantity: event.target.value })} /><p className="text-xs text-muted-foreground">Unidades prontas para cobrança.</p></Field>
             <Field label="Qtd. entregue"><Input type="number" min={0} max={Math.max(0, Math.round(n(form.completed_quantity)))} value={form.delivered_quantity} onChange={(event) => setForm({ ...form, delivered_quantity: event.target.value })} /><p className="text-xs text-muted-foreground">Unidades já entregues ao aluno.</p></Field>
             <Field label="Qtd. faturada"><Input type="number" min={0} max={Math.max(0, Math.round(n(form.completed_quantity)))} value={form.invoiced_quantity} onChange={(event) => setForm({ ...form, invoiced_quantity: event.target.value })} /><p className="text-xs text-muted-foreground">Unidades que já entraram em cobrança.</p></Field>
-            <Field label="Peso após modelagem (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" value={form.modeled_weight_g} onChange={(event) => setForm({ ...form, modeled_weight_g: event.target.value })} /></Field>
-            <Field label="Peso após queima biscoito (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" placeholder="Pesar após o biscoito" value={form.bisque_weight_g} onChange={(event) => setForm({ ...form, bisque_weight_g: event.target.value })} /></Field>
-            <Field label="Peso após esmaltação (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" placeholder="Pesar após esmaltar" value={form.glazed_weight_g} onChange={(event) => setForm({ ...form, glazed_weight_g: event.target.value })} /></Field>
+            <Field label="Peso após modelagem (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" value={form.modeled_weight_g} onChange={(event) => setForm({ ...form, modeled_weight_g: event.target.value })} /><WeightSuggestion value={weightSuggestions.modeled} /></Field>
+            <Field label="Peso após queima biscoito (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" placeholder="Pesar após o biscoito" value={form.bisque_weight_g} onChange={(event) => setForm({ ...form, bisque_weight_g: event.target.value })} /><WeightSuggestion value={weightSuggestions.bisque} /></Field>
+            <Field label="Peso após esmaltação (g)"><Input type="number" min={0} step={0.01} inputMode="decimal" placeholder="Pesar após esmaltar" value={form.glazed_weight_g} onChange={(event) => setForm({ ...form, glazed_weight_g: event.target.value })} /><WeightSuggestion value={weightSuggestions.glazed} /></Field>
             <Field label="Tipo de argila"><Select value={form.clay_type || "none"} onValueChange={(value) => setForm({ ...form, clay_type: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Selecione</SelectItem>{clayMaterials.map((material: any) => <SelectItem key={material.id} value={material.name}>{material.name}</SelectItem>)}</SelectContent></Select></Field>
             <Field label="Comprimento (cm)"><Input value={form.length_cm} onChange={(event) => setForm({ ...form, length_cm: event.target.value })} /></Field>
             <Field label="Profundidade (cm)"><Input value={form.depth_cm} onChange={(event) => setForm({ ...form, depth_cm: event.target.value })} /></Field>
@@ -1818,6 +1833,15 @@ function PixPaymentBlock({ amount, studentName, currency, privacy }: { amount: n
         </div>
       </div>
     </section>
+  );
+}
+
+function WeightSuggestion({ value }: { value: number | null }) {
+  if (!value || !Number.isFinite(value)) return null;
+  return (
+    <p className="text-xs text-primary">
+      Sugestão: <strong>{value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} g</strong>
+    </p>
   );
 }
 
