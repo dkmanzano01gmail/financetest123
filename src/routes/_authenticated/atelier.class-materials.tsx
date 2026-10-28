@@ -159,7 +159,7 @@ const empty = () => ({
   height_cm: "0",
   glaze_cone: "6",
   glaze_name: "",
-  glaze_quantity: "0",
+  glaze_quantity: "",
   other_cost: "0",
   charge_biscuit: true,
   charge_glaze: true,
@@ -509,11 +509,16 @@ function Page() {
         ? Number(glaze.unit_cost || 0) / 1000
         : Number(glaze.unit_cost || 0)
       : 1;
-    const hasStageWeights =
-      form.bisque_weight_g.trim() !== "" && form.glazed_weight_g.trim() !== "";
+    const hasBisqueWeight = form.bisque_weight_g.trim() !== "";
+    const hasGlazedWeight = form.glazed_weight_g.trim() !== "";
+    const hasStageWeights = hasBisqueWeight && hasGlazedWeight;
+    const hasManualGlazeWeight = !hasStageWeights && n(form.glaze_quantity) > 0;
+    const hasGlazeInformation = hasStageWeights || hasManualGlazeWeight;
     const glazeWeightGrams = hasStageWeights
       ? Math.max(0, n(form.glazed_weight_g) - n(form.bisque_weight_g))
-      : n(form.glaze_quantity);
+      : hasManualGlazeWeight
+        ? n(form.glaze_quantity)
+        : 0;
     const effectiveLengthCm = n(form.length_cm) > 0 ? n(form.length_cm) : 7;
     const effectiveDepthCm = n(form.depth_cm) > 0 ? n(form.depth_cm) : 7;
     const effectiveHeightCm = n(form.height_cm) > 0 ? n(form.height_cm) : 5;
@@ -597,7 +602,11 @@ function Page() {
       bisqueFiringIndex: BISQUE_FIRING_INDEX,
       glazeFiringIndex,
       glazeWeightGrams,
+      hasBisqueWeight,
+      hasGlazedWeight,
       hasStageWeights,
+      hasManualGlazeWeight,
+      hasGlazeInformation,
       kilnProfit,
       marginRate: Math.max(0, Number(classSettings?.margin_percent ?? 0) / 100),
       settingsSaved: !!classSettings?.id,
@@ -1097,7 +1106,7 @@ function Page() {
       height_cm: String(row.height_cm ?? 0),
       glaze_cone: row.glaze_cone ?? "6",
       glaze_name: row.glaze_name ?? "",
-      glaze_quantity: String(row.glaze_quantity ?? 0),
+      glaze_quantity: Number(row.glaze_quantity || 0) > 0 ? String(row.glaze_quantity) : "",
       other_cost: String(row.other_cost ?? 0),
       charge_biscuit: row.charge_biscuit !== false,
       charge_glaze: row.charge_glaze !== false,
@@ -1284,7 +1293,7 @@ function Page() {
             <Field label="Altura (cm)"><Input value={form.height_cm} onChange={(event) => setForm({ ...form, height_cm: event.target.value })} /></Field>
             <Field label="Cone do esmalte"><Input value={form.glaze_cone} onChange={(event) => setForm({ ...form, glaze_cone: event.target.value })} /></Field>
             <Field label="Esmalte"><Select value={form.glaze_name || "none"} onValueChange={(value) => setForm({ ...form, glaze_name: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Selecione</SelectItem>{glazeMaterials.map((material: any) => <SelectItem key={material.id} value={material.name}>{material.name}</SelectItem>)}</SelectContent></Select></Field>
-            <Field label="Esmalte utilizado (g)"><Input value={calculation.glazeWeightGrams.toFixed(2)} readOnly aria-readonly="true" /><p className="text-xs text-muted-foreground">{calculation.hasStageWeights ? "Calculado pelo peso após esmaltação menos o peso após biscoito." : "Informe os dois pesos finais para calcular automaticamente. Registros antigos mantêm a quantidade já salva."}</p></Field>
+            <Field label="Esmalte utilizado (g)"><Input inputMode="decimal" placeholder="Opcional" value={calculation.hasStageWeights ? calculation.glazeWeightGrams.toFixed(2) : form.glaze_quantity} readOnly={calculation.hasStageWeights} aria-readonly={calculation.hasStageWeights} onChange={(event) => setForm({ ...form, glaze_quantity: event.target.value })} /><p className="text-xs text-muted-foreground">{calculation.hasStageWeights ? "Calculado pelo peso após esmaltação menos o peso após biscoito." : calculation.hasBisqueWeight && !calculation.hasGlazedWeight ? "Peso do biscoito registrado. O esmalte ficará sem cálculo até você informar o peso após esmaltação ou a quantidade utilizada." : calculation.hasGlazedWeight && !calculation.hasBisqueWeight ? "Informe também o peso após biscoito para calcular automaticamente, ou digite a quantidade de esmalte utilizada." : calculation.hasManualGlazeWeight ? "Quantidade de esmalte informada manualmente." : "Sem dados de esmaltação; nenhum peso ou custo de esmalte será calculado."}</p></Field>
             <Field label="Outros custos"><Input inputMode="decimal" value={form.other_cost} onChange={(event) => setForm({ ...form, other_cost: event.target.value })} /></Field>
             <div className="flex items-center gap-2 pt-6"><Switch checked={form.charge_biscuit} onCheckedChange={(value) => setForm({ ...form, charge_biscuit: value })} /><Label>Cobrar biscoito</Label></div>
             <div className="flex items-center gap-2 pt-6"><Switch checked={form.charge_glaze} onCheckedChange={(value) => setForm({ ...form, charge_glaze: value })} /><Label>Cobrar esmaltação</Label></div>
@@ -1315,8 +1324,8 @@ function Page() {
                 <CalculationLine
                   title="Esmalte"
                   formula={`${calculation.glazeWeightGrams.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g × ${formatCurrency(calculation.glazePerGram, currency, privacy)}/g = ${formatCurrency(calculation.glazeCost, currency, privacy)}`}
-                  detail={calculation.hasStageWeights ? `${n(form.glazed_weight_g).toLocaleString("pt-BR")} g após esmaltação − ${n(form.bisque_weight_g).toLocaleString("pt-BR")} g após biscoito = ${calculation.glazeWeightGrams.toLocaleString("pt-BR")} g` : n(form.glaze_quantity) > 0 ? "Usada a quantidade salva no registro antigo porque os dois pesos finais não foram informados." : "Os dois pesos finais não foram informados; quantidade assumida como 0 g."}
-                  sources={<><SourceTag kind={calculation.hasStageWeights || n(form.glaze_quantity) > 0 ? "input" : "assumed"}>{calculation.hasStageWeights ? "Pesos da peça" : n(form.glaze_quantity) > 0 ? "Quantidade do registro antigo" : "Quantidade: 0 g"}</SourceTag><SourceTag kind={calculation.glazeMaterialFound ? "config" : "assumed"}>{calculation.glazeMaterialFound ? `Preço de ${form.glaze_name}` : "Preço padrão: R$ 1,00/g"}</SourceTag></>}
+                  detail={calculation.hasStageWeights ? `${n(form.glazed_weight_g).toLocaleString("pt-BR")} g após esmaltação − ${n(form.bisque_weight_g).toLocaleString("pt-BR")} g após biscoito = ${calculation.glazeWeightGrams.toLocaleString("pt-BR")} g` : calculation.hasManualGlazeWeight ? "Quantidade de esmalte informada manualmente." : calculation.hasBisqueWeight ? "Somente o peso após biscoito foi informado; nenhum esmalte foi calculado." : "Nenhuma informação de esmaltação foi registrada; quantidade considerada como 0 g."}
+                  sources={<><SourceTag kind={calculation.hasGlazeInformation ? "input" : "assumed"}>{calculation.hasStageWeights ? "Pesos da peça" : calculation.hasManualGlazeWeight ? "Quantidade manual" : "Sem esmaltação: 0 g"}</SourceTag><SourceTag kind={calculation.glazeMaterialFound ? "config" : "assumed"}>{calculation.glazeMaterialFound ? `Preço de ${form.glaze_name}` : "Preço padrão: R$ 1,00/g"}</SourceTag></>}
                 />
               </CalculationSection>
 
