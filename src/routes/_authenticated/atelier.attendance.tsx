@@ -116,6 +116,8 @@ type QuickRow = {
   comments: string;
 };
 
+type AttendancePeriodMode = "month" | "range" | "year";
+
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -187,11 +189,18 @@ function attendanceKey(
   ].join("__");
 }
 
-function monthBounds(month: number, year: number) {
-  const lastDay = new Date(year, month, 0).getDate();
+function attendancePeriodBounds(
+  mode: AttendancePeriodMode,
+  month: number,
+  endMonth: number,
+  year: number,
+) {
+  const startMonth = mode === "year" ? 1 : Math.min(month, endMonth);
+  const finalMonth = mode === "month" ? month : mode === "year" ? 12 : Math.max(month, endMonth);
+  const lastDay = new Date(year, finalMonth, 0).getDate();
   return {
-    start: `${year}-${String(month).padStart(2, "0")}-01`,
-    end: `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`,
+    start: `${year}-${String(startMonth).padStart(2, "0")}-01`,
+    end: `${year}-${String(finalMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`,
   };
 }
 
@@ -200,7 +209,9 @@ function Page() {
   const qc = useQueryClient();
   const wsId = workspace?.id;
   const today = useMemo(() => new Date(), []);
+  const [periodMode, setPeriodMode] = useState<AttendancePeriodMode>("month");
   const [month, setMonth] = useState(today.getMonth() + 1);
+  const [endMonth, setEndMonth] = useState(today.getMonth() + 1);
   const [year, setYear] = useState(today.getFullYear());
   const [studentFilter, setStudentFilter] = useState("all");
   const [open, setOpen] = useState(false);
@@ -212,6 +223,16 @@ function Page() {
   const [quickGroup, setQuickGroup] = useState("all");
   const [quickRows, setQuickRows] = useState<QuickRow[]>([]);
 
+  const selectedPeriodMonthCount =
+    periodMode === "year" ? 12 : periodMode === "range" ? Math.abs(endMonth - month) + 1 : 1;
+  const selectedPeriodLabel =
+    periodMode === "year"
+      ? `ano inteiro de ${year}`
+      : periodMode === "range"
+        ? `${monthLabel(Math.min(month, endMonth))} a ${monthLabel(Math.max(month, endMonth))} de ${year}`
+        : `${monthLabel(month)} de ${year}`;
+  const makeupLimitForPeriod = selectedPeriodMonthCount * 2;
+
   const {
     data: rows = [],
     error: attendanceError,
@@ -219,10 +240,10 @@ function Page() {
     isFetching,
     refetch,
   } = useQuery<AttendanceRecord[]>({
-    queryKey: ["attendance", wsId, month, year],
+    queryKey: ["attendance", wsId, periodMode, month, endMonth, year],
     enabled: !!wsId,
     queryFn: async () => {
-      const { start, end } = monthBounds(month, year);
+      const { start, end } = attendancePeriodBounds(periodMode, month, endMonth, year);
       const { data, error } = await sb
         .from("attendance_records")
         .select("*")
@@ -288,8 +309,11 @@ function Page() {
       attendanceSummary(
         rows,
         students.map((student) => student.name),
-      ),
-    [rows, students],
+      ).map((summary) => ({
+        ...summary,
+        availableMakeups: Math.max(0, makeupLimitForPeriod - summary.usedMakeups),
+      })),
+    [makeupLimitForPeriod, rows, students],
   );
 
   const summaries = useMemo(
@@ -391,10 +415,25 @@ function Page() {
       const willUseMakeup =
         form.record_type === "makeup" && (form.makeup_completed || form.status === "present");
       if (willUseMakeup) {
-        const otherRows = rows.filter(
-          (row) => row.id !== editId && row.student_name === form.student_name,
+        const makeupMonth = form.session_date.slice(0, 7);
+        const numericMonth = Number(makeupMonth.slice(5, 7));
+        const { start, end } = attendancePeriodBounds(
+          "month",
+          numericMonth,
+          numericMonth,
+          Number(makeupMonth.slice(0, 4)),
         );
-        const used = attendanceSummary(otherRows, [form.student_name])[0]?.usedMakeups ?? 0;
+        let makeupQuery = sb
+          .from("attendance_records")
+          .select("student_name,class_name,record_type,status,generates_makeup,makeup_completed")
+          .eq("workspace_id", wsId)
+          .eq("student_name", form.student_name)
+          .gte("session_date", start)
+          .lte("session_date", end);
+        if (editId) makeupQuery = makeupQuery.neq("id", editId);
+        const { data: otherRows, error: makeupError } = await makeupQuery;
+        if (makeupError) throw makeupError;
+        const used = attendanceSummary(otherRows ?? [], [form.student_name])[0]?.usedMakeups ?? 0;
         if (used >= 2) {
           throw new Error("Esta aluna já utilizou as 2 reposições disponíveis neste mês.");
         }
@@ -608,7 +647,7 @@ function Page() {
             <div>
               <h2 className="font-semibold">Período da lista</h2>
               <p className="text-sm text-muted-foreground">
-                Escolha o mês e, se quiser, filtre por um aluno específico.
+                Consulte um mês, um intervalo de meses ou o ano inteiro.
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
@@ -617,20 +656,68 @@ function Page() {
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Select value={String(month)} onValueChange={(value) => setMonth(Number(value))}>
-              <SelectTrigger className="w-40">
+            <Select
+              value={periodMode}
+              onValueChange={(value: AttendancePeriodMode) => setPeriodMode(value)}
+            >
+              <SelectTrigger className="w-48" aria-label="Tipo de período">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Array.from({ length: 12 }, (_, index) => (
-                  <SelectItem key={index + 1} value={String(index + 1)}>
-                    {monthLabel(index + 1)}
-                  </SelectItem>
-                ))}
+                <SelectItem value="month">Mês selecionado</SelectItem>
+                <SelectItem value="range">Intervalo de meses</SelectItem>
+                <SelectItem value="year">Ano inteiro</SelectItem>
               </SelectContent>
             </Select>
+            {periodMode !== "year" && (
+              <Select
+                value={String(month)}
+                onValueChange={(value) => {
+                  const nextMonth = Number(value);
+                  setMonth(nextMonth);
+                  if (periodMode === "range" && nextMonth > endMonth) setEndMonth(nextMonth);
+                }}
+              >
+                <SelectTrigger
+                  className="w-40"
+                  aria-label={periodMode === "range" ? "Mês inicial" : "Mês"}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 12 }, (_, index) => (
+                    <SelectItem key={index + 1} value={String(index + 1)}>
+                      {periodMode === "range"
+                        ? `De ${monthLabel(index + 1)}`
+                        : monthLabel(index + 1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {periodMode === "range" && (
+              <Select
+                value={String(endMonth)}
+                onValueChange={(value) => {
+                  const nextMonth = Number(value);
+                  setEndMonth(nextMonth);
+                  if (nextMonth < month) setMonth(nextMonth);
+                }}
+              >
+                <SelectTrigger className="w-40" aria-label="Mês final">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 12 }, (_, index) => (
+                    <SelectItem key={index + 1} value={String(index + 1)}>
+                      Até {monthLabel(index + 1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Select value={String(year)} onValueChange={(value) => setYear(Number(value))}>
-              <SelectTrigger className="w-28">
+              <SelectTrigger className="w-28" aria-label="Ano">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -665,7 +752,9 @@ function Page() {
             )}
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            {isFetching ? "Atualizando lista…" : "Lista atualizada."}
+            {isFetching
+              ? `Atualizando ${selectedPeriodLabel}…`
+              : `Exibindo ${selectedPeriodLabel}.`}
           </p>
         </CardContent>
       </Card>
@@ -687,13 +776,13 @@ function Page() {
       )}
 
       <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <SummaryCard label="Registros no mês" value={totals.records} icon={CalendarCheck} />
+        <SummaryCard label="Registros no período" value={totals.records} icon={CalendarCheck} />
         <SummaryCard label="Presenças" value={totals.present} tone="income" icon={UserCheck} />
         <SummaryCard label="Ausências" value={totals.absent} tone="expense" icon={UserX} />
         <SummaryCard
           label="Reposições pendentes"
           value={totals.pendingMakeups}
-          note={`${totals.usedMakeups} usada(s) no mês`}
+          note={`${totals.usedMakeups} usada(s) no período`}
           tone={totals.pendingMakeups ? "expense" : undefined}
           icon={RotateCcw}
         />
@@ -920,9 +1009,9 @@ function Page() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Registros do mês</CardTitle>
+              <CardTitle className="text-lg">Registros do período</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Presenças, ausências e reposições do período selecionado.
+                Presenças, ausências e reposições de {selectedPeriodLabel}.
               </p>
             </CardHeader>
             <CardContent className="p-0">
@@ -946,7 +1035,7 @@ function Page() {
                         <th className="p-3">Tipo</th>
                         <th className="p-3">Presença</th>
                         <th className="p-3">Reposição</th>
-                        <th className="p-3">Uso no mês</th>
+                        <th className="p-3">Uso no período</th>
                         <th className="p-3">Observações</th>
                         <th className="p-3" />
                       </tr>
@@ -999,10 +1088,11 @@ function Page() {
                             </td>
                             <td className="p-3">
                               <p className="font-medium">
-                                {studentSummary?.usedMakeups ?? 0}/2 usadas
+                                {studentSummary?.usedMakeups ?? 0}/{makeupLimitForPeriod} usadas
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {studentSummary?.availableMakeups ?? 2} disponíveis
+                                {studentSummary?.availableMakeups ?? makeupLimitForPeriod}{" "}
+                                disponíveis
                               </p>
                             </td>
                             <td className="max-w-56 whitespace-normal p-3 text-muted-foreground">
@@ -1078,7 +1168,9 @@ function Page() {
                       ausências
                     </div>
                     <div className="rounded-lg bg-muted/45 p-2">
-                      <strong className="block text-base">{item.usedMakeups}/2</strong>
+                      <strong className="block text-base">
+                        {item.usedMakeups}/{makeupLimitForPeriod}
+                      </strong>
                       usadas
                     </div>
                     <div
@@ -1093,7 +1185,7 @@ function Page() {
                     </div>
                   </div>
                   <p className="mt-3 text-sm text-muted-foreground">
-                    Reposições disponíveis no mês:{" "}
+                    Reposições disponíveis no período:{" "}
                     <strong className="text-foreground">{item.availableMakeups}</strong>
                   </p>
                 </button>
