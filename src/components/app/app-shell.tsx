@@ -66,6 +66,7 @@ import {
 } from "@/components/ui/sheet";
 import { ProductTour } from "@/components/app/product-tour";
 import { QuickFeedbackButton } from "@/components/app/quick-feedback-button";
+import { QuickCalculatorButton } from "@/components/app/quick-calculator-button";
 import { useStudentPortalAccess } from "@/hooks/use-student-portal";
 import { StudentPortalShell } from "@/components/app/student-portal-shell";
 
@@ -730,6 +731,7 @@ export function AppShell() {
       </div>
       {workspace && (
         <>
+          <QuickCalculatorButton />
           <QuickFeedbackButton workspaceId={workspace.id} pathname={pathname} />
           <ProductTour
             workspaceId={workspace.id}
