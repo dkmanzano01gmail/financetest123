@@ -118,6 +118,12 @@ type QuickRow = {
 
 type AttendancePeriodMode = "month" | "range" | "year";
 
+// Keep loading-state fallbacks referentially stable. The quick-confirmation effect depends on
+// these collections and must not receive a brand-new empty array on every render while queries
+// are still loading, otherwise it can trigger an infinite render loop during client navigation.
+const EMPTY_ATTENDANCE_RECORDS: AttendanceRecord[] = [];
+const EMPTY_STUDENTS: Student[] = [];
+
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -234,7 +240,7 @@ function Page() {
   const makeupLimitForPeriod = selectedPeriodMonthCount * 2;
 
   const {
-    data: rows = [],
+    data: rows = EMPTY_ATTENDANCE_RECORDS,
     error: attendanceError,
     isLoading,
     isFetching,
@@ -260,7 +266,7 @@ function Page() {
   });
 
   const {
-    data: students = [],
+    data: students = EMPTY_STUDENTS,
     error: studentsError,
     isLoading: studentsLoading,
   } = useQuery<Student[]>({
