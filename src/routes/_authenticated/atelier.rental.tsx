@@ -26,6 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
+import { KilnFiring3DPlanner } from "@/components/rental/kiln-firing-3d";
 import { formatCurrency, parseLocaleAmount } from "@/lib/format";
 import {
   buildRentalOrderStatusMessage,
@@ -332,6 +333,15 @@ function Page() {
       ) {
         throw new Error("A quantidade de suportes por novo andar deve ser um inteiro entre 1 e 20.");
       }
+      if (
+        Number(patch.kiln_shelf_thickness_cm) <= 0 ||
+        Number(patch.kiln_shelf_thickness_cm) > 10 ||
+        Number(patch.kiln_shelf_thickness_cm) >= Number(patch.kiln_internal_height_cm)
+      ) {
+        throw new Error(
+          "A espessura da prateleira deve ficar entre 0,1 e 10 cm e ser menor que a altura do forno.",
+        );
+      }
       const supportInventory = normalizeKilnSupportInventory(patch.kiln_support_inventory);
       if (
         supportInventory.some(
@@ -597,6 +607,7 @@ function Page() {
         <TabsList>
           <TabsTrigger value="slots">Vagas</TabsTrigger>
           <TabsTrigger value="orders">Pedidos</TabsTrigger>
+          <TabsTrigger value="kiln-3d">Fornada 3D</TabsTrigger>
           <TabsTrigger value="settings">Configurações</TabsTrigger>
         </TabsList>
 
@@ -858,6 +869,14 @@ function Page() {
           )}
         </TabsContent>
 
+        <TabsContent value="kiln-3d" className="space-y-3">
+          <KilnFiring3DPlanner
+            slots={slots as any[]}
+            orders={orders as any[]}
+            settings={settings}
+          />
+        </TabsContent>
+
         <TabsContent value="settings">
           <SettingsForm
             key={settings?.updated_at ?? "new"}
@@ -1065,6 +1084,7 @@ function SettingsForm({
     kiln_shelf_diameter_cm: settings?.kiln_shelf_diameter_cm ?? 52.5,
     kiln_internal_height_cm: settings?.kiln_internal_height_cm ?? 45,
     kiln_wall_clearance_cm: settings?.kiln_wall_clearance_cm ?? 1,
+    kiln_shelf_thickness_cm: settings?.kiln_shelf_thickness_cm ?? 1.5,
     kiln_supports_per_level: settings?.kiln_supports_per_level ?? 4,
     kiln_support_inventory: normalizeKilnSupportInventory(settings?.kiln_support_inventory),
     is_published: settings?.is_published ?? true,
@@ -1126,7 +1146,7 @@ function SettingsForm({
           <CardTitle className="text-base">Capacidade física e mobília do forno</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <div>
               <Label>Diâmetro útil da prateleira (cm)</Label>
               <Input
@@ -1183,6 +1203,25 @@ function SettingsForm({
               />
               <p className="mt-1 text-xs text-muted-foreground">
                 O padrão do forno atual é 4 suportes da mesma altura.
+              </p>
+            </div>
+            <div>
+              <Label>Espessura da prateleira (cm)</Label>
+              <Input
+                type="number"
+                min="0.1"
+                max="10"
+                step="0.1"
+                value={state.kiln_shelf_thickness_cm}
+                onChange={(e) =>
+                  setState({
+                    ...state,
+                    kiln_shelf_thickness_cm: Number(e.target.value),
+                  })
+                }
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Descontada da altura disponível em cada novo nível.
               </p>
             </div>
           </div>

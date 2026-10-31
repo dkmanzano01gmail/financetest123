@@ -2813,6 +2813,7 @@ export type Database = {
           is_published: boolean
           kiln_internal_height_cm: number
           kiln_shelf_diameter_cm: number
+          kiln_shelf_thickness_cm: number
           kiln_support_inventory: Json
           kiln_supports_per_level: number
           kiln_wall_clearance_cm: number
@@ -2840,6 +2841,7 @@ export type Database = {
           is_published?: boolean
           kiln_internal_height_cm?: number
           kiln_shelf_diameter_cm?: number
+          kiln_shelf_thickness_cm?: number
           kiln_support_inventory?: Json
           kiln_supports_per_level?: number
           kiln_wall_clearance_cm?: number
@@ -2867,6 +2869,7 @@ export type Database = {
           is_published?: boolean
           kiln_internal_height_cm?: number
           kiln_shelf_diameter_cm?: number
+          kiln_shelf_thickness_cm?: number
           kiln_support_inventory?: Json
           kiln_supports_per_level?: number
           kiln_wall_clearance_cm?: number
