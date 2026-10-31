@@ -325,6 +325,13 @@ function Page() {
       ) {
         throw new Error("O afastamento da parede deve ser menor que metade do diâmetro útil.");
       }
+      if (
+        !Number.isInteger(Number(patch.kiln_supports_per_level)) ||
+        Number(patch.kiln_supports_per_level) < 1 ||
+        Number(patch.kiln_supports_per_level) > 20
+      ) {
+        throw new Error("A quantidade de suportes por novo andar deve ser um inteiro entre 1 e 20.");
+      }
       const supportInventory = normalizeKilnSupportInventory(patch.kiln_support_inventory);
       if (
         supportInventory.some(
@@ -1058,6 +1065,7 @@ function SettingsForm({
     kiln_shelf_diameter_cm: settings?.kiln_shelf_diameter_cm ?? 52.5,
     kiln_internal_height_cm: settings?.kiln_internal_height_cm ?? 45,
     kiln_wall_clearance_cm: settings?.kiln_wall_clearance_cm ?? 1,
+    kiln_supports_per_level: settings?.kiln_supports_per_level ?? 4,
     kiln_support_inventory: normalizeKilnSupportInventory(settings?.kiln_support_inventory),
     is_published: settings?.is_published ?? true,
   });
@@ -1118,7 +1126,7 @@ function SettingsForm({
           <CardTitle className="text-base">Capacidade física e mobília do forno</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <Label>Diâmetro útil da prateleira (cm)</Label>
               <Input
@@ -1155,6 +1163,28 @@ function SettingsForm({
                 }
               />
             </div>
+            <div>
+              <Label>Suportes por novo andar</Label>
+              <Input
+                type="number"
+                min="1"
+                max="20"
+                step="1"
+                value={state.kiln_supports_per_level}
+                onChange={(e) =>
+                  setState({
+                    ...state,
+                    kiln_supports_per_level: Math.max(
+                      1,
+                      Math.trunc(Number(e.target.value) || 1),
+                    ),
+                  })
+                }
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                O padrão do forno atual é 4 suportes da mesma altura.
+              </p>
+            </div>
           </div>
 
           <div>
@@ -1162,8 +1192,10 @@ function SettingsForm({
               <div>
                 <Label>Estoque de suportes</Label>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Informe quantas unidades físicas existem de cada altura. O cálculo de montagem
-                  nunca poderá utilizar mais suportes do que o estoque salvo aqui.
+                  Informe quantas unidades físicas existem de cada altura. Cada novo andar acima
+                  da base usa {state.kiln_supports_per_level} suportes da mesma altura. Por isso,
+                  uma montagem com 3 andares usa 2 conjuntos, ou seja, {state.kiln_supports_per_level * 2}{" "}
+                  suportes. Ao combinar alturas, um conjunto de cada tamanho usado é consumido.
                 </p>
               </div>
               <Badge variant="secondary">
@@ -1171,7 +1203,15 @@ function SettingsForm({
                   (sum, item) => sum + Number(item.quantity || 0),
                   0,
                 )}{" "}
-                suportes
+                suportes · {state.kiln_support_inventory.reduce(
+                  (sum, item) =>
+                    sum +
+                    Math.floor(
+                      Number(item.quantity || 0) / Number(state.kiln_supports_per_level || 1),
+                    ),
+                  0,
+                )}{" "}
+                conjuntos completos
               </Badge>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1182,7 +1222,12 @@ function SettingsForm({
                 >
                   <div>
                     <p className="font-medium">{item.height_cm.toLocaleString("pt-BR")} cm</p>
-                    <p className="text-xs text-muted-foreground">Quantidade disponível</p>
+                    <p className="text-xs text-muted-foreground">
+                      {Math.floor(
+                        Number(item.quantity || 0) / Number(state.kiln_supports_per_level || 1),
+                      )}{" "}
+                      conjuntos completos disponíveis
+                    </p>
                   </div>
                   <Input
                     className="w-24"
@@ -1375,7 +1420,7 @@ function SettingsForm({
                   <div>
                     <p className="font-medium">
                       {entry.setting_key === "support_inventory"
-                        ? "Estoque de suportes alterado"
+                        ? "Mobília e regra de montagem alteradas"
                         : "Dimensões físicas do forno alteradas"}
                     </p>
                     <p className="text-xs text-muted-foreground">
