@@ -1154,7 +1154,7 @@ function RentalPublicPage() {
                   <p className="mt-1 text-muted-foreground">{paymentInfo.customer_instructions}</p>
                 )}
                 <p className="mt-1 text-muted-foreground">
-                  Guarde o código para acompanhar o pedido. Entraremos em contato
+                  Acompanhe o pedido pelo código acima ou pelo e-mail cadastrado. Entraremos em contato
                   {info?.contact_email ? ` (${info.contact_email})` : ""} para confirmar.
                 </p>
               </div>
