@@ -334,6 +334,15 @@ function RentalPublicPage() {
     );
   }, [selectedDay, slots]);
 
+  const selectFiringDay = (day?: Date) => {
+    setSelectedDay(day);
+    const daySlots = day
+      ? (slots as any[]).filter((entry) => (entry.firing_date ?? entry.closes_at) === dateKey(day))
+      : [];
+    setSlotId(daySlots.length === 1 ? daySlots[0].id : null);
+    resetQuote();
+  };
+
   const setItem = (index: number, patch: Partial<RentalItemInput>) => {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
     resetQuote();
@@ -526,11 +535,7 @@ function RentalPublicPage() {
                     mode="single"
                     locale={ptBR}
                     selected={selectedDay}
-                    onSelect={(day) => {
-                      setSelectedDay(day);
-                      setSlotId(null);
-                      resetQuote();
-                    }}
+                    onSelect={selectFiringDay}
                     disabled={(day) =>
                       !availableDates.some((available) => dateKey(available) === dateKey(day))
                     }
@@ -552,7 +557,8 @@ function RentalPublicPage() {
                       <CalendarDays className="mb-3 size-8 text-primary/50" />
                       <p className="font-medium text-foreground">Selecione um dia no calendário</p>
                       <p className="mt-1 max-w-sm text-sm">
-                        Depois, escolha a modalidade disponível para essa data.
+                        Se houver apenas uma queima nessa data, ela será selecionada
+                        automaticamente. Se houver mais opções, escolha a que deseja reservar.
                       </p>
                     </div>
                   ) : slotsForSelectedDay.length === 0 ? (
@@ -560,55 +566,80 @@ function RentalPublicPage() {
                       Não há vagas disponíveis neste dia.
                     </p>
                   ) : (
-                    slotsForSelectedDay.map((s) => {
-                      const selected = s.id === slotId;
-                      return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => {
-                            setSlotId(s.id);
-                            resetQuote();
-                          }}
-                          className={`w-full rounded-xl border p-5 text-left transition-all ${
-                            selected
-                              ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary"
-                              : "hover:bg-muted/50"
-                          }`}
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-base font-semibold">{s.title}</span>
-                            <Badge variant="default">
-                              {s.firing_type === "biscuit"
-                                ? "Biscoito"
-                                : s.firing_type === "glaze"
-                                  ? "Esmalte"
-                                  : "Queima especial"}
-                            </Badge>
-                          </div>
-                          {s.description && (
-                            <p className="mt-1 text-sm text-muted-foreground">{s.description}</p>
-                          )}
-                          <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                            <span className="flex items-center gap-1.5">
-                              <Flame className="size-3.5" /> Queima: {displayDate(s.firing_date)}
-                            </span>
-                            <span className="flex items-center gap-1.5">
-                              <Clock3 className="size-3.5" /> Inscrições até{" "}
-                              {displayDate(s.closes_at)}
-                            </span>
-                            <span className="flex items-center gap-1.5">
-                              <Check className="size-3.5" /> Retirada: {displayDate(s.pickup_date)}
-                            </span>
-                            {s.kiln_name && (
-                              <span className="flex items-center gap-1.5">
-                                <MapPin className="size-3.5" /> {s.kiln_name}
-                              </span>
+                    <>
+                      {slotsForSelectedDay.length === 1 ? (
+                        <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm font-medium text-primary">
+                          <CheckCircle2 className="size-4 shrink-0" />
+                          Queima selecionada automaticamente para esta data.
+                        </div>
+                      ) : !slotId ? (
+                        <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
+                          <p className="text-sm font-semibold text-foreground">
+                            Escolha uma queima para continuar
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Há {slotsForSelectedDay.length} opções nesta data. Clique na queima que
+                            deseja reservar.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm font-medium text-primary">
+                          Queima selecionada. Clique em outra opção se quiser trocar.
+                        </p>
+                      )}
+
+                      {slotsForSelectedDay.map((s) => {
+                        const selected = s.id === slotId;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => {
+                              setSlotId(s.id);
+                              resetQuote();
+                            }}
+                            className={`w-full rounded-xl border p-5 text-left transition-all ${
+                              selected
+                                ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary"
+                                : "hover:bg-muted/50"
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-base font-semibold">{s.title}</span>
+                              <Badge variant="default">
+                                {s.firing_type === "biscuit"
+                                  ? "Biscoito"
+                                  : s.firing_type === "glaze"
+                                    ? "Esmalte"
+                                    : "Queima especial"}
+                              </Badge>
+                            </div>
+                            {s.description && (
+                              <p className="mt-1 text-sm text-muted-foreground">{s.description}</p>
                             )}
-                          </div>
-                        </button>
-                      );
-                    })
+                            <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                              <span className="flex items-center gap-1.5">
+                                <Flame className="size-3.5" /> Queima: {displayDate(s.firing_date)}
+                              </span>
+                              <span className="flex items-center gap-1.5">
+                                <Clock3 className="size-3.5" /> Inscrições até{" "}
+                                {displayDate(s.closes_at)}
+                              </span>
+                              <span className="flex items-center gap-1.5">
+                                <Check className="size-3.5" /> Retirada:{" "}
+                                {displayDate(s.pickup_date)}
+                              </span>
+                              {s.kiln_name && (
+                                <span className="flex items-center gap-1.5">
+                                  <MapPin className="size-3.5" /> {s.kiln_name}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </>
                   )}
                 </div>
               </div>
