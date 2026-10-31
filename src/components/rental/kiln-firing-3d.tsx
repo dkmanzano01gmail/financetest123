@@ -49,6 +49,11 @@ type RentalSettings = {
   kiln_supports_per_level?: number | string | null;
   kiln_support_inventory?: unknown;
   glaze_spacing_cm?: number | string | null;
+  biscuit_vertical_max_height_cm?: number | string | null;
+  biscuit_vertical_max_ratio?: number | string | null;
+  biscuit_stack_max_pieces?: number | string | null;
+  biscuit_stack_height_factor?: number | string | null;
+  biscuit_stackable_keywords?: string | null;
 } | null;
 
 type PieceUnit = {
@@ -59,8 +64,13 @@ type PieceUnit = {
   width: number;
   depth: number;
   height: number;
+  originalWidth: number;
+  originalDepth: number;
+  originalHeight: number;
   effectiveWidth: number;
   effectiveDepth: number;
+  unitCount: number;
+  loadingMode: "horizontal" | "vertical" | "stacked";
   color: string;
 };
 
@@ -97,6 +107,7 @@ type KilnPlan = {
   supportSetsUsed: number;
   usableDiameter: number;
   occupiedPercent: number;
+  overflowPieceCount: number;
 };
 
 const PIECE_COLORS = [
@@ -113,6 +124,24 @@ const PIECE_COLORS = [
 function numberValue(value: unknown, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizePieceName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim();
+}
+
+function physicalPieceCount(pieces: PieceUnit[]) {
+  return pieces.reduce((sum, piece) => sum + piece.unitCount, 0);
+}
+
+function loadingModeLabel(piece: PieceUnit) {
+  if (piece.loadingMode === "vertical") return "na vertical";
+  if (piece.loadingMode === "stacked") return `pilha com ${piece.unitCount} peças`;
+  return "individual";
 }
 
 function formatDate(value?: string | null) {
@@ -340,11 +369,12 @@ function createKilnPlan({
   return {
     shelves,
     overflow,
-    totalPieces: pieces.length,
+    totalPieces: physicalPieceCount(pieces),
     supportsUsed: supportSetsUsed * supportsPerLevel,
     supportSetsUsed,
     usableDiameter,
     occupiedPercent: totalShelfArea > 0 ? Math.min(100, (occupiedArea / totalShelfArea) * 100) : 0,
+    overflowPieceCount: physicalPieceCount(overflow),
   };
 }
 
@@ -524,8 +554,9 @@ function KilnDiagram({
                       strokeWidth="0.7"
                     />
                     <title>
-                      {placement.name} · {placement.width} × {placement.depth} × {placement.height}{" "}
-                      cm · {placement.customerName}
+                      {placement.name} · medidas informadas: {placement.originalWidth} ×{" "}
+                      {placement.originalDepth} × {placement.originalHeight} cm ·{" "}
+                      {loadingModeLabel(placement)} · {placement.customerName}
                     </title>
                   </g>
                 );
@@ -537,7 +568,7 @@ function KilnDiagram({
               fontWeight="700"
               fill="#382b28"
             >
-              Andar {shelfIndex + 1} · {shelf.placements.length} peça(s)
+              Andar {shelfIndex + 1} · {physicalPieceCount(shelf.placements)} peça(s)
             </text>
           </g>
         );
@@ -571,6 +602,19 @@ export function KilnFiring3DPlanner({
       supportInventory: Array.isArray(settings?.kiln_support_inventory)
         ? (settings.kiln_support_inventory as SupportInventoryItem[])
         : [],
+      biscuitVerticalMaxHeight: numberValue(settings?.biscuit_vertical_max_height_cm, 4),
+      biscuitVerticalMaxRatio: numberValue(settings?.biscuit_vertical_max_ratio, 0.25),
+      biscuitStackMaxPieces: Math.max(
+        1,
+        Math.trunc(numberValue(settings?.biscuit_stack_max_pieces, 3)),
+      ),
+      biscuitStackHeightFactor: numberValue(settings?.biscuit_stack_height_factor, 0.65),
+      biscuitStackableKeywords: (
+        settings?.biscuit_stackable_keywords || "bowl,tigela,cumbuca,caneca,xícara,xicara,copo"
+      )
+        .split(",")
+        .map(normalizePieceName)
+        .filter(Boolean),
     }),
     [settings],
   );
@@ -588,21 +632,78 @@ export function KilnFiring3DPlanner({
           const depth = numberValue(item.depth_cm);
           const height = numberValue(item.height_cm);
           if (width <= 0 || depth <= 0 || height <= 0) return [];
-          return Array.from({ length: quantity }, (_, unitIndex) => ({
-            id: `${order.id}-${itemIndex}-${unitIndex}`,
+          const common = {
             name: item.piece_name || "Peça",
             orderCode: order.code || "Pedido",
             customerName: order.rental_customers?.name || "Cliente",
+            originalWidth: width,
+            originalDepth: depth,
+            originalHeight: height,
+            color: colorForOrder(order.code || order.id),
+          };
+
+          if (selectedSlot.firing_type === "biscuit") {
+            const shortestBaseSide = Math.min(width, depth);
+            const isFlat =
+              height <= dimensions.biscuitVerticalMaxHeight &&
+              height / Math.max(0.1, shortestBaseSide) <= dimensions.biscuitVerticalMaxRatio;
+
+            if (isFlat) {
+              const verticalHeight = shortestBaseSide;
+              const verticalDepth = Math.max(width, depth);
+              return Array.from({ length: quantity }, (_, unitIndex) => ({
+                ...common,
+                id: `${order.id}-${itemIndex}-vertical-${unitIndex}`,
+                width: height,
+                depth: verticalDepth,
+                height: verticalHeight,
+                effectiveWidth: height,
+                effectiveDepth: verticalDepth,
+                unitCount: 1,
+                loadingMode: "vertical" as const,
+              }));
+            }
+
+            const normalizedName = normalizePieceName(common.name);
+            const canStack = dimensions.biscuitStackableKeywords.some((keyword) =>
+              normalizedName.includes(keyword),
+            );
+            if (canStack) {
+              const stacks: PieceUnit[] = [];
+              for (let start = 0; start < quantity; start += dimensions.biscuitStackMaxPieces) {
+                const stackCount = Math.min(dimensions.biscuitStackMaxPieces, quantity - start);
+                const stackHeight =
+                  height * (1 + (stackCount - 1) * dimensions.biscuitStackHeightFactor);
+                stacks.push({
+                  ...common,
+                  id: `${order.id}-${itemIndex}-stack-${start}`,
+                  width,
+                  depth,
+                  height: stackHeight,
+                  effectiveWidth: width,
+                  effectiveDepth: depth,
+                  unitCount: stackCount,
+                  loadingMode: stackCount > 1 ? "stacked" : "horizontal",
+                });
+              }
+              return stacks;
+            }
+          }
+
+          return Array.from({ length: quantity }, (_, unitIndex) => ({
+            ...common,
+            id: `${order.id}-${itemIndex}-${unitIndex}`,
             width,
             depth,
             height,
             effectiveWidth: width + spacing,
             effectiveDepth: depth + spacing,
-            color: colorForOrder(order.code || order.id),
+            unitCount: 1,
+            loadingMode: "horizontal" as const,
           }));
         }),
       );
-  }, [orders, selectedSlot, settings?.glaze_spacing_cm]);
+  }, [dimensions, orders, selectedSlot, settings?.glaze_spacing_cm]);
 
   const plan = useMemo(
     () =>
@@ -678,7 +779,7 @@ export function KilnFiring3DPlanner({
             <div className="rounded-xl border bg-background p-3">
               <p className="text-xs text-muted-foreground">Peças planejadas</p>
               <p className="mt-1 text-xl font-semibold">
-                {plan.totalPieces - plan.overflow.length}/{plan.totalPieces}
+                {plan.totalPieces - plan.overflowPieceCount}/{plan.totalPieces}
               </p>
             </div>
             <div className="rounded-xl border bg-background p-3">
@@ -696,12 +797,12 @@ export function KilnFiring3DPlanner({
             </div>
           </div>
 
-          {plan.overflow.length > 0 && (
+          {plan.overflowPieceCount > 0 && (
             <div className="flex gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" />
               <div>
                 <p className="font-semibold">
-                  {plan.overflow.length} peça(s) não couberam na montagem conservadora
+                  {plan.overflowPieceCount} peça(s) não couberam na montagem conservadora
                 </p>
                 <p className="text-sm">
                   Revise as dimensões, a quantidade de suportes ou divida os pedidos em outra queima
@@ -766,6 +867,22 @@ export function KilnFiring3DPlanner({
                       {plan.usableDiameter.toLocaleString("pt-BR")} cm
                     </span>
                   </div>
+                  {selectedSlot?.firing_type === "biscuit" && (
+                    <>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Peça baixa na vertical</span>
+                        <span className="text-right font-medium">
+                          até {dimensions.biscuitVerticalMaxHeight.toLocaleString("pt-BR")} cm
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">Máximo por pilha</span>
+                        <span className="font-medium">
+                          {dimensions.biscuitStackMaxPieces} peças
+                        </span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">Altura interna</span>
                     <span className="font-medium">
@@ -810,7 +927,9 @@ export function KilnFiring3DPlanner({
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium">Andar {index + 1}</span>
-                          <Badge variant="outline">{shelf.placements.length} peça(s)</Badge>
+                          <Badge variant="outline">
+                            {physicalPieceCount(shelf.placements)} peça(s)
+                          </Badge>
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
                           Altura máxima: {shelf.maxHeight.toLocaleString("pt-BR")} cm
@@ -827,9 +946,10 @@ export function KilnFiring3DPlanner({
               </Card>
 
               <div className="rounded-xl border bg-muted/20 p-4 text-xs leading-relaxed text-muted-foreground">
-                A montagem é uma estimativa conservadora. Peças de esmalte recebem a margem
-                configurada; peças de biscoito não são empilhadas automaticamente nesta versão.
-                Confirme a disposição física antes de iniciar a queima.
+                A montagem é uma estimativa conservadora. No esmalte, cada peça recebe a margem
+                configurada. No biscoito, peças baixas são posicionadas na vertical e bowls, canecas
+                e outros nomes configurados formam pilhas limitadas. Peças não reconhecidas
+                permanecem individuais. Confirme a disposição física antes de iniciar a queima.
               </div>
             </div>
           </div>

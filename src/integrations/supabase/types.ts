@@ -2799,6 +2799,11 @@ export type Database = {
         Row: {
           address: string
           biscuit_coefficient: number
+          biscuit_stack_height_factor: number
+          biscuit_stack_max_pieces: number
+          biscuit_stackable_keywords: string
+          biscuit_vertical_max_height_cm: number
+          biscuit_vertical_max_ratio: number
           contact_email: string | null
           contact_phone: string | null
           created_at: string
@@ -2827,6 +2832,11 @@ export type Database = {
         Insert: {
           address?: string
           biscuit_coefficient?: number
+          biscuit_stack_height_factor?: number
+          biscuit_stack_max_pieces?: number
+          biscuit_stackable_keywords?: string
+          biscuit_vertical_max_height_cm?: number
+          biscuit_vertical_max_ratio?: number
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -2855,6 +2865,11 @@ export type Database = {
         Update: {
           address?: string
           biscuit_coefficient?: number
+          biscuit_stack_height_factor?: number
+          biscuit_stack_max_pieces?: number
+          biscuit_stackable_keywords?: string
+          biscuit_vertical_max_height_cm?: number
+          biscuit_vertical_max_ratio?: number
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string

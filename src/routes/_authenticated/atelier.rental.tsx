@@ -314,10 +314,7 @@ function Page() {
       if (Number(patch.glaze_spacing_cm) < 0 || Number(patch.glaze_spacing_cm) > 20) {
         throw new Error("A margem entre peças no esmalte deve ficar entre 0 e 20 cm.");
       }
-      if (
-        Number(patch.kiln_shelf_diameter_cm) <= 0 ||
-        Number(patch.kiln_internal_height_cm) <= 0
-      ) {
+      if (Number(patch.kiln_shelf_diameter_cm) <= 0 || Number(patch.kiln_internal_height_cm) <= 0) {
         throw new Error("As dimensões físicas do forno devem ser maiores que zero.");
       }
       if (
@@ -331,7 +328,9 @@ function Page() {
         Number(patch.kiln_supports_per_level) < 1 ||
         Number(patch.kiln_supports_per_level) > 20
       ) {
-        throw new Error("A quantidade de suportes por novo andar deve ser um inteiro entre 1 e 20.");
+        throw new Error(
+          "A quantidade de suportes por novo andar deve ser um inteiro entre 1 e 20.",
+        );
       }
       if (
         Number(patch.kiln_shelf_thickness_cm) <= 0 ||
@@ -341,6 +340,34 @@ function Page() {
         throw new Error(
           "A espessura da prateleira deve ficar entre 0,1 e 10 cm e ser menor que a altura do forno.",
         );
+      }
+      if (
+        Number(patch.biscuit_vertical_max_height_cm) <= 0 ||
+        Number(patch.biscuit_vertical_max_height_cm) > 30
+      ) {
+        throw new Error("A altura máxima para acomodação vertical deve ficar entre 0,1 e 30 cm.");
+      }
+      if (
+        Number(patch.biscuit_vertical_max_ratio) <= 0 ||
+        Number(patch.biscuit_vertical_max_ratio) > 1
+      ) {
+        throw new Error("A proporção máxima de peça baixa deve ficar entre 1% e 100%.");
+      }
+      if (
+        !Number.isInteger(Number(patch.biscuit_stack_max_pieces)) ||
+        Number(patch.biscuit_stack_max_pieces) < 1 ||
+        Number(patch.biscuit_stack_max_pieces) > 10
+      ) {
+        throw new Error("O máximo por pilha de biscoito deve ser um inteiro entre 1 e 10.");
+      }
+      if (
+        Number(patch.biscuit_stack_height_factor) < 0.1 ||
+        Number(patch.biscuit_stack_height_factor) > 1
+      ) {
+        throw new Error("O incremento de altura da pilha deve ficar entre 10% e 100%.");
+      }
+      if (!String(patch.biscuit_stackable_keywords || "").trim()) {
+        throw new Error("Informe pelo menos um nome de peça que pode ser empilhada.");
       }
       const supportInventory = normalizeKilnSupportInventory(patch.kiln_support_inventory);
       if (
@@ -1087,6 +1114,12 @@ function SettingsForm({
     kiln_shelf_thickness_cm: settings?.kiln_shelf_thickness_cm ?? 1.5,
     kiln_supports_per_level: settings?.kiln_supports_per_level ?? 4,
     kiln_support_inventory: normalizeKilnSupportInventory(settings?.kiln_support_inventory),
+    biscuit_vertical_max_height_cm: settings?.biscuit_vertical_max_height_cm ?? 4,
+    biscuit_vertical_max_ratio: settings?.biscuit_vertical_max_ratio ?? 0.25,
+    biscuit_stack_max_pieces: settings?.biscuit_stack_max_pieces ?? 3,
+    biscuit_stack_height_factor: settings?.biscuit_stack_height_factor ?? 0.65,
+    biscuit_stackable_keywords:
+      settings?.biscuit_stackable_keywords ?? "bowl,tigela,cumbuca,caneca,xícara,xicara,copo",
     is_published: settings?.is_published ?? true,
   });
 
@@ -1194,10 +1227,7 @@ function SettingsForm({
                 onChange={(e) =>
                   setState({
                     ...state,
-                    kiln_supports_per_level: Math.max(
-                      1,
-                      Math.trunc(Number(e.target.value) || 1),
-                    ),
+                    kiln_supports_per_level: Math.max(1, Math.trunc(Number(e.target.value) || 1)),
                   })
                 }
               />
@@ -1231,10 +1261,11 @@ function SettingsForm({
               <div>
                 <Label>Estoque de suportes</Label>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Informe quantas unidades físicas existem de cada altura. Cada novo andar acima
-                  da base usa {state.kiln_supports_per_level} suportes da mesma altura. Por isso,
-                  uma montagem com 3 andares usa 2 conjuntos, ou seja, {state.kiln_supports_per_level * 2}{" "}
-                  suportes. Ao combinar alturas, um conjunto de cada tamanho usado é consumido.
+                  Informe quantas unidades físicas existem de cada altura. Cada novo andar acima da
+                  base usa {state.kiln_supports_per_level} suportes da mesma altura. Por isso, uma
+                  montagem com 3 andares usa 2 conjuntos, ou seja,{" "}
+                  {state.kiln_supports_per_level * 2} suportes. Ao combinar alturas, um conjunto de
+                  cada tamanho usado é consumido.
                 </p>
               </div>
               <Badge variant="secondary">
@@ -1242,7 +1273,8 @@ function SettingsForm({
                   (sum, item) => sum + Number(item.quantity || 0),
                   0,
                 )}{" "}
-                suportes · {state.kiln_support_inventory.reduce(
+                suportes ·{" "}
+                {state.kiln_support_inventory.reduce(
                   (sum, item) =>
                     sum +
                     Math.floor(
@@ -1287,6 +1319,106 @@ function SettingsForm({
                   />
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-muted/20 p-4">
+            <div className="mb-4">
+              <Label className="text-base">Acomodação da queima de biscoito</Label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Peças baixas, como pratos, são planejadas na vertical. Peças com nomes reconhecidos,
+                como bowls e canecas, podem formar pilhas. As demais permanecem individuais para
+                evitar uma estimativa otimista.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <Label>Altura máxima para ficar na vertical (cm)</Label>
+                <Input
+                  type="number"
+                  min="0.1"
+                  max="30"
+                  step="0.1"
+                  value={state.biscuit_vertical_max_height_cm}
+                  onChange={(e) =>
+                    setState({
+                      ...state,
+                      biscuit_vertical_max_height_cm: Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Proporção máxima de peça baixa (%)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="1"
+                  value={Math.round(state.biscuit_vertical_max_ratio * 100)}
+                  onChange={(e) =>
+                    setState({
+                      ...state,
+                      biscuit_vertical_max_ratio: Number(e.target.value) / 100,
+                    })
+                  }
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  A altura deve representar no máximo esta proporção do menor lado.
+                </p>
+              </div>
+              <div>
+                <Label>Máximo de peças por pilha</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value={state.biscuit_stack_max_pieces}
+                  onChange={(e) =>
+                    setState({
+                      ...state,
+                      biscuit_stack_max_pieces: Math.max(
+                        1,
+                        Math.trunc(Number(e.target.value) || 1),
+                      ),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Altura adicional por peça empilhada (%)</Label>
+                <Input
+                  type="number"
+                  min="10"
+                  max="100"
+                  step="1"
+                  value={Math.round(state.biscuit_stack_height_factor * 100)}
+                  onChange={(e) =>
+                    setState({
+                      ...state,
+                      biscuit_stack_height_factor: Number(e.target.value) / 100,
+                    })
+                  }
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Padrão conservador: cada peça extra acrescenta 65% da própria altura.
+                </p>
+              </div>
+              <div className="sm:col-span-2 xl:col-span-4">
+                <Label>Nomes reconhecidos como empilháveis</Label>
+                <Input
+                  value={state.biscuit_stackable_keywords}
+                  onChange={(e) =>
+                    setState({ ...state, biscuit_stackable_keywords: e.target.value })
+                  }
+                  placeholder="bowl, tigela, caneca..."
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Separe por vírgulas. O sistema procura esses termos no nome informado para a peça;
+                  nomes não reconhecidos continuam individuais.
+                </p>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -1460,7 +1592,9 @@ function SettingsForm({
                     <p className="font-medium">
                       {entry.setting_key === "support_inventory"
                         ? "Mobília e regra de montagem alteradas"
-                        : "Dimensões físicas do forno alteradas"}
+                        : entry.setting_key === "biscuit_loading_rules"
+                          ? "Regras de acomodação do biscoito alteradas"
+                          : "Dimensões físicas do forno alteradas"}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {entry.changed_by_email || "Sistema"}
