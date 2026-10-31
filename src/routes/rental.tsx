@@ -31,6 +31,8 @@ import {
   CircleDollarSign,
   Clock3,
   Copy,
+  CreditCard,
+  ExternalLink,
   Flame,
   Loader2,
   MapPin,
@@ -217,6 +219,7 @@ function RentalPublicPage() {
   const [phone, setPhone] = useState("");
   const [document, setDocument] = useState("");
   const [notes, setNotes] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"pix" | "card">("pix");
   const [confirmation, setConfirmation] = useState<any>(null);
   const [pixQrCode, setPixQrCode] = useState("");
   const [lookupCode, setLookupCode] = useState("");
@@ -284,6 +287,19 @@ function RentalPublicPage() {
       if (error) throw error;
       return (data ?? [])[0] ?? null;
     },
+  });
+
+  const { data: cardCheckoutAvailable = false, isLoading: cardCheckoutLoading } = useQuery({
+    queryKey: ["rental-mercado-pago-status"],
+    queryFn: async () => {
+      const { data, error } = await sb.functions.invoke("rental-mercado-pago-checkout", {
+        body: { action: "status" },
+      });
+      if (error) return false;
+      return Boolean(data?.enabled);
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000,
   });
 
   const {
@@ -386,9 +402,36 @@ function RentalPublicPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, slotId]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get("payment");
+    const orderCode = params.get("order");
+    if (orderCode) setLookupCode(orderCode);
+    if (payment === "approved") {
+      toast.success("Pagamento recebido! A confirmação da reserva será atualizada em instantes.");
+    } else if (payment === "pending") {
+      toast.info("Pagamento em análise. Você pode acompanhar a reserva abaixo.");
+    } else if (payment === "failure") {
+      toast.error("O cartão não foi aprovado. Tente novamente ou utilize o PIX.");
+    }
+  }, []);
+
+  async function createCardCheckout(orderCode: string) {
+    const { data, error } = await sb.functions.invoke("rental-mercado-pago-checkout", {
+      body: { action: "create", orderCode, email },
+    });
+    if (error || !data?.checkoutUrl) {
+      throw new Error("Não foi possível abrir o pagamento com cartão agora.");
+    }
+    return data.checkoutUrl as string;
+  }
+
   const reserve = useMutation({
     mutationFn: async () => {
       if (!slotId) throw new Error("Escolha uma vaga de queima.");
+      if (paymentMethod === "card" && !cardCheckoutAvailable) {
+        throw new Error("O pagamento com cartão ainda não está ativado.");
+      }
       const payload = normalizeItems(items);
       if (payload.length === 0) throw new Error(RENTAL_ERRORS.invalid_dimensions);
       const { data, error } = await sb.rpc("rental_public_create_order", {
@@ -406,7 +449,15 @@ function RentalPublicPage() {
         const base = RENTAL_ERRORS[data?.error] ?? "Não foi possível concluir a reserva.";
         throw new Error(base);
       }
-      return data;
+      if (paymentMethod === "card") {
+        try {
+          const checkoutUrl = await createCardCheckout(data.code);
+          return { ...data, payment_method: "card", checkout_url: checkoutUrl };
+        } catch (error: any) {
+          return { ...data, payment_method: "card", card_error: error.message };
+        }
+      }
+      return { ...data, payment_method: "pix" };
     },
     onSuccess: (data) => {
       setConfirmation(data);
@@ -415,8 +466,23 @@ function RentalPublicPage() {
       setNotes("");
       refetchSlots();
       toast.success("Reserva registrada!");
+      if (data.checkout_url) {
+        window.sessionStorage.setItem("sela-queimas-last-order", data.code);
+        window.location.assign(data.checkout_url);
+      } else if (data.card_error) {
+        toast.error(data.card_error);
+      }
     },
     onError: (e: any) => toast.error(e.message),
+  });
+
+  const retryCardCheckout = useMutation({
+    mutationFn: async () => {
+      if (!confirmation?.code) throw new Error("Reserva não encontrada.");
+      return createCardCheckout(confirmation.code);
+    },
+    onSuccess: (checkoutUrl) => window.location.assign(checkoutUrl),
+    onError: (error: any) => toast.error(error.message),
   });
 
   const lookup = useMutation({
@@ -924,6 +990,50 @@ function RentalPublicPage() {
               Seus dados serão utilizados somente para identificar a reserva e entrar em contato
               sobre suas peças.
             </div>
+            <div className="space-y-2">
+              <Label>Como deseja pagar a entrada?</Label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  aria-pressed={paymentMethod === "pix"}
+                  onClick={() => setPaymentMethod("pix")}
+                  className={`rounded-xl border p-4 text-left transition-all ${
+                    paymentMethod === "pix"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "hover:bg-muted/50"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 font-semibold">
+                    <CircleDollarSign className="size-5 text-primary" /> PIX direto
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    QR Code e código copia e cola na própria página.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={paymentMethod === "card"}
+                  disabled={!cardCheckoutAvailable}
+                  onClick={() => setPaymentMethod("card")}
+                  className={`rounded-xl border p-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                    paymentMethod === "card"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "hover:bg-muted/50"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 font-semibold">
+                    <CreditCard className="size-5 text-primary" /> Cartão
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {cardCheckoutLoading
+                      ? "Verificando disponibilidade…"
+                      : cardCheckoutAvailable
+                        ? "Crédito ou débito no ambiente seguro do Mercado Pago."
+                        : "Ativação do Mercado Pago pendente."}
+                  </span>
+                </button>
+              </div>
+            </div>
             <Button
               type="button"
               onClick={() => reserve.mutate()}
@@ -934,11 +1044,14 @@ function RentalPublicPage() {
                 !studioName.trim() ||
                 !email.trim() ||
                 !phone.trim() ||
+                (paymentMethod === "card" && !cardCheckoutAvailable) ||
                 reserve.isPending
               }
             >
               {reserve.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Confirmar reserva e ver PIX
+              {paymentMethod === "card"
+                ? "Confirmar reserva e pagar com cartão"
+                : "Confirmar reserva e ver PIX"}
             </Button>
 
             {confirmation && (
@@ -958,7 +1071,9 @@ function RentalPublicPage() {
                 </p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <div>
-                    <span className="text-muted-foreground">Entrada via PIX</span>
+                    <span className="text-muted-foreground">
+                      Entrada via {confirmation.payment_method === "card" ? "cartão" : "PIX"}
+                    </span>
                     <p className="font-semibold">
                       {formatCurrency(Number(confirmation.deposit_amount), currency)}
                     </p>
@@ -970,7 +1085,7 @@ function RentalPublicPage() {
                     </p>
                   </div>
                 </div>
-                {pixCopyPaste && (
+                {confirmation.payment_method === "pix" && pixCopyPaste && (
                   <div className="mt-4 rounded-xl border border-primary/20 bg-background/80 p-4">
                     <div className="mb-4">
                       <p className="font-semibold">Pague a entrada para confirmar</p>
@@ -1006,6 +1121,28 @@ function RentalPublicPage() {
                         </p>
                       </div>
                     </div>
+                  </div>
+                )}
+                {confirmation.payment_method === "card" && !confirmation.checkout_url && (
+                  <div className="mt-4 rounded-xl border border-primary/20 bg-background/80 p-4">
+                    <p className="font-semibold">Concluir pagamento com cartão</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Sua reserva foi registrada, mas o checkout não abriu. Você pode tentar
+                      novamente sem criar outra reserva.
+                    </p>
+                    <Button
+                      type="button"
+                      className="mt-3"
+                      onClick={() => retryCardCheckout.mutate()}
+                      disabled={retryCardCheckout.isPending}
+                    >
+                      {retryCardCheckout.isPending ? (
+                        <Loader2 className="mr-2 size-4 animate-spin" />
+                      ) : (
+                        <ExternalLink className="mr-2 size-4" />
+                      )}
+                      Ir para o pagamento seguro
+                    </Button>
                   </div>
                 )}
                 {confirmation.address && (

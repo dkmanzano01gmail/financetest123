@@ -2,3 +2,9 @@ project_id = "okoveiyasvmjwxxcmkkg"
 
 [functions.class-material-statement]
 verify_jwt = false
+
+[functions.rental-mercado-pago-checkout]
+verify_jwt = false
+
+[functions.rental-mercado-pago-webhook]
+verify_jwt = false
