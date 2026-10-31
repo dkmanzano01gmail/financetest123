@@ -2685,6 +2685,13 @@ export type Database = {
           notes: string | null
           order_id: string
           paid_at: string | null
+          payment_fee: number
+          provider_checkout_url: string | null
+          provider_expires_at: string | null
+          provider_name: string | null
+          provider_payment_id: string | null
+          provider_preference_id: string | null
+          provider_status: string | null
           status: string
           type: string | null
           updated_at: string
@@ -2698,6 +2705,13 @@ export type Database = {
           notes?: string | null
           order_id: string
           paid_at?: string | null
+          payment_fee?: number
+          provider_checkout_url?: string | null
+          provider_expires_at?: string | null
+          provider_name?: string | null
+          provider_payment_id?: string | null
+          provider_preference_id?: string | null
+          provider_status?: string | null
           status?: string
           type?: string | null
           updated_at?: string
@@ -2711,6 +2725,13 @@ export type Database = {
           notes?: string | null
           order_id?: string
           paid_at?: string | null
+          payment_fee?: number
+          provider_checkout_url?: string | null
+          provider_expires_at?: string | null
+          provider_name?: string | null
+          provider_payment_id?: string | null
+          provider_preference_id?: string | null
+          provider_status?: string | null
           status?: string
           type?: string | null
           updated_at?: string

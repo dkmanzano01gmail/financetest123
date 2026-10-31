@@ -18,7 +18,12 @@ import { EmptyState } from "@/components/app/empty-state";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, monthLabel } from "@/lib/format";
 import { L } from "@/lib/labels";
-import { buildCashFlowProjection, dashboardSummary, type OrnaTransaction } from "@/lib/orna-logic";
+import {
+  buildCashFlowProjection,
+  dashboardSummary,
+  type CashFlowEntry,
+  type OrnaTransaction,
+} from "@/lib/orna-logic";
 import { profitThroughSelectedMonth } from "@/lib/dashboard-profit";
 import { fetchSupabasePages } from "@/lib/supabase-pagination";
 import {
@@ -148,7 +153,7 @@ function Dashboard() {
       const { data, error } = await supabase
         .from("cash_flow_entries")
         .select("*, categories(name)")
-        .eq("workspace_id", wsId)
+        .eq("workspace_id", wsId!)
         .order("entry_date", { ascending: true });
       if (error) throw error;
       return data ?? [];
@@ -181,7 +186,7 @@ function Dashboard() {
       const { data, error } = await supabase
         .from("cash_flow_monthly_balances")
         .select("*")
-        .eq("workspace_id", wsId)
+        .eq("workspace_id", wsId!)
         .eq("balance_month", selectedMonthStart)
         .maybeSingle();
       if (error) throw error;
@@ -198,7 +203,7 @@ function Dashboard() {
         .select(
           "id,date,type,amount,description,counterparty,status,account_id,credit_card_id,financial_role,reversal_of_transaction_id,accounts!inner(type),categories!transactions_category_id_fkey(name,color)",
         )
-        .eq("workspace_id", wsId)
+        .eq("workspace_id", wsId!)
         .eq("accounts.type", "checking")
         .gte("date", selectedMonthStart)
         .lte("date", selectedMonthEnd)
@@ -234,7 +239,7 @@ function Dashboard() {
   const cashFlowProjection = useMemo(
     () =>
       buildCashFlowProjection({
-        entries: cashFlowEntries,
+        entries: cashFlowEntries as CashFlowEntry[],
         transactions: (cashFlowTransactions as unknown as ReconciliationTransaction[]).filter(
           isCheckingAccountCashFlowTransaction,
         ) as OrnaTransaction[],
