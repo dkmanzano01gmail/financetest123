@@ -52,6 +52,38 @@ export const Route = createFileRoute("/_authenticated/atelier/rental")({ compone
 
 const sb = supabase as any;
 
+type KilnSupportInventoryItem = {
+  height_cm: number;
+  quantity: number;
+};
+
+const DEFAULT_KILN_SUPPORT_INVENTORY: KilnSupportInventoryItem[] = [
+  { height_cm: 15, quantity: 8 },
+  { height_cm: 12.5, quantity: 8 },
+  { height_cm: 10, quantity: 8 },
+  { height_cm: 7.5, quantity: 8 },
+  { height_cm: 5, quantity: 8 },
+  { height_cm: 2.5, quantity: 8 },
+];
+
+function normalizeKilnSupportInventory(value: unknown): KilnSupportInventoryItem[] {
+  if (!Array.isArray(value) || value.length === 0) return DEFAULT_KILN_SUPPORT_INVENTORY;
+  const normalized = value
+    .map((item) => ({
+      height_cm: Number((item as KilnSupportInventoryItem)?.height_cm),
+      quantity: Number((item as KilnSupportInventoryItem)?.quantity),
+    }))
+    .filter(
+      (item) =>
+        Number.isFinite(item.height_cm) &&
+        item.height_cm > 0 &&
+        Number.isInteger(item.quantity) &&
+        item.quantity >= 0,
+    )
+    .sort((a, b) => b.height_cm - a.height_cm);
+  return normalized.length > 0 ? normalized : DEFAULT_KILN_SUPPORT_INVENTORY;
+}
+
 function formatFullDate(value?: string | null) {
   if (!value) return "—";
   const date = new Date(`${value.slice(0, 10)}T00:00:00`);
@@ -143,6 +175,21 @@ function Page() {
         .eq("workspace_id", wsId)
         .order("changed_at", { ascending: false })
         .limit(100);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: capacityHistory = [] } = useQuery({
+    queryKey: ["rental-capacity-settings-history", wsId],
+    enabled: !!wsId,
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("rental_capacity_settings_history")
+        .select("*")
+        .eq("workspace_id", wsId)
+        .order("changed_at", { ascending: false })
+        .limit(50);
       if (error) throw error;
       return data ?? [];
     },
@@ -266,15 +313,42 @@ function Page() {
       if (Number(patch.glaze_spacing_cm) < 0 || Number(patch.glaze_spacing_cm) > 20) {
         throw new Error("A margem entre peças no esmalte deve ficar entre 0 e 20 cm.");
       }
+      if (
+        Number(patch.kiln_shelf_diameter_cm) <= 0 ||
+        Number(patch.kiln_internal_height_cm) <= 0
+      ) {
+        throw new Error("As dimensões físicas do forno devem ser maiores que zero.");
+      }
+      if (
+        Number(patch.kiln_wall_clearance_cm) < 0 ||
+        Number(patch.kiln_wall_clearance_cm) * 2 >= Number(patch.kiln_shelf_diameter_cm)
+      ) {
+        throw new Error("O afastamento da parede deve ser menor que metade do diâmetro útil.");
+      }
+      const supportInventory = normalizeKilnSupportInventory(patch.kiln_support_inventory);
+      if (
+        supportInventory.some(
+          (item) =>
+            item.height_cm > Number(patch.kiln_internal_height_cm) ||
+            !Number.isInteger(item.quantity) ||
+            item.quantity < 0,
+        )
+      ) {
+        throw new Error("Revise as alturas e quantidades do estoque de suportes.");
+      }
       const { error } = await sb
         .from("rental_settings")
-        .upsert({ workspace_id: wsId, ...patch }, { onConflict: "workspace_id" });
+        .upsert(
+          { workspace_id: wsId, ...patch, kiln_support_inventory: supportInventory },
+          { onConflict: "workspace_id" },
+        );
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["rental-settings", wsId] });
       qc.invalidateQueries({ queryKey: ["rental-slots", wsId] });
       qc.invalidateQueries({ queryKey: ["rental-pricing-history", wsId] });
+      qc.invalidateQueries({ queryKey: ["rental-capacity-settings-history", wsId] });
       toast.success("Configurações salvas.");
     },
     onError: (e: any) => toast.error(e.message),
@@ -782,6 +856,7 @@ function Page() {
             key={settings?.updated_at ?? "new"}
             settings={settings}
             pricingHistory={pricingHistory}
+            capacityHistory={capacityHistory}
             saving={ensureSettings.isPending}
             onSave={(patch) => ensureSettings.mutate(patch)}
           />
@@ -956,11 +1031,13 @@ function Page() {
 function SettingsForm({
   settings,
   pricingHistory,
+  capacityHistory,
   saving,
   onSave,
 }: {
   settings: any;
   pricingHistory: any[];
+  capacityHistory: any[];
   saving: boolean;
   onSave: (patch: Record<string, any>) => void;
 }) {
@@ -978,6 +1055,10 @@ function SettingsForm({
     biscuit_coefficient: settings?.biscuit_coefficient ?? 0.0045,
     glaze_coefficient: settings?.glaze_coefficient ?? 0.007,
     glaze_spacing_cm: settings?.glaze_spacing_cm ?? 1,
+    kiln_shelf_diameter_cm: settings?.kiln_shelf_diameter_cm ?? 52.5,
+    kiln_internal_height_cm: settings?.kiln_internal_height_cm ?? 45,
+    kiln_wall_clearance_cm: settings?.kiln_wall_clearance_cm ?? 1,
+    kiln_support_inventory: normalizeKilnSupportInventory(settings?.kiln_support_inventory),
     is_published: settings?.is_published ?? true,
   });
 
@@ -1028,6 +1109,101 @@ function SettingsForm({
               Aplicada somente à queima de esmalte. É acrescentada à largura e à profundidade de
               cada peça; a altura não é alterada. O padrão é 1 cm.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Capacidade física e mobília do forno</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <Label>Diâmetro útil da prateleira (cm)</Label>
+              <Input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={state.kiln_shelf_diameter_cm}
+                onChange={(e) =>
+                  setState({ ...state, kiln_shelf_diameter_cm: Number(e.target.value) })
+                }
+              />
+            </div>
+            <div>
+              <Label>Altura interna do forno (cm)</Label>
+              <Input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={state.kiln_internal_height_cm}
+                onChange={(e) =>
+                  setState({ ...state, kiln_internal_height_cm: Number(e.target.value) })
+                }
+              />
+            </div>
+            <div>
+              <Label>Afastamento da parede (cm)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.1"
+                value={state.kiln_wall_clearance_cm}
+                onChange={(e) =>
+                  setState({ ...state, kiln_wall_clearance_cm: Number(e.target.value) })
+                }
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <Label>Estoque de suportes</Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Informe quantas unidades físicas existem de cada altura. O cálculo de montagem
+                  nunca poderá utilizar mais suportes do que o estoque salvo aqui.
+                </p>
+              </div>
+              <Badge variant="secondary">
+                {state.kiln_support_inventory.reduce(
+                  (sum, item) => sum + Number(item.quantity || 0),
+                  0,
+                )}{" "}
+                suportes
+              </Badge>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {state.kiln_support_inventory.map((item, index) => (
+                <div
+                  key={item.height_cm}
+                  className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3"
+                >
+                  <div>
+                    <p className="font-medium">{item.height_cm.toLocaleString("pt-BR")} cm</p>
+                    <p className="text-xs text-muted-foreground">Quantidade disponível</p>
+                  </div>
+                  <Input
+                    className="w-24"
+                    type="number"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    value={item.quantity}
+                    aria-label={`Quantidade de suportes de ${item.height_cm} cm`}
+                    onChange={(e) => {
+                      const next = [...state.kiln_support_inventory];
+                      next[index] = {
+                        ...item,
+                        quantity: Math.max(0, Math.trunc(Number(e.target.value) || 0)),
+                      };
+                      setState({ ...state, kiln_support_inventory: next });
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1167,6 +1343,40 @@ function SettingsForm({
                         minimumFractionDigits: entry.firing_type === "glaze_spacing" ? 1 : 4,
                       })}
                       {entry.firing_type === "glaze_spacing" ? " cm" : ""}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {entry.changed_by_email || "Sistema"}
+                    </p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(entry.changed_at).toLocaleString("pt-BR")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Histórico de capacidade e mobília</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {capacityHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma alteração registrada ainda.</p>
+          ) : (
+            <div className="space-y-2">
+              {capacityHistory.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {entry.setting_key === "support_inventory"
+                        ? "Estoque de suportes alterado"
+                        : "Dimensões físicas do forno alteradas"}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {entry.changed_by_email || "Sistema"}

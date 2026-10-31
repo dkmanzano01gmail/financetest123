@@ -2811,6 +2811,10 @@ export type Database = {
           glaze_spacing_cm: number
           headline: string
           is_published: boolean
+          kiln_internal_height_cm: number
+          kiln_shelf_diameter_cm: number
+          kiln_support_inventory: Json
+          kiln_wall_clearance_cm: number
           min_order_amount: number
           pix_key: string
           public_name: string
@@ -2833,6 +2837,10 @@ export type Database = {
           glaze_spacing_cm?: number
           headline?: string
           is_published?: boolean
+          kiln_internal_height_cm?: number
+          kiln_shelf_diameter_cm?: number
+          kiln_support_inventory?: Json
+          kiln_wall_clearance_cm?: number
           min_order_amount?: number
           pix_key?: string
           public_name?: string
@@ -2855,6 +2863,10 @@ export type Database = {
           glaze_spacing_cm?: number
           headline?: string
           is_published?: boolean
+          kiln_internal_height_cm?: number
+          kiln_shelf_diameter_cm?: number
+          kiln_support_inventory?: Json
+          kiln_wall_clearance_cm?: number
           min_order_amount?: number
           pix_key?: string
           public_name?: string
