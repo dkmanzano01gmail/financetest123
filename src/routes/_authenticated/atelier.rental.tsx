@@ -39,6 +39,7 @@ import {
 } from "@/lib/rental";
 import {
   ExternalLink,
+  FileText,
   Flame,
   Mail,
   MessageCircle,
@@ -48,6 +49,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { OrderCostDialog } from "@/components/rental/order-cost-dialog";
+import { formatDimension } from "@/lib/rental-cost-statement";
 
 export const Route = createFileRoute("/_authenticated/atelier/rental")({ component: Page });
 
@@ -220,6 +223,7 @@ function Page() {
     },
   });
 
+  const [costOrder, setCostOrder] = useState<any>(null);
   const { data: orders = [] } = useQuery({
     queryKey: ["rental-orders", wsId],
     enabled: !!wsId,
@@ -819,13 +823,27 @@ function Page() {
                       </p>
                     </div>
                   </div>
-                  <ul className="text-xs text-muted-foreground">
+                  <ul className="space-y-1 text-xs">
                     {(o.rental_order_items ?? []).map((i: any, idx: number) => (
-                      <li key={idx}>
-                        {i.piece_name} × {i.quantity}
+                      <li key={idx} className="rounded-md border px-2 py-1.5">
+                        <span className="font-medium">
+                          {i.piece_name} × {i.quantity}
+                        </span>
+                        <span className="mt-0.5 flex flex-wrap gap-x-3 text-muted-foreground">
+                          <span>Comprimento: {formatDimension(i.width_cm)}</span>
+                          <span>Profundidade: {formatDimension(i.depth_cm)}</span>
+                          <span>Altura: {formatDimension(i.height_cm)}</span>
+                          {i.volume_liters != null && (
+                            <span>Volume: {Number(i.volume_liters).toLocaleString("pt-BR")} L</span>
+                          )}
+                        </span>
                       </li>
                     ))}
                   </ul>
+                  <Button size="sm" variant="outline" onClick={() => setCostOrder(o)}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Ver detalhes dos custos
+                  </Button>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {(o.rental_payments ?? []).map((payment: any) => (
                       <div
@@ -893,6 +911,13 @@ function Page() {
                 </CardContent>
               </Card>
             ))
+          )}
+          {costOrder && (
+            <OrderCostDialog
+              order={costOrder}
+              open={!!costOrder}
+              onOpenChange={(v) => !v && setCostOrder(null)}
+            />
           )}
         </TabsContent>
 
