@@ -139,7 +139,7 @@ export async function buildCostStatementPdf(st: CostStatement): Promise<Blob> {
 
   const cols = [
     { h: "Peça", w: 82 }, { h: "Qtd.", w: 30 }, { h: "Dimensões (C × P × A)", w: 175 },
-    { h: "Tipo de queima", w: 58 }, { h: "Argila", w: 50 }, { h: "Esmalte", w: 50 },
+    { h: "Tipo", w: 58 }, { h: "Argila", w: 50 }, { h: "Esmalte", w: 50 },
     { h: "Queima", w: 54 }, { h: "Manut. forno", w: 54 }, { h: "Outros", w: 50 },
     { h: "Frete", w: 50 }, { h: "Subtotal", w: 54 }, { h: "Total cobrado", w: 70 },
   ];
