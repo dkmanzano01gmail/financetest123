@@ -129,18 +129,19 @@ export async function buildCostStatementPdf(st: CostStatement): Promise<Blob> {
     ["Data do pedido", formatDateBR(st.createdAt)],
     ["Vaga / queima", `${st.slotTitle}${st.firingDate ? ` · ${formatDateBR(st.firingDate)}` : ""}`],
   ];
-  const colW = (W - 2 * M) / 4;
+  const colW = 150;
   meta.forEach(([k, v], i) => {
+    const mw = i === 3 ? W - 2 * M - 3 * colW : colW - 8;
     page.drawText(k, { x: M + i * colW, y, size: 8, font, color: muted });
-    page.drawText(fit(v, 10, colW - 8, bold), { x: M + i * colW, y: y - 13, size: 10, font: bold, color: ink });
+    page.drawText(fit(v, 10, mw, bold), { x: M + i * colW, y: y - 13, size: 10, font: bold, color: ink });
   });
   y -= 36;
 
   const cols = [
-    { h: "Peça", w: 92 }, { h: "Qtd.", w: 30 }, { h: "Dimensões (C × P × A)", w: 150 },
-    { h: "Tipo de queima", w: 62 }, { h: "Argila", w: 50 }, { h: "Esmalte", w: 50 },
+    { h: "Peça", w: 82 }, { h: "Qtd.", w: 30 }, { h: "Dimensões (C × P × A)", w: 175 },
+    { h: "Tipo de queima", w: 58 }, { h: "Argila", w: 50 }, { h: "Esmalte", w: 50 },
     { h: "Queima", w: 54 }, { h: "Manut. forno", w: 54 }, { h: "Outros", w: 50 },
-    { h: "Frete", w: 50 }, { h: "Subtotal", w: 58 }, { h: "Total cobrado", w: 78 },
+    { h: "Frete", w: 50 }, { h: "Subtotal", w: 54 }, { h: "Total cobrado", w: 70 },
   ];
   const drawHead = () => {
     page.drawRectangle({ x: M, y: y - 6, width: W - 2 * M, height: 18, color: rgb(0.96, 0.93, 0.9) });
