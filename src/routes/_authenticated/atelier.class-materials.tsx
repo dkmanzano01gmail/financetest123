@@ -26,6 +26,7 @@ import {
 import { PageContainer, PageHeader } from "@/components/app/page-header";
 import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, formatDate, monthLabel, parseLocaleAmount } from "@/lib/format";
+import { resolvePiecePayment } from "@/lib/piece-payment";
 import { calculateClassPieceCost } from "@/lib/orna-logic";
 import { Calculator, Camera, Copy, ImagePlus, Mail, MessageCircle, Package, Pencil, Plus, Printer, RotateCcw, Settings2, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
