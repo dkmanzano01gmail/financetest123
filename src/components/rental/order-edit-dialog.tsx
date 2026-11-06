@@ -144,12 +144,15 @@ export function OrderEditDialog({
           width_cm: num(it.width_cm),
           depth_cm: num(it.depth_cm),
           height_cm: num(it.height_cm),
-          volume_liters: itemVolume({
-            ...it,
-            width_cm: num(it.width_cm),
-            depth_cm: num(it.depth_cm),
-            height_cm: num(it.height_cm),
-          }),
+          volume_liters: itemVolume(
+            {
+              ...it,
+              width_cm: num(it.width_cm),
+              depth_cm: num(it.depth_cm),
+              height_cm: num(it.height_cm),
+            },
+            margin,
+          ),
           unit_price: num(it.unit_price),
           total_price: itemTotal({ ...it, unit_price: num(it.unit_price) }),
         };
