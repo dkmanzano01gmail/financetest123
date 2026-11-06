@@ -851,20 +851,16 @@ function Page() {
       const chargedInput = form.amount_charged.trim() ? parseLocaleAmount(form.amount_charged) : calculation.chargeAmount;
       if (!Number.isFinite(chargedInput) || chargedInput < 0) throw new Error("Valor cobrado inválido.");
       const invoicedAmount = (chargedInput / quantity) * invoicedQuantity;
-      const paidInput = form.payment_status === "paid"
-        ? invoicedAmount
-        : form.payment_status === "waived" || form.payment_status === "pending"
-          ? 0
-          : n(form.amount_paid);
-      if (paidInput > invoicedAmount) throw new Error("O valor pago não pode superar o valor já faturado.");
-      const paymentStatus = form.payment_status === "waived"
-        ? "waived"
-        : invoicedAmount > 0 && paidInput >= invoicedAmount
-          ? "paid"
-          : paidInput > 0
-            ? "partial"
-            : "pending";
-      const pending = paymentStatus === "waived" ? 0 : Math.max(0, invoicedAmount - paidInput);
+      const paymentBase = invoicedAmount > 0 ? invoicedAmount : chargedInput;
+      const resolved = resolvePiecePayment({
+        status: form.payment_status,
+        amountPaid: form.amount_paid.trim() ? parseLocaleAmount(form.amount_paid) : 0,
+        charged: paymentBase,
+        registeredPaid: editId ? Number((rows as any[]).find((r: any) => r.id === editId)?.amount_paid ?? 0) : 0,
+      });
+      const paidInput = resolved.paid;
+      const paymentStatus = resolved.status;
+      const pending = resolved.pending;
       const productionStatus = deliveredQuantity === quantity
         ? "delivered"
         : completedQuantity === quantity
@@ -1369,8 +1365,13 @@ function Page() {
           </Card>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <Field label="Valor cobrado"><div className="flex gap-2"><Input inputMode="decimal" placeholder={calculation.chargeAmount.toFixed(2)} value={form.amount_charged} onChange={(event) => setForm({ ...form, amount_charged: event.target.value })} /><Button type="button" variant="outline" onClick={() => setForm({ ...form, amount_charged: calculation.chargeAmount.toFixed(2) })}>Usar</Button></div></Field>
-            <Field label="Status"><Select value={form.payment_status} onValueChange={(value) => setForm({ ...form, payment_status: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">Pendente</SelectItem><SelectItem value="partial">Parcial</SelectItem><SelectItem value="paid">Pago</SelectItem><SelectItem value="waived">Cortesia</SelectItem></SelectContent></Select></Field>
-            <Field label="Valor pago"><Input inputMode="decimal" value={form.amount_paid} onChange={(event) => setForm({ ...form, amount_paid: event.target.value })} disabled={form.payment_status !== "partial"} /></Field>
+            <Field label="Status"><Select value={form.payment_status} onValueChange={(value) => setForm((prev) => {
+              const current = prev.amount_paid.trim() ? parseLocaleAmount(prev.amount_paid) : 0;
+              const charged = prev.amount_charged.trim() ? parseLocaleAmount(prev.amount_charged) : calculation.chargeAmount;
+              const suggest = value === "paid" && (!Number.isFinite(current) || current <= 0) && charged > 0;
+              return { ...prev, payment_status: value, amount_paid: suggest ? charged.toFixed(2) : prev.amount_paid, payment_date: value === "paid" && !prev.payment_date ? new Date().toISOString().slice(0, 10) : prev.payment_date };
+            })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">Pendente</SelectItem><SelectItem value="partial">Parcial</SelectItem><SelectItem value="paid">Pago</SelectItem><SelectItem value="waived">Cortesia</SelectItem></SelectContent></Select></Field>
+            <Field label="Valor pago"><Input inputMode="decimal" value={form.amount_paid} onChange={(event) => setForm({ ...form, amount_paid: event.target.value })} disabled={form.payment_status !== "partial" && form.payment_status !== "paid"} /></Field>
             <Field label="Data do pagamento"><Input type="date" value={form.payment_date} onChange={(event) => setForm({ ...form, payment_date: event.target.value })} /></Field>
             <Field label="Notas do pagamento"><Input value={form.payment_notes} onChange={(event) => setForm({ ...form, payment_notes: event.target.value })} /></Field>
             <Field label="Comentários"><Input value={form.comments} onChange={(event) => setForm({ ...form, comments: event.target.value })} /></Field>
