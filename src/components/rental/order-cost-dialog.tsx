@@ -40,7 +40,7 @@ export function OrderCostDialog({ order, open, onOpenChange }: { order: any; ope
     }
   };
 
-  const heads = ["Peça", "Qtd.", "Dimensões (C × P × A)", "Tipo de queima", "Argila", "Esmalte", "Queima", "Manutenção do forno", "Outros custos", "Frete", "Subtotal", "Total cobrado"];
+  const heads = ["Peça", "Qtd.", "Dimensões C × P × A (cm)", "Tipo de queima", "Argila", "Esmalte", "Queima", "Manutenção do forno", "Outros custos", "Frete", "Subtotal", "Total cobrado"];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

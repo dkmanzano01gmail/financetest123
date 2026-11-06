@@ -58,7 +58,7 @@ export function buildCostStatement(order: any): CostStatement {
     return {
       piece: i.piece_name || "Peça",
       quantity: qty,
-      dimensions: formatDimensionsCPA(i),
+      dimensions: dimsPlain(i),
       firingType,
       clay: null,
       glaze: null,
@@ -101,90 +101,234 @@ export function formatDateBR(value: string | null): string {
   return Number.isNaN(d.getTime()) ? NOT_INFORMED : d.toLocaleDateString("pt-BR");
 }
 
-export async function buildCostStatementPdf(st: CostStatement): Promise<Blob> {
-  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+export type PdfAssets = {
+  logo: Uint8Array;
+  regular: Uint8Array;
+  bold: Uint8Array;
+  mono: Uint8Array;
+};
+
+async function loadDefaultAssets(): Promise<PdfAssets> {
+  const { default: logoAsset } = await import("@/assets/selo-sela-ceramica.png.asset.json");
+  const get = async (u: string) => {
+    const r = await fetch(u);
+    if (!r.ok) throw new Error(`Falha ao carregar ${u}`);
+    return new Uint8Array(await r.arrayBuffer());
+  };
+  const [logo, regular, bold, mono] = await Promise.all([
+    get(logoAsset.url),
+    get("/fonts/cantarell-regular.ttf"),
+    get("/fonts/cantarell-bold.ttf"),
+    get("/fonts/cutive-mono-regular.ttf"),
+  ]);
+  return { logo, regular, bold, mono };
+}
+
+/** C × P × A values only (unit is in the column header); missing → "Não informado". */
+function dimsPlain(item: any): string {
+  return [item?.width_cm, item?.depth_cm, item?.height_cm]
+    .map((v) => {
+      const n = Number(v);
+      if (v === null || v === undefined || v === "" || !Number.isFinite(n) || n <= 0) return NOT_INFORMED;
+      return n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+    })
+    .join(" × ");
+}
+
+export async function buildCostStatementPdf(st: CostStatement, assets?: PdfAssets): Promise<Blob> {
+  const { PDFDocument, rgb } = await import("pdf-lib");
+  const fontkit = (await import("@pdf-lib/fontkit")).default;
+  const QRCode = (await import("qrcode")).default;
+  const { createPixPayload, SELA_PIX_KEY } = await import("@/lib/pix-br");
+  const a = assets ?? (await loadDefaultAssets());
+
   const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const W = 842, H = 595, M = 32; // A4 landscape
-  const clay = rgb(0.55, 0.3, 0.2), ink = rgb(0.15, 0.13, 0.12), muted = rgb(0.45, 0.42, 0.4), line = rgb(0.85, 0.8, 0.76);
+  doc.registerFontkit(fontkit);
+  doc.setTitle(`Demonstrativo ${st.code} — Selá Cerâmica`);
+  const font = await doc.embedFont(a.regular, { subset: true });
+  const bold = await doc.embedFont(a.bold, { subset: true });
+  const mono = await doc.embedFont(a.mono, { subset: true });
+  const logo = await doc.embedPng(a.logo);
+
+  const hex = (h: string) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
+  const C = {
+    ink: hex("#331F24"), wine: hex("#751424"), brown: hex("#5A422E"), gold: hex("#D29538"),
+    goldLight: hex("#D89F58"), sand: hex("#E7D1A9"), olive: hex("#B9BC80"), cream: hex("#FEFCEB"),
+    white: rgb(1, 1, 1),
+  };
+  const W = 595.28, H = 841.89, M = 40; // A4 portrait
   let page = doc.addPage([W, H]);
-  let y = H - M;
+  let y = 0;
 
   const fit = (text: string, size: number, max: number, f = font) => {
     let t = text;
     while (t.length > 1 && f.widthOfTextAtSize(t, size) > max) t = t.slice(0, -2) + "…";
-    return f.widthOfTextAtSize(t, size) > max ? t.replace("…", "") : t;
+    return t;
   };
-  const header = () => {
-    page.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: clay });
-    page.drawText("Selá Queimas", { x: M, y: H - M - 6, size: 20, font: bold, color: clay });
-    page.drawText("Demonstrativo de custos", { x: M, y: H - M - 24, size: 11, font, color: muted });
-    y = H - M - 48;
+  const wrap = (text: string, size: number, max: number, f = font): string[] => {
+    const out: string[] = [];
+    let cur = "";
+    for (const w of text.split(" ")) {
+      const next = cur ? `${cur} ${w}` : w;
+      if (f.widthOfTextAtSize(next, size) <= max || !cur) cur = next;
+      else { out.push(cur); cur = w; }
+    }
+    if (cur) out.push(cur);
+    return out.map((l) => fit(l, size, max, f));
   };
-  header();
+  const right = (t: string, xr: number, yy: number, size: number, f = font, color = C.ink) =>
+    page.drawText(t, { x: xr - f.widthOfTextAtSize(t, size), y: yy, size, font: f, color });
+
+  const header = (first: boolean) => {
+    page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: C.cream });
+    page.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: C.ink });
+    page.drawRectangle({ x: 0, y: H - 9, width: W, height: 3, color: C.gold });
+    const L = first ? 76 : 48; // logo size; protection area ≈ letter "E" height around it
+    const top = H - 9 - 22;
+    page.drawImage(logo, { x: M, y: top - L, width: L, height: L });
+    const tx = W - M;
+    right("DEMONSTRATIVO DE CUSTOS", tx, top - 14, 8.5, bold, C.brown);
+    right(`Pedido ${st.code}`, tx, top - 36, first ? 20 : 14, bold, C.ink);
+    right("Selá Queimas · Selá Cerâmica", tx, top - 52, 9, font, C.brown);
+    y = top - L - 22;
+    page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.8, color: C.sand });
+    y -= 22;
+  };
+  header(true);
+
+  // Summary cards
   const meta: [string, string][] = [
     ["Cliente", st.customerName],
-    ["Pedido", st.code],
     ["Data do pedido", formatDateBR(st.createdAt)],
-    ["Vaga / queima", `${st.slotTitle}${st.firingDate ? ` · ${formatDateBR(st.firingDate)}` : ""}`],
+    ["Vaga", st.slotTitle],
+    ["Data da queima", formatDateBR(st.firingDate)],
   ];
-  const colW = 150;
+  const cw = (W - 2 * M - 8) / 2;
   meta.forEach(([k, v], i) => {
-    const mw = i === 3 ? W - 2 * M - 3 * colW : colW - 8;
-    page.drawText(k, { x: M + i * colW, y, size: 8, font, color: muted });
-    page.drawText(fit(v, 10, mw, bold), { x: M + i * colW, y: y - 13, size: 10, font: bold, color: ink });
+    const x = M + (i % 2) * (cw + 8);
+    const yy = y - Math.floor(i / 2) * 50;
+    page.drawRectangle({ x, y: yy - 34, width: cw, height: 42, color: C.white, borderColor: C.sand, borderWidth: 0.8 });
+    page.drawText(k.toUpperCase(), { x: x + 12, y: yy - 6, size: 7, font: bold, color: C.brown });
+    page.drawText(fit(v, 11, cw - 24, bold), { x: x + 12, y: yy - 23, size: 11, font: bold, color: C.ink });
   });
-  y -= 36;
+  y -= 124;
 
+  // Pieces table
+  page.drawText("Peças", { x: M, y, size: 13, font: bold, color: C.wine });
+  y -= 16;
   const cols = [
-    { h: "Peça", w: 82 }, { h: "Qtd.", w: 30 }, { h: "Dimensões (C × P × A)", w: 175 },
-    { h: "Tipo", w: 58 }, { h: "Argila", w: 50 }, { h: "Esmalte", w: 50 },
-    { h: "Queima", w: 54 }, { h: "Manut. forno", w: 54 }, { h: "Outros", w: 50 },
-    { h: "Frete", w: 50 }, { h: "Subtotal", w: 54 }, { h: "Total cobrado", w: 70 },
+    { h: "Peça", w: 118 }, { h: "Qtd.", w: 32, r: true }, { h: "C × P × A (cm)", w: 128 },
+    { h: "Queima", w: 76 }, { h: "Custo queima", w: 80, r: true }, { h: "Total", w: 81, r: true },
   ];
+  const tableW = cols.reduce((s, c) => s + c.w, 0);
   const drawHead = () => {
-    page.drawRectangle({ x: M, y: y - 6, width: W - 2 * M, height: 18, color: rgb(0.96, 0.93, 0.9) });
-    let x = M + 3;
-    cols.forEach((c) => { page.drawText(fit(c.h, 7.5, c.w - 4, bold), { x, y, size: 7.5, font: bold, color: ink }); x += c.w; });
-    y -= 20;
+    page.drawRectangle({ x: M, y: y - 8, width: tableW, height: 22, color: C.ink });
+    let x = M;
+    cols.forEach((c) => {
+      const t = c.h.toUpperCase();
+      if (c.r) right(t, x + c.w - 8, y, 7.2, bold, C.cream);
+      else page.drawText(t, { x: x + 8, y, size: 7.2, font: bold, color: C.cream });
+      x += c.w;
+    });
+    y -= 28;
   };
   drawHead();
-  st.rows.forEach((r) => {
-    if (y < M + 110) { page = doc.addPage([W, H]); header(); drawHead(); }
-    const cells = [r.piece, String(r.quantity), r.dimensions, r.firingType, costCell(r.clay), costCell(r.glaze),
-      brl(r.firing), costCell(r.maintenance), costCell(r.other), costCell(r.freight), brl(r.subtotal), brl(r.charged)];
-    let x = M + 3;
-    cells.forEach((t, i) => {
-      const f = i === 11 ? bold : font;
-      page.drawText(fit(t, 7.5, cols[i].w - 4, f), { x, y, size: 7.5, font: f, color: t === "Não se aplica" || t.includes(NOT_INFORMED) ? muted : ink });
-      x += cols[i].w;
+  const items = st.rows;
+  items.forEach((r, idx) => {
+    const cells = [r.piece, String(r.quantity), r.dimensions.replace(/Não informado/g, "Não\u00a0informado"), r.firingType, brl(r.firing), brl(r.charged)];
+    const fonts = cells.map((_, i) => (i === 5 || i === 0 ? bold : font));
+    const wrapped = cells.map((t, i) => (cols[i].r ? [t] : wrap(t, 8.8, cols[i].w - 14, fonts[i])));
+    const n = Math.max(...wrapped.map((w) => w.length));
+    const rh = 12 + n * 11.5;
+    if (y - rh < M + 40) { page = doc.addPage([W, H]); header(false); drawHead(); }
+    if (idx % 2 === 0) page.drawRectangle({ x: M, y: y - rh + 12, width: tableW, height: rh, color: C.white });
+    let x = M;
+    wrapped.forEach((ls, i) => {
+      const c = cols[i];
+      ls.forEach((l, li) => {
+        const t = l.replace(/\u00a0/g, " ");
+        const color = t.includes(NOT_INFORMED) ? C.brown : C.ink;
+        const yy = y - 2 - li * 11.5;
+        if (c.r) right(t, x + c.w - 8, yy, 8.8, fonts[i], color);
+        else page.drawText(t, { x: x + 8, y: yy, size: 8.8, font: fonts[i], color });
+      });
+      x += c.w;
     });
-    page.drawLine({ start: { x: M, y: y - 6 }, end: { x: W - M, y: y - 6 }, thickness: 0.5, color: line });
-    y -= 18;
+    y -= rh;
   });
-  if (st.rows.length === 0) {
-    page.drawText("Nenhuma peça registrada neste pedido.", { x: M + 3, y, size: 9, font, color: muted });
-    y -= 18;
+  if (items.length === 0) {
+    page.drawText("Nenhuma peça registrada neste pedido.", { x: M + 8, y, size: 9, font, color: C.brown });
+    y -= 24;
   }
-  if (y < M + 100) { page = doc.addPage([W, H]); header(); }
-  y -= 10;
-  const summary: [string, string][] = [
-    ["Total de custos", brl(st.internalCosts)],
+  page.drawLine({ start: { x: M, y: y + 12 }, end: { x: M + tableW, y: y + 12 }, thickness: 0.8, color: C.sand });
+
+  // Financial summary + Pix need ~250pt
+  if (y < M + 270) { page = doc.addPage([W, H]); header(false); } else y -= 16;
+
+  const boxH = 210;
+  const fw = 236;
+  page.drawRectangle({ x: M, y: y - boxH, width: fw, height: boxH, color: C.white, borderColor: C.sand, borderWidth: 0.8 });
+  let fy = y - 24;
+  page.drawText("Resumo financeiro", { x: M + 16, y: fy, size: 12, font: bold, color: C.wine });
+  fy -= 26;
+  const lines: [string, string][] = [
+    ["Total das peças", brl(st.internalCosts)],
     ...(st.discount > 0 ? [["Desconto", `- ${brl(st.discount)}`] as [string, string]] : []),
-    ["Total cobrado", brl(st.totalCharged)],
+    ["Total do pedido", brl(st.totalCharged)],
     ["Já pago", brl(st.paid)],
-    ["Saldo a receber", brl(st.balance)],
   ];
-  const sx = W - M - 220;
-  summary.forEach(([k, v], i) => {
-    const last = i === summary.length - 1;
-    page.drawText(k, { x: sx, y, size: 10, font: last ? bold : font, color: last ? clay : ink });
-    const vw = bold.widthOfTextAtSize(v, 10);
-    page.drawText(v, { x: W - M - vw, y, size: 10, font: bold, color: last ? clay : ink });
-    y -= 16;
+  lines.forEach(([k, v]) => {
+    page.drawText(k, { x: M + 16, y: fy, size: 9.5, font, color: C.brown });
+    right(v, M + fw - 16, fy, 9.5, bold, C.ink);
+    fy -= 20;
   });
-  page.drawText("\"Não se aplica\" indica custo que não compõe a cobrança deste pedido.", { x: M, y: M + 8, size: 7.5, font, color: muted });
+  fy -= 4;
+  page.drawRectangle({ x: M + 10, y: fy - 14, width: fw - 20, height: 34, color: C.ink });
+  page.drawText("Saldo a receber", { x: M + 20, y: fy, size: 10, font: bold, color: C.cream });
+  right(brl(st.balance), M + fw - 20, fy - 1, 13, bold, C.goldLight);
+
+  // Pix block
+  const px = M + fw + 14, pw = W - M - px;
+  page.drawRectangle({ x: px, y: y - boxH, width: pw, height: boxH, color: C.sand });
+  page.drawText("Pagamento via Pix", { x: px + 16, y: y - 24, size: 12, font: bold, color: C.wine });
+  if (st.balance > 0) {
+    const payload = createPixPayload({
+      amount: Math.round(st.balance * 100) / 100,
+      studentName: st.customerName,
+      description: `Sela Queimas ${st.code}`,
+      pixKey: SELA_PIX_KEY,
+    });
+    const dataUrl = await QRCode.toDataURL(payload, { margin: 1, width: 360, color: { dark: "#331F24", light: "#FFFFFF" } });
+    const qr = await doc.embedPng(dataUrl);
+    const q = 100;
+    page.drawRectangle({ x: px + 14, y: y - 44 - q - 4, width: q + 8, height: q + 8, color: C.white });
+    page.drawImage(qr, { x: px + 18, y: y - 44 - q, width: q, height: q });
+    const ix = px + q + 30, iw = pw - (q + 30) - 10;
+    let iy = y - 54;
+    const info: [string, string][] = [["Valor", brl(st.balance)], ["Chave Pix (CNPJ)", SELA_PIX_KEY], ["Favorecido", "Selá Cerâmica"]];
+    info.forEach(([k, v]) => {
+      page.drawText(k.toUpperCase(), { x: ix, y: iy, size: 6.8, font: bold, color: C.brown });
+      page.drawText(fit(v, 9.5, iw, bold), { x: ix, y: iy - 13, size: 9.5, font: bold, color: C.ink });
+      iy -= 34;
+    });
+    page.drawText("PIX COPIA E COLA", { x: px + 16, y: y - 176, size: 6.8, font: bold, color: C.brown });
+    // wrap payload in mono
+    const size = 6.4, maxW = pw - 32;
+    const perLine = Math.max(10, Math.floor(maxW / mono.widthOfTextAtSize("0", size)));
+    const chunks = payload.match(new RegExp(`.{1,${perLine}}`, "g")) ?? [];
+    chunks.slice(0, 3).forEach((c, i) => page.drawText(c, { x: px + 16, y: y - 187 - i * 8, size, font: mono, color: C.ink }));
+  } else {
+    page.drawText("Pedido quitado — não há saldo a pagar.", { x: px + 16, y: y - 56, size: 10, font: bold, color: C.ink });
+  }
+  y -= boxH + 26;
+
+  // Footer on every page
+  for (const p of doc.getPages()) {
+    p.drawLine({ start: { x: M, y: M + 6 }, end: { x: W - M, y: M + 6 }, thickness: 0.6, color: C.olive });
+    p.drawText("Selá Cerâmica · autoconhecimento · expressão · refúgio", { x: M, y: M - 8, size: 7.5, font, color: C.brown });
+    const t = "Medidas ausentes aparecem como \"Não informado\".";
+    p.drawText(t, { x: W - M - font.widthOfTextAtSize(t, 7.5), y: M - 8, size: 7.5, font, color: C.brown });
+  }
   const bytes = await doc.save();
   return new Blob([bytes as BlobPart], { type: "application/pdf" });
 }
