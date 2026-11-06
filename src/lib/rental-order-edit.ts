@@ -1,5 +1,5 @@
 // Pure rules for editing an existing Selá Queimas order.
-import { pieceVolumeLiters, toNumber } from "@/lib/rental";
+import { pieceVolumeLiters, toNumber } from "./rental.ts";
 
 export type EditableItem = {
   id?: string;

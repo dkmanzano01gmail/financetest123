@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { orderTotals, reconcilePayments, hasPaidPayment } from "./rental-order-edit";
+import assert from "node:assert/strict";
+import { describe, test as it } from "node:test";
+import { orderTotals, reconcilePayments, hasPaidPayment } from "./rental-order-edit.ts";
 
 describe("rental order edit", () => {
   it("total follows item values minus discount", () => {
@@ -11,10 +12,10 @@ describe("rental order edit", () => {
       1,
       4,
     );
-    expect(t.subtotal).toBe(13);
-    expect(t.total).toBe(12);
-    expect(t.total_liters).toBe(2);
-    expect(t.balance_amount).toBe(8);
+    assert.equal(t.subtotal, 13);
+    assert.equal(t.total, 12);
+    assert.equal(t.total_liters, 2);
+    assert.equal(t.balance_amount, 8);
   });
 
   it("never changes paid payments, resizes pending balance", () => {
@@ -25,13 +26,13 @@ describe("rental order edit", () => {
       ],
       70,
     );
-    expect(r.paid).toBe(20);
-    expect(r.due).toBe(50);
-    expect(r.updates).toEqual([{ id: "b", amount: 50 }]);
+    assert.equal(r.paid, 20);
+    assert.equal(r.due, 50);
+    assert.deepEqual(r.updates, [{ id: "b", amount: 50 }]);
   });
 
   it("detects paid payments for removal confirmation", () => {
-    expect(hasPaidPayment([{ id: "x", amount: 10, status: "paid" }])).toBe(true);
-    expect(hasPaidPayment([{ id: "x", amount: 10, status: "pending" }])).toBe(false);
+    assert.equal(hasPaidPayment([{ id: "x", amount: 10, status: "paid" }]), true);
+    assert.equal(hasPaidPayment([{ id: "x", amount: 10, status: "pending" }]), false);
   });
 });

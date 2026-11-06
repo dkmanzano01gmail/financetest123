@@ -143,7 +143,12 @@ export function OrderEditDialog({
           width_cm: num(it.width_cm),
           depth_cm: num(it.depth_cm),
           height_cm: num(it.height_cm),
-          volume_liters: itemVolume({ ...it, width_cm: num(it.width_cm), depth_cm: num(it.depth_cm), height_cm: num(it.height_cm) }),
+          volume_liters: itemVolume({
+            ...it,
+            width_cm: num(it.width_cm),
+            depth_cm: num(it.depth_cm),
+            height_cm: num(it.height_cm),
+          }),
           unit_price: num(it.unit_price),
           total_price: itemTotal({ ...it, unit_price: num(it.unit_price) }),
         };
@@ -309,7 +314,14 @@ export function OrderEditDialog({
             onClick={() =>
               setItems((p) => [
                 ...p,
-                { piece_name: "", quantity: "1", width_cm: "", depth_cm: "", height_cm: "", unit_price: "" },
+                {
+                  piece_name: "",
+                  quantity: "1",
+                  width_cm: "",
+                  depth_cm: "",
+                  height_cm: "",
+                  unit_price: "",
+                },
               ])
             }
           >
@@ -321,7 +333,11 @@ export function OrderEditDialog({
         <section className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1">
             <Label>Desconto (R$)</Label>
-            <Input inputMode="decimal" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+            <Input
+              inputMode="decimal"
+              value={discount}
+              onChange={(e) => setDiscount(e.target.value)}
+            />
           </div>
           <div className="space-y-1 rounded-md border bg-muted/20 p-3 text-sm">
             <p>Subtotal: {formatCurrency(totals.subtotal, currency)}</p>
