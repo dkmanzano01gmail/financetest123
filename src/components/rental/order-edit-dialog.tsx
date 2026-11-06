@@ -76,9 +76,11 @@ export function OrderEditDialog({
   const [removedIds, setRemovedIds] = useState<string[]>([]);
 
   const slot = slots.find((s) => s.id === slotId);
+  const margin = slot?.firing_type === "glaze" ? Number(slot?.glaze_spacing_cm ?? 1) : 0;
   const totals = useMemo(
-    () => orderTotals(items, parseLocaleAmount(discount) || 0, toNumber(order.deposit_amount)),
-    [items, discount, order.deposit_amount],
+    () =>
+      orderTotals(items, parseLocaleAmount(discount) || 0, toNumber(order.deposit_amount), margin),
+    [items, discount, order.deposit_amount, margin],
   );
   const pay = reconcilePayments(payments, totals.total);
 
@@ -100,7 +102,6 @@ export function OrderEditDialog({
 
   const recalc = () => {
     const ppl = Number(slot?.price_per_liter ?? 0);
-    const margin = slot?.firing_type === "glaze" ? Number(slot?.glaze_spacing_cm ?? 1) : 0;
     if (!ppl) return toast.error("A vaga não tem preço por litro configurado.");
     setItems((prev) =>
       prev.map((it) => ({
@@ -302,7 +303,7 @@ export function OrderEditDialog({
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                Volume: {itemVolume(it).toLocaleString("pt-BR")} L · Total da peça:{" "}
+                Volume: {itemVolume(it, margin).toLocaleString("pt-BR")} L · Total da peça:{" "}
                 {formatCurrency(itemTotal(it), currency)}
               </p>
             </div>

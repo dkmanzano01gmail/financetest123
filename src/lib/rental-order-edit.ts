@@ -17,11 +17,14 @@ export function itemQuantity(item: EditableItem) {
   return Math.max(Math.round(toNumber(item.quantity)) || 1, 1);
 }
 
-export function itemVolume(item: EditableItem) {
-  return round2(
-    pieceVolumeLiters(toNumber(item.height_cm), toNumber(item.width_cm), toNumber(item.depth_cm)) *
-      itemQuantity(item),
-  );
+/** Liters occupied, using the same edge spacing on width/depth as the quote. */
+export function itemVolume(item: EditableItem, edgeMarginCm = 0) {
+  const s = Math.max(edgeMarginCm, 0);
+  const w = toNumber(item.width_cm);
+  const d = toNumber(item.depth_cm);
+  const h = toNumber(item.height_cm);
+  if (!w || !d || !h) return 0;
+  return Math.round(pieceVolumeLiters(h, w + s, d + s) * itemQuantity(item) * 1000) / 1000;
 }
 
 export function itemTotal(item: EditableItem) {
@@ -40,10 +43,16 @@ export function suggestedUnitPrice(item: EditableItem, pricePerLiter: number, ed
   );
 }
 
-export function orderTotals(items: EditableItem[], discount: number, depositAmount: number) {
+export function orderTotals(
+  items: EditableItem[],
+  discount: number,
+  depositAmount: number,
+  edgeMarginCm = 0,
+) {
   const subtotal = round2(items.reduce((s, i) => s + itemTotal(i), 0));
   const total = round2(Math.max(subtotal - Math.max(discount, 0), 0));
-  const total_liters = round2(items.reduce((s, i) => s + itemVolume(i), 0));
+  const total_liters =
+    Math.round(items.reduce((s, i) => s + itemVolume(i, edgeMarginCm), 0) * 1000) / 1000;
   const balance_amount = round2(Math.max(total - Math.max(depositAmount, 0), 0));
   return { subtotal, total, total_liters, balance_amount };
 }
