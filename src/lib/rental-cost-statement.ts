@@ -183,18 +183,18 @@ export async function buildCostStatementPdf(st: CostStatement, assets?: PdfAsset
     page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: C.cream });
     page.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: C.ink });
     page.drawRectangle({ x: 0, y: H - 9, width: W, height: 3, color: C.gold });
-    const L = first ? 76 : 48; // logo size; protection area ≈ letter "E" height around it
-    const top = H - 9 - 22;
-    page.drawImage(logo, { x: M, y: top - L, width: L, height: L });
-    const tx = W - M;
-    right("DEMONSTRATIVO DE CUSTOS", tx, top - 14, 8.5, bold, C.brown);
-    right(`Pedido ${st.code}`, tx, top - 36, first ? 20 : 14, bold, C.ink);
-    right("Selá Queimas · Selá Cerâmica", tx, top - 52, 9, font, C.brown);
+    const L = first ? 116 : 64; // logo only, centered; protection area ≈ letter "E" height around it
+    const top = H - 9 - (first ? 26 : 18);
+    page.drawImage(logo, { x: (W - L) / 2, y: top - L, width: L, height: L });
     y = top - L - 22;
     page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.8, color: C.sand });
     y -= 22;
   };
   header(true);
+
+  page.drawText("Demonstrativo de custos", { x: M, y, size: 13, font: bold, color: C.wine });
+  right(`Pedido ${st.code}`, W - M, y, 13, bold, C.ink);
+  y -= 24;
 
   // Summary cards
   const meta: [string, string][] = [
