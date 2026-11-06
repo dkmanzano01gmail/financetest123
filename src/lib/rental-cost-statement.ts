@@ -235,7 +235,7 @@ export async function buildCostStatementPdf(st: CostStatement, assets?: PdfAsset
   drawHead();
   const items = st.rows;
   items.forEach((r, idx) => {
-    const cells = [r.piece, String(r.quantity), r.dimensions.replace(/ × /g, " ×\u00a0"), r.firingType, brl(r.firing), brl(r.charged)];
+    const cells = [r.piece, String(r.quantity), r.dimensions.replace(/Não informado/g, "Não\u00a0informado"), r.firingType, brl(r.firing), brl(r.charged)];
     const fonts = cells.map((_, i) => (i === 5 || i === 0 ? bold : font));
     const wrapped = cells.map((t, i) => (cols[i].r ? [t] : wrap(t, 8.8, cols[i].w - 14, fonts[i])));
     const n = Math.max(...wrapped.map((w) => w.length));
