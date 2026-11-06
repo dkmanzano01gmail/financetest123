@@ -165,6 +165,17 @@ export async function buildCostStatementPdf(st: CostStatement, assets?: PdfAsset
     while (t.length > 1 && f.widthOfTextAtSize(t, size) > max) t = t.slice(0, -2) + "…";
     return t;
   };
+  const wrap = (text: string, size: number, max: number, f = font): string[] => {
+    const out: string[] = [];
+    let cur = "";
+    for (const w of text.split(" ")) {
+      const next = cur ? `${cur} ${w}` : w;
+      if (f.widthOfTextAtSize(next, size) <= max || !cur) cur = next;
+      else { out.push(cur); cur = w; }
+    }
+    if (cur) out.push(cur);
+    return out.map((l) => fit(l, size, max, f));
+  };
   const right = (t: string, xr: number, yy: number, size: number, f = font, color = C.ink) =>
     page.drawText(t, { x: xr - f.widthOfTextAtSize(t, size), y: yy, size, font: f, color });
 
@@ -192,21 +203,22 @@ export async function buildCostStatementPdf(st: CostStatement, assets?: PdfAsset
     ["Vaga", st.slotTitle],
     ["Data da queima", formatDateBR(st.firingDate)],
   ];
-  const cw = (W - 2 * M - 3 * 8) / 4;
+  const cw = (W - 2 * M - 8) / 2;
   meta.forEach(([k, v], i) => {
-    const x = M + i * (cw + 8);
-    page.drawRectangle({ x, y: y - 40, width: cw, height: 48, color: C.white, borderColor: C.sand, borderWidth: 0.8 });
-    page.drawText(k.toUpperCase(), { x: x + 10, y: y - 8, size: 7, font: bold, color: C.brown });
-    page.drawText(fit(v, 10.5, cw - 20, bold), { x: x + 10, y: y - 26, size: 10.5, font: bold, color: C.ink });
+    const x = M + (i % 2) * (cw + 8);
+    const yy = y - Math.floor(i / 2) * 50;
+    page.drawRectangle({ x, y: yy - 34, width: cw, height: 42, color: C.white, borderColor: C.sand, borderWidth: 0.8 });
+    page.drawText(k.toUpperCase(), { x: x + 12, y: yy - 6, size: 7, font: bold, color: C.brown });
+    page.drawText(fit(v, 11, cw - 24, bold), { x: x + 12, y: yy - 23, size: 11, font: bold, color: C.ink });
   });
-  y -= 72;
+  y -= 124;
 
   // Pieces table
   page.drawText("Peças", { x: M, y, size: 13, font: bold, color: C.wine });
   y -= 16;
   const cols = [
-    { h: "Peça", w: 128 }, { h: "Qtd.", w: 34, r: true }, { h: "C × P × A (cm)", w: 150 },
-    { h: "Queima", w: 64 }, { h: "Custo queima", w: 70, r: true }, { h: "Total", w: 69, r: true },
+    { h: "Peça", w: 118 }, { h: "Qtd.", w: 32, r: true }, { h: "C × P × A (cm)", w: 128 },
+    { h: "Queima", w: 76 }, { h: "Custo queima", w: 80, r: true }, { h: "Total", w: 81, r: true },
   ];
   const tableW = cols.reduce((s, c) => s + c.w, 0);
   const drawHead = () => {
@@ -223,20 +235,26 @@ export async function buildCostStatementPdf(st: CostStatement, assets?: PdfAsset
   drawHead();
   const items = st.rows;
   items.forEach((r, idx) => {
-    if (y < M + 60) { page = doc.addPage([W, H]); header(false); drawHead(); }
-    if (idx % 2 === 0) page.drawRectangle({ x: M, y: y - 9, width: tableW, height: 24, color: C.white });
-    const cells = [r.piece, String(r.quantity), r.dimensions, r.firingType, brl(r.firing), brl(r.charged)];
+    const cells = [r.piece, String(r.quantity), r.dimensions.replace(/ × /g, " ×\u00a0"), r.firingType, brl(r.firing), brl(r.charged)];
+    const fonts = cells.map((_, i) => (i === 5 || i === 0 ? bold : font));
+    const wrapped = cells.map((t, i) => (cols[i].r ? [t] : wrap(t, 8.8, cols[i].w - 14, fonts[i])));
+    const n = Math.max(...wrapped.map((w) => w.length));
+    const rh = 12 + n * 11.5;
+    if (y - rh < M + 40) { page = doc.addPage([W, H]); header(false); drawHead(); }
+    if (idx % 2 === 0) page.drawRectangle({ x: M, y: y - rh + 12, width: tableW, height: rh, color: C.white });
     let x = M;
-    cells.forEach((t, i) => {
+    wrapped.forEach((ls, i) => {
       const c = cols[i];
-      const f = i === 5 || i === 0 ? bold : font;
-      const color = t.includes(NOT_INFORMED) ? C.brown : C.ink;
-      const txt = fit(t, 8.8, c.w - 14, f);
-      if (c.r) right(txt, x + c.w - 8, y, 8.8, f, color);
-      else page.drawText(txt, { x: x + 8, y, size: 8.8, font: f, color });
+      ls.forEach((l, li) => {
+        const t = l.replace(/\u00a0/g, " ");
+        const color = t.includes(NOT_INFORMED) ? C.brown : C.ink;
+        const yy = y - 2 - li * 11.5;
+        if (c.r) right(t, x + c.w - 8, yy, 8.8, fonts[i], color);
+        else page.drawText(t, { x: x + 8, y: yy, size: 8.8, font: fonts[i], color });
+      });
       x += c.w;
     });
-    y -= 24;
+    y -= rh;
   });
   if (items.length === 0) {
     page.drawText("Nenhuma peça registrada neste pedido.", { x: M + 8, y, size: 9, font, color: C.brown });
@@ -282,15 +300,15 @@ export async function buildCostStatementPdf(st: CostStatement, assets?: PdfAsset
     });
     const dataUrl = await QRCode.toDataURL(payload, { margin: 1, width: 360, color: { dark: "#331F24", light: "#FFFFFF" } });
     const qr = await doc.embedPng(dataUrl);
-    const q = 112;
+    const q = 100;
     page.drawRectangle({ x: px + 14, y: y - 44 - q - 4, width: q + 8, height: q + 8, color: C.white });
     page.drawImage(qr, { x: px + 18, y: y - 44 - q, width: q, height: q });
-    const ix = px + q + 34, iw = pw - (q + 34) - 14;
+    const ix = px + q + 30, iw = pw - (q + 30) - 10;
     let iy = y - 54;
     const info: [string, string][] = [["Valor", brl(st.balance)], ["Chave Pix (CNPJ)", SELA_PIX_KEY], ["Favorecido", "Selá Cerâmica"]];
     info.forEach(([k, v]) => {
       page.drawText(k.toUpperCase(), { x: ix, y: iy, size: 6.8, font: bold, color: C.brown });
-      page.drawText(fit(v, 10, iw, bold), { x: ix, y: iy - 13, size: 10, font: bold, color: C.ink });
+      page.drawText(fit(v, 9.5, iw, bold), { x: ix, y: iy - 13, size: 9.5, font: bold, color: C.ink });
       iy -= 34;
     });
     page.drawText("PIX COPIA E COLA", { x: px + 16, y: y - 176, size: 6.8, font: bold, color: C.brown });
