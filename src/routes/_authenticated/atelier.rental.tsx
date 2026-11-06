@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { OrderCostDialog } from "@/components/rental/order-cost-dialog";
+import { OrderEditDialog } from "@/components/rental/order-edit-dialog";
 import { formatDimension } from "@/lib/rental-cost-statement";
 
 export const Route = createFileRoute("/_authenticated/atelier/rental")({ component: Page });
@@ -224,6 +225,7 @@ function Page() {
   });
 
   const [costOrder, setCostOrder] = useState<any>(null);
+  const [editOrder, setEditOrder] = useState<any>(null);
   const { data: orders = [] } = useQuery({
     queryKey: ["rental-orders", wsId],
     enabled: !!wsId,
@@ -231,7 +233,7 @@ function Page() {
       const { data, error } = await sb
         .from("rental_orders")
         .select(
-          "*, rental_slots(title, kiln_name, firing_type, firing_date, pickup_date, closes_at), rental_customers(name, studio_name, email, phone, document), rental_order_items(piece_name, quantity, height_cm, width_cm, depth_cm, volume_liters, unit_price, total_price), rental_payments(id, type, amount, status, method, paid_at)",
+          "*, rental_slots(title, kiln_name, firing_type, firing_date, pickup_date, closes_at), rental_customers(name, studio_name, email, phone, document), rental_order_items(id, piece_name, quantity, height_cm, width_cm, depth_cm, volume_liters, unit_price, total_price), rental_payments(id, type, amount, status, method, paid_at)",
         )
         .eq("workspace_id", wsId)
         .order("created_at", { ascending: false });
@@ -840,10 +842,16 @@ function Page() {
                       </li>
                     ))}
                   </ul>
-                  <Button size="sm" variant="outline" onClick={() => setCostOrder(o)}>
-                    <FileText className="mr-2 h-4 w-4" />
-                    Ver detalhes dos custos
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setEditOrder(o)}>
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Editar pedido
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setCostOrder(o)}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Ver detalhes dos custos
+                    </Button>
+                  </div>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {(o.rental_payments ?? []).map((payment: any) => (
                       <div
@@ -911,6 +919,15 @@ function Page() {
                 </CardContent>
               </Card>
             ))
+          )}
+          {editOrder && wsId && (
+            <OrderEditDialog
+              order={editOrder}
+              slots={slots as any[]}
+              wsId={wsId}
+              currency={currency}
+              onClose={() => setEditOrder(null)}
+            />
           )}
           {costOrder && (
             <OrderCostDialog
