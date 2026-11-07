@@ -1669,7 +1669,7 @@ function StudentStatement({
             return (
               <div key={piece.id} data-print-hide={selected ? undefined : "true"} className={`break-inside-avoid rounded-xl border p-4 ${selected ? "border-primary/40 bg-card" : "bg-muted/20"}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-start gap-3">
+                  <div className="flex min-w-0 basis-full flex-wrap items-start gap-3 md:flex-1 md:basis-auto">
                     <Checkbox
                       data-print-hide="true"
                       checked={selected}
