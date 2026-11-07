@@ -28,13 +28,15 @@ export const dimensionValue = (value: unknown) => {
 };
 export const pieceDimensions = (piece: StatementPiece) =>
   [piece.length_cm, piece.depth_cm, piece.height_cm].map(dimensionValue).join(" × ");
+export const hasStatementDimensions = (pieces: StatementPiece[]) =>
+  pieces.some((piece) => [piece.length_cm, piece.depth_cm, piece.height_cm].some((value) => Number.isFinite(Number(value)) && Number(value) > 0));
 const components = [
   ["Argila", "clay"], ["Esmalte", "glaze"], ["Queimas", "firing"],
   ["Manutenção do forno", "kilnMaintenance"], ["Outros custos", "other"], ["Frete", "freight"],
 ] as const;
-const status = (piece: StatementPiece) => {
+const status = (piece: StatementPiece, includeResistance = true) => {
   const labels: Record<string, string> = { paid: "Pago", partial: "Parcial", pending: "Pendente", waived: "Isento" };
-  return [labels[piece.payment_status ?? "pending"] ?? "Pendente", piece.resistance_only ? "Somente resistências" : ""].filter(Boolean).join(" · ");
+  return [labels[piece.payment_status ?? "pending"] ?? "Pendente", includeResistance && piece.resistance_only ? "Somente resistências" : ""].filter(Boolean).join(" · ");
 };
 
 // Named brand palette shared by all drawing operations (PDF has no browser CSS).
@@ -155,8 +157,16 @@ export async function createClassMaterialsPdf(statement: Statement, options: Opt
   table(["Peças cobradas", "Custo total", "Já pago", "Saldo a pagar"], [123, 131, 130, WIDTH - 384],
     [[number(quantity), money(statement.charged), money(statement.paid), money(statement.pending)]], 10);
   heading("Peças incluídas nesta cobrança");
-  table(["Peça", "Qtd.", "C × P × A (cm)", "Custo / un.", "Total da peça"], [142, 37, 134, 98, WIDTH - 411],
-    statement.pieces.map((piece) => [`${piece.piece_name || "Peça sem nome"}\n${status(piece)}`, number(piece.quantity ?? 1), pieceDimensions(piece), money(Number(piece.charged || 0) / Math.max(1, piece.quantity ?? 1)), money(Number(piece.charged || 0))]));
+  const showDimensions = hasStatementDimensions(statement.pieces);
+  table(showDimensions ? ["Peça", "Qtd.", "C × P × A (cm)", "Custo / un.", "Total"] : ["Peça", "Qtd.", "Custo / un.", "Total"],
+    showDimensions ? [142, 37, 134, 98, WIDTH - 411] : [240, 45, 115, WIDTH - 400],
+    statement.pieces.map((piece) => [
+      `${piece.piece_name || "Peça sem nome"}\n${status(piece, false)}`,
+      number(piece.quantity ?? 1),
+      ...(showDimensions ? [pieceDimensions(piece)] : []),
+      money(Number(piece.charged || 0) / Math.max(1, piece.quantity ?? 1)),
+      money(Number(piece.charged || 0)),
+    ]));
   if (options.includeCostBreakdown !== false) {
     heading("Componentes cobrados");
     table(["Componente", "Subtotal", "Componente", "Subtotal"], [154, 103, 154, WIDTH - 411], [0, 1, 2].map((i) => {

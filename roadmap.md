@@ -1,4 +1,5 @@
 # Material Aulas PDF
+- [ ] Refine executive PDF table only: omit wholly absent dimensions, rename Total, keep resistance indicator only in individual details; validate focused tests and real preview export without publishing.
 - [x] Add accessible production/billing stage labels and selection legend; preserve all selection calculations.
 - [x] Verify stage labels and unchanged selection in desktop/mobile preview and check build/typecheck. Corrected mobile header squeeze during visual review; selection toggled/restored without saving; 9 focused tests passed.
 - [x] Replace browser print export with the shared controlled PDF generator.
