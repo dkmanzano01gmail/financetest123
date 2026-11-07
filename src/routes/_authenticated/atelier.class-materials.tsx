@@ -32,7 +32,17 @@ import { Calculator, Camera, Copy, ImagePlus, Mail, MessageCircle, Package, Penc
 import { toast } from "sonner";
 import { createPixPayload, SELA_PIX_KEY } from "@/lib/pix-br";
 
-export const Route = createFileRoute("/_authenticated/atelier/class-materials")({ component: Page });
+export const Route = createFileRoute("/_authenticated/atelier/class-materials")({
+  component: Page,
+  head: () => ({ meta: [
+    { title: "Material Aulas | Selá Cerâmica" },
+    { name: "description", content: "Materiais, peças e demonstrativos de custos dos alunos da Selá Cerâmica." },
+    { property: "og:title", content: "Material Aulas | Selá Cerâmica" },
+    { property: "og:description", content: "Materiais e demonstrativos de custos das aulas de cerâmica." },
+    { property: "og:type", content: "website" },
+    { name: "twitter:card", content: "summary" },
+  ] }),
+});
 const sb = supabase as any;
 const NOW = new Date();
 const n = (value: string) => {
@@ -409,44 +419,25 @@ function Page() {
     });
   }, [classSettings]);
 
-  useEffect(() => {
-    if (!printStudent) return;
-    document.body.classList.add("printing-student-materials");
-    let cancelled = false;
-    const finish = () => {
-      document.body.classList.remove("printing-student-materials");
+  async function downloadStatement(item: any, period: string, includeCostBreakdown: boolean, includePhotos: boolean) {
+    setPrintStudent(item.student);
+    try {
+      const { createClassMaterialsPdf } = await import("@/lib/class-material-statement-pdf");
+      const { blob } = await createClassMaterialsPdf({ ...item, period }, { includeCostBreakdown, includePhotos });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `materiais-${String(item.student).replace(/[^a-zA-Z0-9À-ÿ-]+/g, "-")}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível gerar o PDF.");
+    } finally {
       setPrintStudent(null);
-    };
-    window.addEventListener("afterprint", finish, { once: true });
-    const timer = window.setTimeout(async () => {
-      const images = Array.from(
-        document.querySelectorAll<HTMLImageElement>(
-          '[data-print-statement="selected"] img',
-        ),
-      );
-      await Promise.race([
-        Promise.all(
-          images.map(
-            (image) =>
-              image.complete
-                ? Promise.resolve()
-                : new Promise<void>((resolve) => {
-                    image.addEventListener("load", () => resolve(), { once: true });
-                    image.addEventListener("error", () => resolve(), { once: true });
-                  }),
-          ),
-        ),
-        new Promise((resolve) => window.setTimeout(resolve, 3000)),
-      ]);
-      if (!cancelled) window.print();
-    }, 100);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-      window.removeEventListener("afterprint", finish);
-      document.body.classList.remove("printing-student-materials");
-    };
-  }, [printStudent]);
+    }
+  }
 
   const { data: firingSettings } = useQuery({
     queryKey: ["firing_settings", wsId, "class-materials"],
@@ -1143,17 +1134,6 @@ function Page() {
 
   return (
     <PageContainer>
-      <style>{`@media print {
-        body.printing-student-materials * { visibility: hidden !important; }
-        body.printing-student-materials [data-print-statement="selected"],
-        body.printing-student-materials [data-print-statement="selected"] * { visibility: visible !important; }
-        body.printing-student-materials [data-print-statement="selected"] {
-          position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important;
-          box-shadow: none !important; border: 0 !important; background: white !important;
-        }
-        body.printing-student-materials [data-print-hide="true"] { display: none !important; }
-        body.printing-student-materials [data-print-only="true"] { display: block !important; }
-      }`}</style>
       <PageHeader
         title="Material Aulas Regulares"
         helpKey="atelier.class-materials"
@@ -1240,7 +1220,7 @@ function Page() {
                 onIncludeCostBreakdownChange={(includeCostBreakdown) =>
                   setReportCostBreakdownByStudent((current) => ({ ...current, [item.student]: includeCostBreakdown }))
                 }
-                onPrint={() => setPrintStudent(item.student)}
+                onPrint={() => downloadStatement(selectedStatement, statementPeriod, reportCostBreakdownByStudent[item.student] ?? true, reportPhotosByStudent[item.student] ?? false)}
                 onEmail={() => emailStatement(selectedStatement, statementPeriod, reportCostBreakdownByStudent[item.student] ?? true)}
                 emailing={emailingStudent === item.student}
                 invoicing={markInvoiced.isPending}
@@ -1480,7 +1460,7 @@ function StudentStatement({
     const { createClassMaterialsPdf } = await import("@/lib/class-material-statement-pdf");
     const { blob } = await createClassMaterialsPdf(
       { ...item, period },
-      { includeCostBreakdown },
+      { includeCostBreakdown, includePhotos },
     );
     const safeStudent = String(item.student || "aluno")
       .normalize("NFD")
@@ -1596,8 +1576,8 @@ function StudentStatement({
               />
               <span className="text-sm">{includeCostBreakdown ? "Componentes visíveis" : "Componentes ocultos"}</span>
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={onPrint} disabled={item.pieces.length === 0}>
-              <Printer className="mr-1 h-4 w-4" />Imprimir / salvar PDF
+            <Button type="button" variant="outline" size="sm" onClick={onPrint} disabled={selectedForPrint || item.pieces.length === 0}>
+              <Printer className="mr-1 h-4 w-4" />{selectedForPrint ? "Gerando PDF..." : "Imprimir / salvar PDF"}
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={onEmail} disabled={emailing || item.pieces.length === 0}>
               <Mail className="mr-1 h-4 w-4" />{emailing ? "Enviando..." : "Enviar por e-mail"}
