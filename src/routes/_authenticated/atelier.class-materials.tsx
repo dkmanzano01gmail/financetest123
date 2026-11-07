@@ -28,7 +28,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, formatDate, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { resolvePiecePayment } from "@/lib/piece-payment";
 import { calculateClassPieceCost } from "@/lib/orna-logic";
-import { Calculator, Camera, Copy, ImagePlus, Mail, MessageCircle, Package, Pencil, Plus, Printer, RotateCcw, Settings2, Trash2, Users, X } from "lucide-react";
+import { Calculator, Camera, CheckCircle2, CircleDashed, Copy, ImagePlus, LockKeyhole, Mail, MessageCircle, Package, Pencil, Plus, Printer, RotateCcw, Settings2, Trash2, Truck, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { createPixPayload, SELA_PIX_KEY } from "@/lib/pix-br";
 
@@ -1639,12 +1639,25 @@ function StudentStatement({
           </div>
         </div>
 
+        <div data-print-hide="true" className="space-y-2 border-l-2 border-primary pl-3 text-sm text-foreground" aria-label="Legenda de seleção das peças">
+          <p><strong>Selecionadas:</strong> unidades concluídas disponíveis para cobrança. <strong>Desabilitadas:</strong> unidades ainda não concluídas, já faturadas ou em cortesia.</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+            <span className="inline-flex items-center gap-1.5"><CheckCircle2 aria-hidden="true" className="h-4 w-4 text-primary" />Concluída / disponível para cobrança</span>
+            <span className="inline-flex items-center gap-1.5"><CircleDashed aria-hidden="true" className="h-4 w-4 text-sela-ochre" />Em produção / etapa intermediária</span>
+            <span className="inline-flex items-center gap-1.5"><LockKeyhole aria-hidden="true" className="h-4 w-4" />Sem unidades disponíveis</span>
+          </div>
+          <p className="text-xs">A etiqueta mostra a etapa atual; peças parcialmente concluídas permitem selecionar apenas as unidades disponíveis.</p>
+        </div>
+
         <div className="space-y-3">
           {availablePieces.map((piece: any) => {
             const unitCalculated = piece.calculated / piece.quantity;
             const tracked = trackedQuantities(piece);
             const selectable = selectableQuantity(piece);
             const chargeable = isPieceChargeable(piece);
+            const fullyCompleted = tracked.completed === tracked.total;
+            const StageIcon = fullyCompleted ? CheckCircle2 : CircleDashed;
+            const stageDescriptionId = `piece-stage-${piece.id}`;
             const selectedQuantity = Math.min(selectable, Math.max(0, Math.round(Number(selectedPieceQuantities[piece.id] || 0))));
             const selected = chargeable && selectedQuantity > 0;
             const selectedRatio = tracked.total > 0 ? selectedQuantity / tracked.total : 0;
@@ -1654,9 +1667,9 @@ function StudentStatement({
               piece.modeled_weight_g ?? piece.grams ?? Number(piece.clay_weight_kg || 0) * 1000,
             );
             return (
-              <div key={piece.id} data-print-hide={selected ? undefined : "true"} className={`break-inside-avoid rounded-xl border bg-card p-4 ${selected ? "" : "opacity-60"}`}>
+              <div key={piece.id} data-print-hide={selected ? undefined : "true"} className={`break-inside-avoid rounded-xl border p-4 ${selected ? "border-primary/40 bg-card" : "bg-muted/20"}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-start gap-3">
                     <Checkbox
                       data-print-hide="true"
                       checked={selected}
@@ -1665,6 +1678,7 @@ function StudentStatement({
                         setSelectedQuantity(piece.id, checked ? selectable : 0)
                       }
                       aria-label={`Incluir ${piece.piece_name || "peça"} na cobrança`}
+                      aria-describedby={stageDescriptionId}
                       className="mt-1"
                     />
                     <div data-print-hide="true" className="w-24 shrink-0">
