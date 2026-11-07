@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Material Aulas download, email and WhatsApp exports use the same pdf-lib generator with embedded fonts and font-measured pagination; browser print CSS must not be used to construct statements because browser layout differs.
