@@ -84,14 +84,14 @@ export async function createClassMaterialsPdf(statement: Statement, options: Opt
   pdf.setAuthor("Selá Cerâmica");
   pdf.setCreationDate(issuedAt);
   pdf.setModificationDate(issuedAt);
-  let page: PDFPage;
+  let page: PDFPage = pdf.addPage([W, H]);
+  page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: palette.cream });
   let y = H - M;
   const newPage = () => {
     page = pdf.addPage([W, H]);
     page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: palette.cream });
     y = H - M;
   };
-  newPage();
   const ensure = (height: number) => { if (y - height < BOTTOM) newPage(); };
   const text = (value: string, size = 10, strong = false, width = WIDTH) => {
     const font = strong ? bold : regular;
@@ -156,10 +156,15 @@ export async function createClassMaterialsPdf(statement: Statement, options: Opt
     [[number(quantity), money(statement.charged), money(statement.paid), money(statement.pending)]], 10);
   heading("Peças incluídas nesta cobrança");
   table(["Peça", "Qtd.", "C × P × A (cm)", "Custo / un.", "Total da peça"], [142, 37, 134, 98, WIDTH - 411],
-    statement.pieces.map((piece) => [piece.piece_name || "Peça sem nome", number(piece.quantity ?? 1), pieceDimensions(piece), money(Number(piece.charged || 0) / Math.max(1, piece.quantity ?? 1)), money(Number(piece.charged || 0))]));
+    statement.pieces.map((piece) => [`${piece.piece_name || "Peça sem nome"}\n${status(piece)}`, number(piece.quantity ?? 1), pieceDimensions(piece), money(Number(piece.charged || 0) / Math.max(1, piece.quantity ?? 1)), money(Number(piece.charged || 0))]));
   if (options.includeCostBreakdown !== false) {
     heading("Componentes cobrados");
-    table(["Componente", "Subtotal"], [WIDTH - 135, 135], components.map(([label, key]) => [label, money(statement[key])]));
+    table(["Componente", "Subtotal", "Componente", "Subtotal"], [154, 103, 154, WIDTH - 411], [0, 1, 2].map((i) => {
+      const left = components[i];
+      const right = components[i + 3];
+      if (!left || !right) return [];
+      return [left[0], money(statement[left[1]]), right[0], money(statement[right[1]])];
+    }));
   }
   text("Os valores correspondem às unidades selecionadas neste demonstrativo.", 9);
 
