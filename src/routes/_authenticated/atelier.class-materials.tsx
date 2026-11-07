@@ -28,7 +28,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { formatCurrency, formatDate, monthLabel, parseLocaleAmount } from "@/lib/format";
 import { resolvePiecePayment } from "@/lib/piece-payment";
 import { calculateClassPieceCost } from "@/lib/orna-logic";
-import { Calculator, Camera, Copy, ImagePlus, Mail, MessageCircle, Package, Pencil, Plus, Printer, RotateCcw, Settings2, Trash2, Users, X } from "lucide-react";
+import { Calculator, Camera, CheckCircle2, CircleDashed, Copy, ImagePlus, LockKeyhole, Mail, MessageCircle, Package, Pencil, Plus, Printer, RotateCcw, Settings2, Trash2, Truck, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { createPixPayload, SELA_PIX_KEY } from "@/lib/pix-br";
 
@@ -1639,12 +1639,25 @@ function StudentStatement({
           </div>
         </div>
 
+        <div data-print-hide="true" className="space-y-2 border-l-2 border-primary pl-3 text-sm text-foreground" aria-label="Legenda de seleção das peças">
+          <p><strong>Selecionadas:</strong> unidades concluídas disponíveis para cobrança. <strong>Desabilitadas:</strong> unidades ainda não concluídas, já faturadas ou em cortesia.</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+            <span className="inline-flex items-center gap-1.5"><CheckCircle2 aria-hidden="true" className="h-4 w-4 text-primary" />Concluída / disponível para cobrança</span>
+            <span className="inline-flex items-center gap-1.5"><CircleDashed aria-hidden="true" className="h-4 w-4 text-sela-ochre" />Em produção / etapa intermediária</span>
+            <span className="inline-flex items-center gap-1.5"><LockKeyhole aria-hidden="true" className="h-4 w-4" />Sem unidades disponíveis</span>
+          </div>
+          <p className="text-xs">A etiqueta mostra a etapa atual; peças parcialmente concluídas permitem selecionar apenas as unidades disponíveis.</p>
+        </div>
+
         <div className="space-y-3">
           {availablePieces.map((piece: any) => {
             const unitCalculated = piece.calculated / piece.quantity;
             const tracked = trackedQuantities(piece);
             const selectable = selectableQuantity(piece);
             const chargeable = isPieceChargeable(piece);
+            const fullyCompleted = tracked.completed === tracked.total;
+            const StageIcon = fullyCompleted ? CheckCircle2 : CircleDashed;
+            const stageDescriptionId = `piece-stage-${piece.id}`;
             const selectedQuantity = Math.min(selectable, Math.max(0, Math.round(Number(selectedPieceQuantities[piece.id] || 0))));
             const selected = chargeable && selectedQuantity > 0;
             const selectedRatio = tracked.total > 0 ? selectedQuantity / tracked.total : 0;
@@ -1654,9 +1667,9 @@ function StudentStatement({
               piece.modeled_weight_g ?? piece.grams ?? Number(piece.clay_weight_kg || 0) * 1000,
             );
             return (
-              <div key={piece.id} data-print-hide={selected ? undefined : "true"} className={`break-inside-avoid rounded-xl border bg-card p-4 ${selected ? "" : "opacity-60"}`}>
+              <div key={piece.id} data-print-hide={selected ? undefined : "true"} className={`break-inside-avoid rounded-xl border p-4 ${selected ? "border-primary/40 bg-card" : "bg-muted/20"}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <div className="flex min-w-0 basis-full flex-wrap items-start gap-3 md:flex-1 md:basis-auto">
                     <Checkbox
                       data-print-hide="true"
                       checked={selected}
@@ -1665,6 +1678,7 @@ function StudentStatement({
                         setSelectedQuantity(piece.id, checked ? selectable : 0)
                       }
                       aria-label={`Incluir ${piece.piece_name || "peça"} na cobrança`}
+                      aria-describedby={stageDescriptionId}
                       className="mt-1"
                     />
                     <div data-print-hide="true" className="w-24 shrink-0">
@@ -1679,12 +1693,24 @@ function StudentStatement({
                         className="h-24 w-24 shrink-0 rounded-lg border object-cover"
                       />
                     )}
-                    <div className="min-w-0">
+                    <div className="min-w-0 basis-full break-words sm:flex-1 sm:basis-auto">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-semibold">{piece.piece_name || "Peça sem nome"}</h3>
+                        <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-semibold ${fullyCompleted ? "border-primary/25 bg-primary/10 text-primary" : "border-sela-ochre/25 bg-sela-gold/10 text-sela-ochre"}`}>
+                          <StageIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                          {fullyCompleted ? (tracked.delivered === tracked.total ? "Entregue" : "Concluída") : productionLabel(piece.production_status)}
+                        </span>
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${piece.payment_status === "paid" ? "bg-income/10 text-income" : "bg-expense/10 text-expense"}`}>{statusLabel(piece.payment_status)}</span>
                         {piece.resistance_only && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Somente resistências</span>}
                       </div>
+                      <p id={stageDescriptionId} className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-foreground">
+                        <span className={`inline-flex items-center gap-1.5 ${chargeable ? "text-primary" : "text-foreground"}`}>
+                          {chargeable ? <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" /> : <LockKeyhole aria-hidden="true" className="h-3.5 w-3.5" />}
+                          {chargeable ? `Disponível para cobrança: ${selectable} unidade(s)` : piece.payment_status === "waived" ? "Cortesia · não selecionável" : tracked.completed === 0 ? "Ainda não concluída · não selecionável" : "Já faturada · sem unidades disponíveis"}
+                        </span>
+                        {tracked.completed > tracked.delivered && <span className="inline-flex items-center gap-1.5"><Truck aria-hidden="true" className="h-3.5 w-3.5" />Aguardando entrega: {tracked.completed - tracked.delivered}</span>}
+                        {!fullyCompleted && tracked.completed > 0 && <span>{tracked.completed} de {tracked.total} concluída(s)</span>}
+                      </p>
                       <p className="mt-1 text-sm font-semibold text-primary">Nesta cobrança: {selectedQuantity} de {tracked.total} {tracked.total === 1 ? "peça registrada" : "peças registradas"}.</p>
                       <p data-print-hide="true" className="mt-1 text-xs text-muted-foreground">{formatDate(piece.usage_date)} · {tracked.total} total · {tracked.completed} concluída(s) · {tracked.delivered} entregue(s) · {tracked.invoiced} faturada(s) · {tracked.billable} disponível(is) · {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
                       <p data-print-only="true" className="mt-1 hidden text-xs text-muted-foreground">{formatDate(piece.usage_date)} · Quantidade cobrada: {selectedQuantity} · Quantidade registrada: {tracked.total} · {modeledWeight.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} g de {piece.clay_type || "argila"} · Cone {piece.glaze_cone || "—"}</p>
