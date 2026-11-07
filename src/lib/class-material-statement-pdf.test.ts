@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { PDFDocument } from "pdf-lib";
 import logo from "../assets/selo-sela-ceramica.png.asset.json";
-import { createClassMaterialsPdf, dimensionValue, pieceDimensions, type StatementPiece, type Statement } from "./class-material-statement-pdf";
+import { createClassMaterialsPdf, dimensionValue, hasStatementDimensions, pieceDimensions, type StatementPiece, type Statement } from "./class-material-statement-pdf";
 
 test("absent dimensions never become zero in the statement", () => {
   for (const value of [null, undefined, "", 0, "0", -1, NaN]) {
@@ -16,6 +16,20 @@ test("all three existing dimensions are preserved without changing the piece", (
   const before = structuredClone(piece);
   assert.equal(pieceDimensions(piece), "12,5 × Não informado × 8");
   assert.deepEqual(piece, before);
+});
+
+test("the executive dimension track is omitted when all pieces have empty or zero dimensions", () => {
+  assert.equal(hasStatementDimensions([
+    { length_cm: null, depth_cm: "", height_cm: 0 },
+    { length_cm: "0", depth_cm: undefined, height_cm: null },
+  ]), false);
+});
+
+test("one positive dimension on any piece keeps the executive dimension track", () => {
+  assert.equal(hasStatementDimensions([
+    { length_cm: 0, depth_cm: null, height_cm: "" },
+    { length_cm: null, depth_cm: 12, height_cm: 0 },
+  ]), true);
 });
 
 test("PDF generation keeps input financial values and uses the actual outstanding Pix amount", async () => {
