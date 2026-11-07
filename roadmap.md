@@ -1,4 +1,4 @@
 # Material Aulas PDF
-- [ ] Replace browser print export with the shared controlled PDF generator.
-- [ ] Executive summary, vertical piece costs, embedded brand assets and safe pagination.
-- [ ] Validate existing-data export and visually inspect every test PDF page; run existing tests and check preview diagnostics.
+- [x] Replace browser print export with the shared controlled PDF generator.
+- [x] Executive summary, vertical piece costs, embedded brand assets and safe pagination.
+- [x] Existing-data export (Eliane, 7 units), all 5 pages visually inspected without cuts/overlap; 9 focused tests pass and preview build/typecheck OK. Existing general runner has 2 unrelated failures in import fingerprint and history classification; unchanged to preserve scope.
